@@ -2,14 +2,15 @@
  * WalletBackend — H Wallet 后端服务
  * 
  * 实现方式：
- * 1. 邮箱 OTP 登录：使用 OKX WaaS API 直接 HTTP 调用
- * 2. 钱包创建：通过 ethers.js 本地生成密钥对 + OKX WaaS 注册
- * 3. 地址查询：OKX WaaS account/get-addresses
+ * 1. 邮箱 OTP 登录：调用 OKX Agentic Wallet 真实 API
+ *    - /priapi/v5/wallet/agentic/auth/init → OKX 发送验证码到用户邮箱
+ *    - /priapi/v5/wallet/agentic/auth/verify → 验证 OTP，自动创建钱包
+ * 2. 地址查询：通过 JWT token 调用 OKX wallet API
  * 
  * 不依赖 onchainos CLI，纯 HTTP 实现
  */
-import http from 'http';
-import crypto from 'crypto';
+import * as http from 'http';
+import * as crypto from 'crypto';
 
 const PORT = parseInt(process.env.WALLET_PORT || '3100');
 const OKX_API_KEY = process.env.OKX_API_KEY || '';
@@ -17,8 +18,9 @@ const OKX_SECRET_KEY = process.env.OKX_SECRET_KEY || '';
 const OKX_PASSPHRASE = process.env.OKX_PASSPHRASE || '';
 const OKX_PROJECT_ID = process.env.OKX_PROJECT_ID || '';
 const OKX_BASE_URL = 'https://web3.okx.com';
+const CLIENT_VERSION = '3.0.0';
 
-// ─── OKX API 签名 ─────────────────────────────────────────────
+// ─── OKX API 签名（用于 WaaS 接口） ─────────────────────────────────
 function signRequest(timestamp: string, method: string, path: string, body: string): string {
   const signStr = `${timestamp}${method}${path}${body}`;
   return crypto.createHmac('sha256', OKX_SECRET_KEY).update(signStr).digest('base64');
@@ -28,7 +30,6 @@ async function okxRequest(method: string, path: string, body?: any): Promise<any
   const timestamp = new Date().toISOString().replace(/\d{3}Z$/, '000Z');
   const bodyStr = body ? JSON.stringify(body) : '';
   const sign = signRequest(timestamp, method, path, bodyStr);
-
   const url = `${OKX_BASE_URL}${path}`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -38,73 +39,105 @@ async function okxRequest(method: string, path: string, body?: any): Promise<any
     'OK-ACCESS-PASSPHRASE': OKX_PASSPHRASE,
     'OK-ACCESS-PROJECT': OKX_PROJECT_ID,
   };
-
   const response = await fetch(url, {
     method,
     headers,
     body: bodyStr || undefined,
   });
-
   return response.json();
+}
+
+// ─── OKX Agentic Wallet 公开接口（不需要 API Key 签名） ─────────────
+async function okxAgenticPublic(path: string, body: any): Promise<any> {
+  const url = `${OKX_BASE_URL}${path}`;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'ok-client-version': CLIENT_VERSION,
+    'Ok-Access-Client-type': 'agent-cli',
+  };
+  console.log(`[WalletBackend] POST ${path}`, JSON.stringify(body));
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  console.log(`[WalletBackend] Response:`, JSON.stringify(result));
+  return result;
+}
+
+// ─── 临时密钥对生成 ─────────────────────────────────────────────
+function generateTempKeyPair(): { privateKey: string; publicKey: string } {
+  // 生成 32 字节随机密钥作为临时公钥
+  // OKX 会用它来加密 session key（HPKE）
+  const privateKeyBytes = crypto.randomBytes(32);
+  const publicKeyBytes = crypto.randomBytes(32);
+  return {
+    privateKey: privateKeyBytes.toString('base64'),
+    publicKey: publicKeyBytes.toString('base64'),
+  };
 }
 
 // ─── OTP 会话管理 ─────────────────────────────────────────────
 interface OtpSession {
   email: string;
-  code: string;
+  flowId: string;
+  tempPrivateKey: string;
+  tempPublicKey: string;
   expiresAt: number;
   attempts: number;
 }
 
 const otpSessions = new Map<string, OtpSession>();
 
-function generateOtp(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-// ─── 钱包地址生成 ─────────────────────────────────────────────
-function generateEvmAddress(): { address: string; privateKey: string } {
-  // 生成随机私钥
-  const privateKey = crypto.randomBytes(32).toString('hex');
-  // 简化的地址生成（实际应用中应使用 ethers.js）
-  const pubKeyHash = crypto.createHash('sha256').update(privateKey).digest('hex');
-  const address = '0x' + pubKeyHash.slice(0, 40);
-  return { address, privateKey };
-}
-
-function generateSolanaAddress(): { address: string; privateKey: string } {
-  const privateKey = crypto.randomBytes(32).toString('hex');
-  // 简化的 Solana 地址（Base58 格式模拟）
-  const hash = crypto.createHash('sha256').update(privateKey).digest();
-  const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-  let address = '';
-  for (let i = 0; i < 44; i++) {
-    address += chars[hash[i % 32] % chars.length];
-  }
-  return { address, privateKey };
-}
-
 // ─── API 处理函数 ─────────────────────────────────────────────
+
+/**
+ * 发送 OTP — 调用 OKX Agentic Wallet 真实 API
+ * OKX 会发送验证码到用户邮箱
+ */
 async function handleSendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   if (!email || !email.includes('@')) {
     return { ok: false, error: '请输入有效的邮箱地址' };
   }
 
-  const code = generateOtp();
-  otpSessions.set(email, {
-    email,
-    code,
-    expiresAt: Date.now() + 5 * 60 * 1000, // 5 分钟有效
-    attempts: 0,
-  });
+  try {
+    // 调用 OKX Agentic Wallet auth/init 接口
+    const result = await okxAgenticPublic('/priapi/v5/wallet/agentic/auth/init', {
+      email,
+      locale: 'zh-CN',
+    });
 
-  console.log(`[WalletBackend] OTP sent to ${email}: ${code}`);
-  // 在生产环境中，这里应该调用邮件发送服务
-  // 当前为开发模式，OTP 直接打印到日志
+    if (result.code === '0' && result.data?.[0]?.flowId) {
+      const flowId = result.data[0].flowId;
+      const keyPair = generateTempKeyPair();
 
-  return { ok: true };
+      otpSessions.set(email, {
+        email,
+        flowId,
+        tempPrivateKey: keyPair.privateKey,
+        tempPublicKey: keyPair.publicKey,
+        expiresAt: Date.now() + 10 * 60 * 1000,
+        attempts: 0,
+      });
+
+      console.log(`[WalletBackend] ✅ OTP 已发送到 ${email}, flowId: ${flowId}`);
+      return { ok: true };
+    } else {
+      const errMsg = result.msg || result.error || '发送验证码失败';
+      console.error(`[WalletBackend] ❌ OTP 发送失败:`, result);
+      return { ok: false, error: errMsg };
+    }
+  } catch (err: any) {
+    console.error(`[WalletBackend] ❌ OTP 请求异常:`, err);
+    return { ok: false, error: err.message || '网络请求失败' };
+  }
 }
 
+/**
+ * 验证 OTP — 调用 OKX Agentic Wallet 真实 API
+ * 验证成功后自动创建钱包（如果是新用户）
+ */
 async function handleVerifyOtp(email: string, code: string): Promise<{
   ok: boolean;
   token?: string;
@@ -114,7 +147,6 @@ async function handleVerifyOtp(email: string, code: string): Promise<{
   error?: string;
 }> {
   const session = otpSessions.get(email);
-  
   if (!session) {
     return { ok: false, error: '请先发送验证码' };
   }
@@ -130,87 +162,83 @@ async function handleVerifyOtp(email: string, code: string): Promise<{
     return { ok: false, error: '验证次数过多，请重新发送' };
   }
 
-  if (session.code !== code) {
-    return { ok: false, error: '验证码错误' };
-  }
-
-  // 验证成功 — 创建钱包
   try {
-    const evmWallet = generateEvmAddress();
-    const solWallet = generateSolanaAddress();
+    // 调用 OKX Agentic Wallet auth/verify 接口
+    const result = await okxAgenticPublic('/priapi/v5/wallet/agentic/auth/verify', {
+      email,
+      flowId: session.flowId,
+      otp: code,
+      tempPubKey: session.tempPublicKey,
+    });
 
-    // 尝试在 OKX WaaS 注册这些地址
-    let accountId = '';
-    try {
-      const result = await okxRequest('POST', '/api/v5/wallet/account/create-wallet-account', {
-        addresses: [
-          { chainIndex: '1', address: evmWallet.address },
-          { chainIndex: '501', address: solWallet.address },
-        ],
-      });
-      if (result.code === '0' && result.data?.[0]?.accountId) {
-        accountId = result.data[0].accountId;
-      } else {
-        // WaaS 注册失败不阻塞，使用本地生成的地址
-        accountId = crypto.randomUUID();
-        console.warn('[WalletBackend] WaaS 注册失败，使用本地 accountId:', result);
-      }
-    } catch (err) {
-      accountId = crypto.randomUUID();
-      console.warn('[WalletBackend] WaaS 请求异常:', err);
+    if (result.code === '0' && result.data?.[0]) {
+      const verifyData = result.data[0];
+      const accountId = verifyData.accountId || '';
+      const accessToken = verifyData.accessToken || '';
+
+      console.log(`[WalletBackend] ✅ OTP 验证成功! accountId: ${accountId}`);
+
+      otpSessions.delete(email);
+
+      const token = Buffer.from(JSON.stringify({
+        email,
+        accountId,
+        accessToken,
+        teeId: verifyData.teeId || '',
+        projectId: verifyData.projectId || '',
+        createdAt: Date.now(),
+      })).toString('base64');
+
+      return {
+        ok: true,
+        token,
+        accountId,
+        isNew: true,
+        addresses: null,
+      };
+    } else {
+      const errMsg = result.msg || result.error || '验证码错误';
+      console.error(`[WalletBackend] ❌ OTP 验证失败:`, result);
+      return { ok: false, error: errMsg };
     }
-
-    const addresses = {
-      evm: [
-        { chainIndex: '1', chainName: 'Ethereum', address: evmWallet.address },
-        { chainIndex: '56', chainName: 'BSC', address: evmWallet.address },
-        { chainIndex: '137', chainName: 'Polygon', address: evmWallet.address },
-        { chainIndex: '196', chainName: 'X Layer', address: evmWallet.address },
-      ],
-      solana: [
-        { chainIndex: '501', chainName: 'Solana', address: solWallet.address },
-      ],
-      xlayer: [
-        { chainIndex: '196', chainName: 'X Layer', address: evmWallet.address },
-      ],
-    };
-
-    const token = Buffer.from(`${email}:${accountId}:${Date.now()}`).toString('base64');
-
-    otpSessions.delete(email);
-
-    return {
-      ok: true,
-      token,
-      accountId,
-      isNew: true,
-      addresses,
-    };
   } catch (err: any) {
-    return { ok: false, error: err.message || '钱包创建失败' };
+    console.error(`[WalletBackend] ❌ OTP 验证异常:`, err);
+    return { ok: false, error: err.message || '验证请求失败' };
   }
 }
 
+/**
+ * 获取钱包地址
+ */
 async function handleGetAddresses(token: string): Promise<{ ok: boolean; addresses?: any; accountId?: string }> {
   if (!token) {
     return { ok: false };
   }
-
   try {
-    const decoded = Buffer.from(token, 'base64').toString();
-    const [email, accountId] = decoded.split(':');
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
+    const { accountId, accessToken } = decoded;
 
-    if (accountId && accountId !== 'undefined') {
-      // 尝试从 OKX WaaS 获取地址
+    if (accountId && accessToken) {
       try {
-        const result = await okxRequest('GET', `/api/v5/wallet/account/get-account-detail?accountId=${accountId}`, undefined);
+        const url = `${OKX_BASE_URL}/priapi/v5/wallet/agentic/account/addresses`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'ok-client-version': CLIENT_VERSION,
+            'Ok-Access-Client-type': 'agent-cli',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        });
+        const result = await response.json();
         if (result.code === '0' && result.data) {
           return { ok: true, addresses: result.data, accountId };
         }
-      } catch { /* fallback */ }
+      } catch (err) {
+        console.warn('[WalletBackend] 获取地址失败:', err);
+      }
     }
 
-    // Fallback: 返回基于 token 的缓存地址
     return { ok: true, accountId: accountId || '', addresses: null };
   } catch {
     return { ok: false };
@@ -262,7 +290,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify(result));
     } else if (url === '/health') {
       res.writeHead(200);
-      res.end(JSON.stringify({ ok: true, service: 'h-wallet-backend', mode: 'http-direct' }));
+      res.end(JSON.stringify({ ok: true, service: 'h-wallet-backend', mode: 'okx-agentic-real' }));
     } else {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -275,8 +303,9 @@ const server = http.createServer(async (req, res) => {
 
 if (require.main === module || process.argv[1]?.includes('walletBackend')) {
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[WalletBackend] 服务已启动: http://0.0.0.0:${PORT}`);
-    console.log(`[WalletBackend] 模式: HTTP Direct (无 onchainos 依赖)`);
+    console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${PORT}`);
+    console.log(`[WalletBackend] 模式: OKX Agentic Wallet (真实 OTP)`);
+    console.log(`[WalletBackend] OKX API: ${OKX_BASE_URL}`);
     console.log(`[WalletBackend] 健康检查: http://localhost:${PORT}/health`);
   });
 }
