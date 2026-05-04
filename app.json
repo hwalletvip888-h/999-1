@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "H Wallet MVP",
+    "slug": "h-wallet-mvp",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "hwallet",
+    "web": {
+      "bundler": "metro"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}

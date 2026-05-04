@@ -1,0 +1,92 @@
+// 类型统一出口，兼容旧有 import
+export type {
+  CardStatus,
+  CardType,
+  CardHeader,
+  HWalletCard,
+  TradeCard,
+  StrategyCard,
+  Card
+} from "./card";
+
+// 兼容旧有 TradeCardCategory、TradeCardRow、Candle 类型（如有需要可在 card.ts 内补充定义）
+export type TradeCardCategory = "perpetual" | "swap" | "agent" | "stake" | "earn" | "grid";
+export type TradeCardRow = {
+  label: string;
+  value: string;
+  accent?: "positive" | "negative" | "warning";
+};
+export type Candle = { o: number; h: number; l: number; c: number };
+
+export type { SavedCard } from "../services/cardLibrary";
+export type AppView = "wallet" | "chat" | "community" | "profile";
+
+export type MessageRole = "user" | "assistant" | "system";
+
+export type MessageKind = "text" | "card";
+
+
+import type { HWalletCard } from "./card";
+export type ChatMessage = {
+  id: string;
+  role: MessageRole;
+  kind: MessageKind;
+  text?: string;
+  card?: HWalletCard;
+  createdAt: string;
+};
+
+export type WalletAsset = {
+  id: string;
+  symbol: string;
+  name: string;
+  icon: string;
+  chain: string;
+  balance: string;
+  valueUsd: string;
+  change24h: string;
+};
+
+export type WalletAction = {
+  id: string;
+  label: string;
+  icon: string;
+};
+
+export type WalletShortcut = {
+  id: string;
+  title: string;
+  description: string;
+};
+
+export type CommunityMessage = {
+  id: string;
+  author: string;
+  avatar: string;
+  role?: "ai" | "member";
+  text?: string;
+  card?: {
+    pair: string;
+    direction: string;
+    pnl: string;
+    tag: string;
+  };
+  market?: MarketQuote;
+  align?: "left" | "right";
+};
+
+export type MarketQuote = {
+  pair: string;
+  icon: string;
+  price: string;
+  change24h: string;
+  trend: "up" | "down";
+  spark: number[];
+};
+
+export type ProfileMenuItem = {
+  id: string;
+  label: string;
+  icon: string;
+  hasDot?: boolean;
+};
