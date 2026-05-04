@@ -8,7 +8,7 @@
  * 签名内容 = timestamp + method + requestPath + body
  */
 
-import { createHmac } from 'crypto';
+import CryptoJS from 'crypto-js';
 
 // ─── 类型定义 ──────────────────────────────────────────────────
 
@@ -39,7 +39,8 @@ function sign(
   secretKey: string
 ): string {
   const msg = timestamp + method + path + body;
-  return createHmac('sha256', secretKey).update(msg).digest('base64');
+  const hash = CryptoJS.HmacSHA256(msg, secretKey);
+  return CryptoJS.enc.Base64.stringify(hash);
 }
 
 // ─── 请求封装 ──────────────────────────────────────────────────

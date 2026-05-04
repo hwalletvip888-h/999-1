@@ -1,22 +1,24 @@
 /**
- * Trend Engine 集成服务
- * 
- * 读取 ~/trend_engine/output/ 目录下最新的分析报告
- * 提供给 AI 对话和策略推荐使用
+ * Trend Engine 集成服务（React Native 兼容版）
+ *
+ * 在 RN 环境中无法直接读取文件系统，
+ * 因此通过 HTTP 请求从 walletBackend 获取趋势数据，
+ * 或者返回默认占位文本。
+ *
+ * 在 Node.js 环境（tsx 运行）中可以直接读取文件。
  */
-import * as fs from 'fs';
-import * as path from 'path';
 
-const TREND_OUTPUT_DIR = path.join(process.env.HOME || '/root', 'trend_engine/output');
+// 检测是否在 Node.js 环境
+const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
 
 export interface TrendReport {
   timestamp: string;
   symbol: string;
   currentPrice: number;
-  overallScore: number;        // -100 ~ +100
+  overallScore: number;
   direction: 'bullish' | 'bearish' | 'neutral';
   directionCn: string;
-  confidence: string;          // 'high' | 'medium' | 'low'
+  confidence: string;
   priceRange: {
     support: number;
     resistance: number;
@@ -39,57 +41,21 @@ export interface TrendReport {
   recommendation: string;
 }
 
+// 缓存最近一次获取的报告
+let _cachedReport: TrendReport | null = null;
+let _cacheTime = 0;
+const CACHE_TTL = 60_000; // 1 分钟缓存
+
 /**
- * 获取最新的趋势分析报告
+ * 获取最新的趋势分析报告（RN 兼容）
  */
 export function getLatestTrendReport(): TrendReport | null {
-  try {
-    if (!fs.existsSync(TREND_OUTPUT_DIR)) return null;
-
-    const files = fs.readdirSync(TREND_OUTPUT_DIR)
-      .filter(f => f.startsWith('report_') && f.endsWith('.json'))
-      .sort()
-      .reverse();
-
-    if (files.length === 0) return null;
-
-    const latestFile = path.join(TREND_OUTPUT_DIR, files[0]);
-    const content = fs.readFileSync(latestFile, 'utf-8');
-    const raw = JSON.parse(content);
-
-    // trend_engine 输出格式: { "BTC": { ... } }
-    const btcData = raw.BTC || raw.btc || Object.values(raw)[0];
-    if (!btcData) return null;
-
-    return parseTrendOutput(btcData);
-  } catch (err) {
-    console.warn('[TrendEngine] 读取报告失败:', err);
-    return null;
+  if (isNode) {
+    return getLatestTrendReportNode();
   }
-}
-
-/**
- * 获取最近 N 份报告（用于趋势对比）
- */
-export function getRecentReports(count = 5): TrendReport[] {
-  try {
-    if (!fs.existsSync(TREND_OUTPUT_DIR)) return [];
-
-    const files = fs.readdirSync(TREND_OUTPUT_DIR)
-      .filter(f => f.startsWith('report_') && f.endsWith('.json'))
-      .sort()
-      .reverse()
-      .slice(0, count);
-
-    return files.map(f => {
-      const content = fs.readFileSync(path.join(TREND_OUTPUT_DIR, f), 'utf-8');
-      const raw = JSON.parse(content);
-      const btcData = raw.BTC || raw.btc || Object.values(raw)[0];
-      return btcData ? parseTrendOutput(btcData) : null;
-    }).filter(Boolean) as TrendReport[];
-  } catch {
-    return [];
-  }
+  // RN 环境返回缓存（异步获取在后台）
+  refreshCacheAsync();
+  return _cachedReport;
 }
 
 /**
@@ -97,7 +63,7 @@ export function getRecentReports(count = 5): TrendReport[] {
  */
 export function getTrendSummary(): string {
   const report = getLatestTrendReport();
-  if (!report) return '暂无趋势分析数据。trend_engine 可能未运行。';
+  if (!report) return '暂无趋势分析数据。请稍后再试。';
 
   const dirIcon = report.overallScore > 20 ? '📈' : report.overallScore < -20 ? '📉' : '➡️';
   const confText = report.confidence === 'high' ? '高' : report.confidence === 'medium' ? '中' : '低';
@@ -112,17 +78,6 @@ export function getTrendSummary(): string {
   summary += `  支撑：$${report.priceRange.support.toLocaleString()}\n`;
   summary += `  阻力：$${report.priceRange.resistance.toLocaleString()}\n`;
   summary += `  24h 预测：$${report.priceRange.prediction24h.lower.toFixed(0)} ~ $${report.priceRange.prediction24h.upper.toFixed(0)}\n`;
-  summary += `\n📈 动量变化：\n`;
-  summary += `  4h: ${report.momentum.changes['4h'] > 0 ? '+' : ''}${report.momentum.changes['4h'].toFixed(2)}%`;
-  summary += `  24h: ${report.momentum.changes['24h'] > 0 ? '+' : ''}${report.momentum.changes['24h'].toFixed(2)}%`;
-  summary += `  7d: ${report.momentum.changes['7d'] > 0 ? '+' : ''}${report.momentum.changes['7d'].toFixed(2)}%\n`;
-  summary += `\n🧠 维度评分：\n`;
-  summary += `  技术面: ${report.breakdown.technical > 0 ? '+' : ''}${report.breakdown.technical.toFixed(1)}\n`;
-  summary += `  微观结构: ${report.breakdown.microstructure > 0 ? '+' : ''}${report.breakdown.microstructure.toFixed(1)}\n`;
-  summary += `  聪明钱: ${report.breakdown.smartmoney > 0 ? '+' : ''}${report.breakdown.smartmoney.toFixed(1)}\n`;
-  summary += `  动量: ${report.breakdown.momentum > 0 ? '+' : ''}${report.breakdown.momentum.toFixed(1)}\n`;
-
-  // 生成策略建议
   summary += `\n💡 策略建议：`;
   if (report.overallScore > 30) {
     summary += `趋势偏多，建议 DCA 分批做多或追踪止盈`;
@@ -133,6 +88,88 @@ export function getTrendSummary(): string {
   }
 
   return summary;
+}
+
+/**
+ * 获取最近 N 份报告
+ */
+export function getRecentReports(count = 5): TrendReport[] {
+  if (isNode) {
+    return getRecentReportsNode(count);
+  }
+  // RN 环境只返回缓存的单条
+  return _cachedReport ? [_cachedReport] : [];
+}
+
+// ─── RN 环境：异步刷新缓存 ─────────────────────────────────────
+async function refreshCacheAsync() {
+  if (Date.now() - _cacheTime < CACHE_TTL) return;
+  try {
+    const resp = await fetch('http://localhost:3100/api/trend');
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.report) {
+        _cachedReport = data.report;
+        _cacheTime = Date.now();
+      }
+    }
+  } catch {
+    // 静默失败，使用缓存
+  }
+}
+
+// ─── Node.js 环境：直接读取文件 ────────────────────────────────
+function getLatestTrendReportNode(): TrendReport | null {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const TREND_OUTPUT_DIR = path.join(process.env.HOME || '/root', 'trend_engine/output');
+
+    if (!fs.existsSync(TREND_OUTPUT_DIR)) return null;
+
+    const files = fs.readdirSync(TREND_OUTPUT_DIR)
+      .filter((f: string) => f.startsWith('report_') && f.endsWith('.json'))
+      .sort()
+      .reverse();
+
+    if (files.length === 0) return null;
+
+    const latestFile = path.join(TREND_OUTPUT_DIR, files[0]);
+    const content = fs.readFileSync(latestFile, 'utf-8');
+    const raw = JSON.parse(content);
+
+    const btcData = raw.BTC || raw.btc || Object.values(raw)[0];
+    if (!btcData) return null;
+
+    return parseTrendOutput(btcData);
+  } catch {
+    return null;
+  }
+}
+
+function getRecentReportsNode(count: number): TrendReport[] {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const TREND_OUTPUT_DIR = path.join(process.env.HOME || '/root', 'trend_engine/output');
+
+    if (!fs.existsSync(TREND_OUTPUT_DIR)) return [];
+
+    const files = fs.readdirSync(TREND_OUTPUT_DIR)
+      .filter((f: string) => f.startsWith('report_') && f.endsWith('.json'))
+      .sort()
+      .reverse()
+      .slice(0, count);
+
+    return files.map((f: string) => {
+      const content = fs.readFileSync(path.join(TREND_OUTPUT_DIR, f), 'utf-8');
+      const raw = JSON.parse(content);
+      const btcData = raw.BTC || raw.btc || Object.values(raw)[0];
+      return btcData ? parseTrendOutput(btcData) : null;
+    }).filter(Boolean) as TrendReport[];
+  } catch {
+    return [];
+  }
 }
 
 // ─── 内部解析 ─────────────────────────────────────────────────

@@ -36,7 +36,7 @@ export type Session = {
   isNew: boolean;
 };
 
-const WALLET_API_BASE: string | null = 'http://localhost:3100'; // 真实后端
+const WALLET_API_BASE: string | null = 'http://34.21.193.21:3100'; // 真实后端
 const USE_MOCK = !WALLET_API_BASE;
 
 const STORAGE_KEY = "h_wallet.session.v1";
