@@ -1,7 +1,7 @@
 import "./global.css";
 
 import { useEffect, useState } from "react";
-import { Dimensions, Platform, Text, TextInput, View } from "react-native";
+import { Dimensions, Text, TextInput, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -26,18 +26,25 @@ import { pingOkxAuth } from "./src/services/okxApi";
 import { sessionStore, useSession } from "./src/services/sessionStore";
 import { toastBus } from "./src/services/toastBus";
 import type { AppView } from "./src/types";
+import { useFonts } from "expo-font";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold
+} from "@expo-google-fonts/inter";
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+  JetBrainsMono_700Bold
+} from "@expo-google-fonts/jetbrains-mono";
 
-// Global typography baseline – unifies the look across every screen.
-const baseFont = Platform.select({
-  ios: "System",
-  android: "sans-serif",
-  default: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
-});
-
+// Global typography baseline
 const baseTextStyle = {
-  fontFamily: baseFont,
+  fontFamily: "Inter_400Regular",
   color: "#0F0F0F",
-  letterSpacing: 0
+  letterSpacing: -0.2
 };
 
 // @ts-expect-error – RN allows defaultProps on Text/TextInput
@@ -57,6 +64,16 @@ TextInput.defaultProps.allowFontScaling = false;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    JetBrainsMono_700Bold,
+  });
   const [activeView, setActiveView] = useState<AppView>("chat");
   const [hydrated, setHydrated] = useState(false);
   const session = useSession();
@@ -118,16 +135,18 @@ export default function App() {
   }));
 
   // 未还原完成 / 未登录 → 显示鉴权门户（保持渐变背景）
-  if (!hydrated || !session) {
+  if (!hydrated || !fontsLoaded || !session) {
     return (
       <SafeAreaProvider>
         <GradientBackground>
           <StatusBar style="dark" />
           <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            {hydrated ? (
+            {hydrated && fontsLoaded ? (
               <AuthScreen onAuthSuccess={(s) => sessionStore.set(s)} />
             ) : (
-              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontSize: 28, color: "#7B5BC7" }}>🐬</Text>
+              </View>
             )}
           </SafeAreaView>
           <AppToast />

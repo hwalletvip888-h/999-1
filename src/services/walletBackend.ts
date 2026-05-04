@@ -176,26 +176,32 @@ async function handleVerifyOtp(email: string, code: string): Promise<{
       const accountId = verifyData.accountId || '';
       const accessToken = verifyData.accessToken || '';
 
-      console.log(`[WalletBackend] ✅ OTP 验证成功! accountId: ${accountId}`);
-
       otpSessions.delete(email);
 
-      const token = Buffer.from(JSON.stringify({
-        email,
-        accountId,
-        accessToken,
-        teeId: verifyData.teeId || '',
-        projectId: verifyData.projectId || '',
-        createdAt: Date.now(),
-      })).toString('base64');
-
-      return {
-        ok: true,
-        token,
-        accountId,
-        isNew: true,
-        addresses: null,
+      // 解析 OKX 返回的 addressesList
+      const rawAddresses = verifyData.addressList || [];
+      const evmAddresses: any[] = [];
+      const solanaAddresses: any[] = [];
+      const xlayerAddresses: any[] = [];
+      for (const addr of rawAddresses) {
+        const item = { chainIndex: String(addr.chainIndex), chainName: addr.chainName, address: addr.address };
+        if (addr.chainIndex === 501) { solanaAddresses.push(item); }
+        else if (addr.chainIndex === 196) { xlayerAddresses.push(item); evmAddresses.push(item); }
+        else { evmAddresses.push(item); }
+      }
+      const addresses = {
+        evm: evmAddresses.length > 0 ? evmAddresses : [{ chainIndex: "1", chainName: "Ethereum", address: "N/A" }],
+        solana: solanaAddresses.length > 0 ? solanaAddresses : [{ chainIndex: "501", chainName: "Solana", address: "N/A" }],
+        xlayer: xlayerAddresses.length > 0 ? xlayerAddresses : [{ chainIndex: "196", chainName: "X Layer", address: "N/A" }],
       };
+
+      const token = Buffer.from(JSON.stringify({
+        email, accountId, accessToken,
+        teeId: verifyData.teeId || "", projectId: verifyData.projectId || "",
+        createdAt: Date.now(),
+      })).toString("base64");
+
+      return { ok: true, token, accountId, isNew: verifyData.isNew !== false, addresses };
     } else {
       const errMsg = result.msg || result.error || '验证码错误';
       console.error(`[WalletBackend] ❌ OTP 验证失败:`, result);

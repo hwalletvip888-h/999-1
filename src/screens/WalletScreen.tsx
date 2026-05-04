@@ -220,7 +220,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                     </View>
 
                     <View className="items-end">
-                      <Text className="text-[15px] font-semibold text-ink">{asset.valueUsd}</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "600", color: "#0F0F0F", fontFamily: "JetBrainsMono_500Medium" }}>{asset.valueUsd}</Text>
                       <Text className={`text-[12px] font-medium ${positive ? "text-emerald-600" : "text-red-500"}`}>
                         {asset.change24h}
                       </Text>
@@ -873,6 +873,7 @@ function HeroCard({
               style={[
                 {
                   fontSize: 40,
+                  fontFamily: "JetBrainsMono_700Bold",
                   lineHeight: 44,
                   fontWeight: "800",
                   color: "#FFFFFF",

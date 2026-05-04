@@ -1,6 +1,5 @@
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Button } from "./ui/Button";
 import { LightbulbIcon, MicIcon, PaperclipIcon, SendIcon } from "./ui/Icons";
 
 type ChatInputProps = {
@@ -19,7 +18,17 @@ export function ChatInput({ value, placeholder, onChangeText, onSubmit }: ChatIn
       className="border-t border-line bg-bg px-3 pt-2"
       style={{ paddingBottom: Math.max(insets.bottom, 10) }}
     >
-      <View className="rounded-3xl bg-surface px-3 pt-3 pb-2.5">
+      <View
+        style={{
+          borderRadius: 24,
+          backgroundColor: "#F7F7F8",
+          paddingHorizontal: 14,
+          paddingTop: 12,
+          paddingBottom: 10,
+          borderWidth: 1,
+          borderColor: hasText ? "#E0D4F5" : "#ECECF1",
+        }}
+      >
         <TextInput
           value={value}
           placeholder={placeholder}
@@ -28,50 +37,67 @@ export function ChatInput({ value, placeholder, onChangeText, onSubmit }: ChatIn
           onSubmitEditing={onSubmit}
           returnKeyType="send"
           multiline
-          className="min-h-7 max-h-32 px-1 text-[19px] text-ink"
+          style={{
+            minHeight: 28,
+            maxHeight: 128,
+            paddingHorizontal: 4,
+            fontSize: 17,
+            fontFamily: "Inter_400Regular",
+            color: "#0F0F0F",
+            letterSpacing: -0.2,
+          }}
         />
-
-        <View className="mt-2 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-1">
+        <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="附件"
-              className="h-8 w-8 items-center justify-center rounded-full active:bg-bg"
+              hitSlop={8}
+              style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 }}
             >
               <PaperclipIcon size={18} />
             </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="模式"
-              className="flex-row items-center gap-1 rounded-full px-2.5 py-1.5 active:bg-bg"
+              hitSlop={6}
+              style={{ flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 }}
             >
               <LightbulbIcon size={16} />
-              <Text className="text-[16px] text-ink2">Expert</Text>
+              <Text style={{ fontSize: 14, color: "#6B7280", fontFamily: "Inter_500Medium" }}>Expert</Text>
             </Pressable>
           </View>
-
-          <View className="flex-row items-center gap-1">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="语音"
-              className="h-8 w-8 items-center justify-center rounded-full active:bg-bg"
+              hitSlop={8}
+              style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 }}
             >
               <MicIcon size={18} />
             </Pressable>
-            <Button
-              label={hasText ? "发送" : "开始说话"}
-              size="sm"
-              variant="primary"
-              breathing
-              onPress={hasText ? onSubmit : undefined}
-              leading={
-                hasText ? (
-                  <SendIcon size={14} color="#FFFFFF" />
-                ) : (
-                  <MicIcon size={14} color="#FFFFFF" />
-                )
-              }
-            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="发送"
+              onPress={onSubmit}
+              disabled={!hasText}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{
+                height: 36,
+                width: 36,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 18,
+                backgroundColor: hasText ? "#7C3AED" : "#E5E5EA",
+                shadowColor: hasText ? "#7C3AED" : "transparent",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: hasText ? 0.3 : 0,
+                shadowRadius: 8,
+                elevation: hasText ? 4 : 0,
+              }}
+            >
+              <SendIcon size={18} color={hasText ? "#FFFFFF" : "#9CA3AF"} />
+            </Pressable>
           </View>
         </View>
       </View>

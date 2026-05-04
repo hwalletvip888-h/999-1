@@ -346,13 +346,13 @@ export function ChatScreen() {
             </Pressable>
             <Text
               className="mt-4 text-ink"
-              style={{ fontSize: 22, fontWeight: "800", letterSpacing: -0.3 }}
+              style={{ fontSize: 24, fontWeight: "800", letterSpacing: -0.5, fontFamily: "Inter_800ExtraBold" }}
             >
               你好，我是 H
             </Text>
             <Text
               className="mt-1 text-muted"
-              style={{ fontSize: 13, fontWeight: "500" }}
+              style={{ fontSize: 14, fontWeight: "500", fontFamily: "Inter_500Medium", letterSpacing: -0.2 }}
             >
               说一句话，我帮你下单 · 兑换 · 跑 Agent
             </Text>

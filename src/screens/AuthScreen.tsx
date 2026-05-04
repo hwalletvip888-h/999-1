@@ -124,7 +124,7 @@ export function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           {/* Hero */}
           <View className="items-center pt-6">
             <DolphinLogo size={120} mood="idle" />
-            <Text className="mt-4 text-[26px] font-extrabold text-ink">H Wallet</Text>
+            <Text style={{ marginTop: 16, fontSize: 28, fontWeight: "800", fontFamily: "Inter_800ExtraBold", color: "#0F0F0F", letterSpacing: -0.5 }}>H Wallet</Text>
             <Text className="mt-1 text-[13px] text-muted">你的 AI 链上助手</Text>
           </View>
 
@@ -307,7 +307,7 @@ function OtpStep({
                     justifyContent: "center"
                   }}
                 >
-                  <Text className="text-[22px] font-bold text-ink">{ch}</Text>
+                  <Text style={{ fontSize: 22, fontWeight: "700", fontFamily: "JetBrainsMono_700Bold", color: "#0F0F0F" }}>{ch}</Text>
                 </View>
               );
             })}
