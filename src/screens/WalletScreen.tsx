@@ -29,7 +29,7 @@ import {
 import { TokenIcon } from "../components/ui/TokenIcons";
 import { CardLibraryScreen } from "./CardLibraryScreen";
 import { useCardLibrary } from "../services/cardLibrary";
-import { walletAssets } from "../data/mockData";
+import { api } from "../api/gateway";
 import type { AppView } from "../types";
 import { isPositive } from "../utils/format";
 
@@ -92,9 +92,7 @@ const services: {
 ];
 
 // 模拟资产组合走势(用于 hero spark line)
-const portfolioSpark = [
-  18, 22, 19, 25, 28, 24, 30, 35, 33, 40, 38, 45, 50, 48, 55, 60, 58, 65, 70, 75
-];
+
 
 // 单个币种的迷你走势
 const assetSparks: Record<string, number[]> = {
@@ -103,9 +101,72 @@ const assetSparks: Record<string, number[]> = {
   BTC: [30, 32, 31, 33, 35, 34, 36, 38, 37, 39, 41, 42]
 };
 
+const defaultSpark = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
 export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const [hideBalance, setHideBalance] = useState(false);
   const [tab, setTab] = useState<"assets" | "nft" | "activity">("assets");
+  const [totalBalance, setTotalBalance] = useState("0.00");
+  const [pnlPercent, setPnlPercent] = useState("+0.0%");
+  const [monthPnl, setMonthPnl] = useState("+$0.00");
+  const [realAssets, setRealAssets] = useState<Array<{id:string;symbol:string;name:string;icon:string;chain:string;balance:string;valueUsd:string;change24h:string}>>([]);
+  const [assetSparks, setAssetSparks] = useState<Record<string, number[]>>({});
+  const [portfolioSpark, setPortfolioSpark] = useState(defaultSpark);
+  const [loading, setLoading] = useState(true);
+
+  // 加载真实数据
+  useEffect(() => {
+    (async () => {
+      try {
+        // api is imported from gateway
+        // 1. 获取账户总览
+        const overview = await api.account.getOverview();
+        setTotalBalance(overview.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+        // 2. 构建资产列表
+        const assets = overview.balances
+          .filter((b: any) => b.usdtValue > 0.01)
+          .map((b: any, i: number) => ({
+            id: `asset_${b.currency.toLowerCase()}`,
+            symbol: b.currency,
+            name: b.currency,
+            icon: b.currency === "BTC" ? "₿" : b.currency === "ETH" ? "◆" : b.currency === "USDT" ? "₮" : b.currency.slice(0, 1),
+            chain: "Multi-chain",
+            balance: `${b.total.toFixed(4)} ${b.currency}`,
+            valueUsd: `$${b.usdtValue.toFixed(2)}`,
+            change24h: "+0.0%",
+          }));
+        setRealAssets(assets);
+
+        // 3. 获取主要币种的 24h 涨跌和走势
+        const symbols = ["BTC", "ETH", "SOL"];
+        const sparksMap: Record<string, number[]> = {};
+        for (const sym of symbols) {
+          try {
+            const ticker = await api.market.getTicker(`${sym}-USDT`);
+            const candles = await api.market.getCandles(`${sym}-USDT`, "1H", 24);
+            sparksMap[sym] = candles.map((c: any) => c.close ?? 0);
+            // 更新资产的 24h 涨跌
+            setRealAssets(prev => prev.map(a =>
+              a.symbol === sym
+                ? { ...a, change24h: `${ticker.changePercent24h >= 0 ? "+" : ""}${ticker.changePercent24h.toFixed(2)}%` }
+                : a
+            ));
+          } catch { sparksMap[sym] = defaultSpark; }
+        }
+        sparksMap["USDT"] = defaultSpark.map(() => 1); // USDT 稳定
+        setAssetSparks(sparksMap);
+
+        // 4. 获取 BTC 走势作为组合走势
+        if (sparksMap["BTC"]?.length > 2) {
+          setPortfolioSpark(sparksMap["BTC"]);
+        }
+        setLoading(false);
+      } catch (err) {
+        console.warn("[WalletScreen] 加载真实数据失败:", err);
+        setLoading(false);
+      }
+    })();
+  }, []);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryMounted, setLibraryMounted] = useState(false);
   const library = useCardLibrary();
@@ -156,7 +217,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 }}>
         {/* Hero 卡 */}
         <View className="px-4 pt-3">
-          <HeroCard hideBalance={hideBalance} onToggleHide={() => setHideBalance((v) => !v)} />
+          <HeroCard hideBalance={hideBalance} onToggleHide={() => setHideBalance((v) => !v)} totalBalance={totalBalance} pnlPercent={pnlPercent} monthPnl={monthPnl} portfolioSpark={portfolioSpark} />
         </View>
 
         {/* 快捷操作 */}
@@ -191,7 +252,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         {tab === "assets" && (
           <View className="mt-3 px-4">
             <Surface padded={false} elevation={1}>
-              {walletAssets.map((asset, idx) => {
+              {realAssets.map((asset, idx) => {
                 const positive = isPositive(asset.change24h);
                 const spark = assetSparks[asset.symbol] ?? assetSparks.USDT;
                 return (
@@ -199,7 +260,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                     key={asset.id}
                     accessibilityRole="button"
                     className={`flex-row items-center px-4 py-3.5 active:bg-surface ${
-                      idx < walletAssets.length - 1 ? "border-b border-line" : ""
+                      idx < realAssets.length - 1 ? "border-b border-line" : ""
                     }`}
                   >
                     <TokenIcon symbol={asset.symbol} size={40} />
@@ -732,10 +793,18 @@ function AgentBanner() {
  */
 function HeroCard({
   hideBalance,
-  onToggleHide
+  onToggleHide,
+  totalBalance,
+  pnlPercent,
+  monthPnl,
+  portfolioSpark
 }: {
   hideBalance: boolean;
   onToggleHide: () => void;
+  totalBalance: string;
+  pnlPercent: string;
+  monthPnl: string;
+  portfolioSpark: number[];
 }) {
   const driftA = useSharedValue(0); // 金色光晕 0→1
   const driftB = useSharedValue(0); // 紫色光晕 0→1
@@ -861,7 +930,7 @@ function HeroCard({
           </View>
           <View className="flex-row items-center gap-1">
             <Text className="text-[11px] text-white/60">本月收益</Text>
-            <Text className="text-[12px] font-bold text-emerald-300">+$952.30</Text>
+            <Text className="text-[12px] font-bold text-emerald-300">{monthPnl}</Text>
           </View>
         </View>
 
@@ -883,7 +952,7 @@ function HeroCard({
                 numStyle
               ]}
             >
-              {hideBalance ? "$ ••••••" : "$12,580.45"}
+              {hideBalance ? "$ ••••••" : `$${totalBalance}`}
             </Animated.Text>
             <Pressable
               onPress={onToggleHide}
@@ -908,7 +977,7 @@ function HeroCard({
                 greenStyle
               ]}
             >
-              <Text className="text-[12px] font-bold text-emerald-300">+8.2%</Text>
+              <Text className="text-[12px] font-bold text-emerald-300">{pnlPercent}</Text>
             </Animated.View>
             <Text className="text-[12px] text-white/70">最近 30 天</Text>
           </View>

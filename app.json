@@ -12,6 +12,9 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "android": {
+      "softwareKeyboardLayoutMode": "resize"
+    },
     "plugins": [
       "expo-font"
     ]

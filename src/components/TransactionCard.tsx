@@ -826,24 +826,358 @@ function GenericCard({ card, onConfirm, onCancel }: TransactionCardProps) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// PriceCard — 行情价格卡片（精美数据卡片 + 交易按钮）
+// ─────────────────────────────────────────────────────────────
+function PriceCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const pd = card.priceData;
+  if (!pd) return <GenericCard card={card} onConfirm={onConfirm} onCancel={onCancel} />;
+
+  const isUp = pd.changePercent24h >= 0;
+  const accentColor = isUp ? '#10B981' : '#EF4444';
+  const accentBg = isUp ? '#ECFDF5' : '#FEF2F2';
+  const symbol = card.symbol || 'BTC';
+  const TokenIcon = symbol === 'BTC' ? TokenBTC : symbol === 'ETH' ? TokenETH : TokenUSDT;
+
+  const formatPrice = (n: number) => {
+    if (n >= 1000) return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (n >= 1) return `$${n.toFixed(4)}`;
+    return `$${n.toFixed(6)}`;
+  };
+  const formatVol = (n: number) => {
+    if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+    if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+    return n.toFixed(0);
+  };
+
+  return (
+    <View className="my-2 px-4">
+      <Surface className="overflow-hidden rounded-2xl">
+        {/* Header */}
+        <LinearGradient
+          colors={isUp ? ['#ECFDF5', '#F0FDF4'] : ['#FEF2F2', '#FFF5F5']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center" style={{ gap: 10 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 }}>
+                <TokenIcon size={28} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 18, fontFamily: 'Inter_700Bold', color: '#0F0F0F' }}>
+                  {symbol}/USDT
+                </Text>
+                <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: '#6B7280', marginTop: 1 }}>
+                  实时行情
+                </Text>
+              </View>
+            </View>
+            <View style={{ backgroundColor: accentBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+              <Text style={{ fontSize: 13, fontFamily: 'JetBrainsMono_600SemiBold', color: accentColor }}>
+                {isUp ? '+' : ''}{pd.changePercent24h.toFixed(2)}%
+              </Text>
+            </View>
+          </View>
+
+          {/* Big Price */}
+          <Text style={{ fontSize: 36, fontFamily: 'JetBrainsMono_700Bold', color: '#0F0F0F', marginTop: 12 }}>
+            {formatPrice(pd.price)}
+          </Text>
+          <Text style={{ fontSize: 13, fontFamily: 'JetBrainsMono_400Regular', color: accentColor, marginTop: 2 }}>
+            {isUp ? '↑' : '↓'} {formatPrice(Math.abs(pd.change24h))} (24h)
+          </Text>
+        </LinearGradient>
+
+        {/* Spark Chart */}
+        {pd.sparkData && pd.sparkData.length > 2 && (
+          <View style={{ height: 60, marginHorizontal: 16, marginTop: 4 }}>
+            <SparkChartInline values={pd.sparkData} stroke={accentColor} fill={accentColor} height={60} />
+          </View>
+        )}
+
+        {/* Stats Grid */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+          {[
+            { label: '24h 最高', value: formatPrice(pd.high24h) },
+            { label: '24h 最低', value: formatPrice(pd.low24h) },
+            { label: '24h 成交量', value: formatVol(pd.vol24h) },
+            ...(pd.fundingRate != null ? [{ label: '资金费率', value: `${(pd.fundingRate * 100).toFixed(4)}%` }] : []),
+          ].map((item, i) => (
+            <View key={i} style={{ width: '50%', paddingVertical: 6 }}>
+              <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: '#9CA3AF' }}>
+                {item.label}
+              </Text>
+              <Text style={{ fontSize: 14, fontFamily: 'JetBrainsMono_600SemiBold', color: '#374151', marginTop: 2 }}>
+                {item.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Action Buttons */}
+        <View className="flex-row gap-2 border-t border-line px-4 py-3">
+          <Button
+            label="做空"
+            variant="secondary"
+            size="sm"
+            onPress={() => onCancel?.(card.id)}
+            className="flex-1"
+          />
+          <Button
+            label="做多"
+            variant="primary"
+            size="sm"
+            onPress={() => onConfirm?.(card.id)}
+            className="flex-1"
+          />
+        </View>
+      </Surface>
+    </View>
+  );
+}
+
+// Inline SparkChart for PriceCard (same as WalletScreen's SparkChart)
+function SparkChartInline({ values, stroke, fill, height }: { values: number[]; stroke: string; fill: string; height: number }) {
+  const W = 100;
+  const H = 100;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const stepX = W / (values.length - 1);
+  const points = values.map((v, i) => {
+    const x = i * stepX;
+    const y = H - ((v - min) / range) * (H - 6) - 3;
+    return [x, y] as const;
+  });
+  const linePath = points
+    .map((p, i) => {
+      if (i === 0) return `M ${p[0]} ${p[1]}`;
+      const prev = points[i - 1];
+      const cx = (prev[0] + p[0]) / 2;
+      return `Q ${cx} ${prev[1]} ${cx} ${(prev[1] + p[1]) / 2} T ${p[0]} ${p[1]}`;
+    })
+    .join(' ');
+  const areaPath = `${linePath} L ${W} ${H} L 0 ${H} Z`;
+  const gradId = `price-${stroke.replace('#', '')}-${values.length}`;
+  return (
+    <Svg width="100%" height={height} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <Defs>
+        <SvgLinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={fill} stopOpacity={0.25} />
+          <Stop offset="1" stopColor={fill} stopOpacity={0} />
+        </SvgLinearGradient>
+      </Defs>
+      <Path d={areaPath} fill={`url(#${gradId})`} />
+      <Path d={linePath} stroke={stroke} strokeWidth={2} fill="none" strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// PositionCard — 持仓卡片
+// ─────────────────────────────────────────────────────────────
+function PositionCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const positions = card.positions;
+  if (!positions || positions.length === 0) {
+    return (
+      <View className="my-2 px-4">
+        <Surface className="overflow-hidden rounded-2xl p-4">
+          <Text style={{ fontSize: 16, fontFamily: 'Inter_600SemiBold', color: '#0F0F0F', textAlign: 'center' }}>
+            📭 当前没有持仓
+          </Text>
+          <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#9CA3AF', textAlign: 'center', marginTop: 4 }}>
+            你可以说"100U 做多 BTC"来开仓
+          </Text>
+        </Surface>
+      </View>
+    );
+  }
+
+  return (
+    <View className="my-2 px-4">
+      <Surface className="overflow-hidden rounded-2xl">
+        <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+          <Text style={{ fontSize: 16, fontFamily: 'Inter_700Bold', color: '#0F0F0F' }}>
+            📊 当前持仓 ({positions.length})
+          </Text>
+        </View>
+        {positions.map((pos, idx) => {
+          const isLong = pos.side === 'long';
+          const isPnlPositive = pos.unrealizedPnl >= 0;
+          const pnlColor = isPnlPositive ? '#10B981' : '#EF4444';
+          const symbol = pos.instId.replace('-USDT-SWAP', '').replace('-USDT', '');
+          return (
+            <View
+              key={idx}
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderTopWidth: idx > 0 ? 1 : 0,
+                borderTopColor: '#F3F4F6',
+              }}
+            >
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center" style={{ gap: 8 }}>
+                  <Text style={{ fontSize: 15, fontFamily: 'Inter_600SemiBold', color: '#0F0F0F' }}>
+                    {symbol}/USDT
+                  </Text>
+                  <View style={{
+                    backgroundColor: isLong ? '#ECFDF5' : '#FEF2F2',
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 6,
+                  }}>
+                    <Text style={{
+                      fontSize: 11,
+                      fontFamily: 'Inter_600SemiBold',
+                      color: isLong ? '#10B981' : '#EF4444',
+                    }}>
+                      {isLong ? '做多' : '做空'} {pos.leverage}x
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 15, fontFamily: 'JetBrainsMono_600SemiBold', color: pnlColor }}>
+                  {isPnlPositive ? '+' : ''}{pos.unrealizedPnl.toFixed(2)} USDT
+                </Text>
+              </View>
+              <View className="flex-row justify-between" style={{ marginTop: 6 }}>
+                <View>
+                  <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: '#9CA3AF' }}>开仓价</Text>
+                  <Text style={{ fontSize: 13, fontFamily: 'JetBrainsMono_400Regular', color: '#374151' }}>
+                    ${pos.avgPrice.toLocaleString()}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: '#9CA3AF' }}>标记价</Text>
+                  <Text style={{ fontSize: 13, fontFamily: 'JetBrainsMono_400Regular', color: '#374151' }}>
+                    ${pos.markPrice.toLocaleString()}
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: '#9CA3AF' }}>盈亏率</Text>
+                  <Text style={{ fontSize: 13, fontFamily: 'JetBrainsMono_600SemiBold', color: pnlColor }}>
+                    {isPnlPositive ? '+' : ''}{pos.unrealizedPnlPercent.toFixed(2)}%
+                  </Text>
+                </View>
+                <View>
+                  <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: '#9CA3AF' }}>强平价</Text>
+                  <Text style={{ fontSize: 13, fontFamily: 'JetBrainsMono_400Regular', color: '#EF4444' }}>
+                    ${pos.liquidationPrice.toLocaleString()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </Surface>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// PortfolioCard — 资产总览卡片
+// ─────────────────────────────────────────────────────────────
+function PortfolioCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const balances = card.balances;
+  const totalEquity = card.totalEquity ?? 0;
+
+  return (
+    <View className="my-2 px-4">
+      <Surface className="overflow-hidden rounded-2xl">
+        <LinearGradient
+          colors={['#F5F3FF', '#EDE9FE']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 }}
+        >
+          <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#6B7280' }}>
+            总资产 (USDT)
+          </Text>
+          <Text style={{ fontSize: 32, fontFamily: 'JetBrainsMono_700Bold', color: '#0F0F0F', marginTop: 4 }}>
+            ${totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </Text>
+        </LinearGradient>
+
+        {balances && balances.length > 0 && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
+            <Text style={{ fontSize: 13, fontFamily: 'Inter_600SemiBold', color: '#6B7280', marginBottom: 8 }}>
+              资产明细
+            </Text>
+            {balances.filter(b => b.usdtValue > 0.01).map((b, idx) => (
+              <View
+                key={idx}
+                className="flex-row items-center justify-between"
+                style={{ paddingVertical: 6, borderTopWidth: idx > 0 ? 1 : 0, borderTopColor: '#F3F4F6' }}
+              >
+                <View className="flex-row items-center" style={{ gap: 8 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>
+                      {b.currency.slice(0, 2)}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#0F0F0F' }}>
+                      {b.currency}
+                    </Text>
+                    <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: '#9CA3AF' }}>
+                      可用 {b.available.toFixed(4)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ fontSize: 14, fontFamily: 'JetBrainsMono_600SemiBold', color: '#0F0F0F' }}>
+                    {b.total.toFixed(4)}
+                  </Text>
+                  <Text style={{ fontSize: 11, fontFamily: 'JetBrainsMono_400Regular', color: '#9CA3AF' }}>
+                    ≈ ${b.usdtValue.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </Surface>
+    </View>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────
 // Public dispatcher
 // ─────────────────────────────────────────────────────────────
 
 export function TransactionCard(props: TransactionCardProps) {
   // 业务分发：优先按 cardType/module 判断
   const { card } = props;
+  // PriceCard 行情价格卡片
+  if (card.priceData && card.module === "market") {
+    return <PriceCard {...props} />;
+  }
+  // PositionCard 持仓卡片
+  if (card.positions !== undefined && card.module === "account" && card.title === "当前持仓") {
+    return <PositionCard {...props} />;
+  }
+  // PortfolioCard 资产总览卡片
+  if (card.balances !== undefined && card.module === "account") {
+    return <PortfolioCard {...props} />;
+  }
+  // PerpetualCard 永续合约
   if (card.cardType === "trade" && card.module === "perpetual") {
     return <PerpetualExchangeCard {...props} />;
   }
+  // SwapCard 兑换
   if (card.cardType === "trade" && card.module === "swap") {
     return <SwapCard {...props} />;
   }
+  // AgentCard 策略（赚币/网格）
   if (card.cardType === "strategy" && card.module === "earn") {
     return <AgentCard {...props} />;
   }
   if (card.cardType === "strategy" && card.module === "grid") {
     return <AgentCard {...props} />;
   }
-  // stake 不是标准 ProductModule，移除该分支
+  // GenericCard 通用
   return <GenericCard {...props} />;
 }

@@ -14,9 +14,11 @@ import { Avatar } from "../components/ui/Avatar";
 import { ChatInput } from "../components/ChatInput";
 import { ChevronRightIcon, SparkIcon } from "../components/ui/Icons";
 import { TokenIcon } from "../components/ui/TokenIcons";
-import { communityMessages } from "../data/mockData";
 import { makeId } from "../utils/id";
 import type { CommunityMessage } from "../types";
+
+// 社区消息初始为空，用户可以发送消息
+const communityMessages: CommunityMessage[] = [];
 
 const kols = [
   { id: "k1", name: "AlphaWolf", avatar: "🐺", roi: "+128%", live: true },

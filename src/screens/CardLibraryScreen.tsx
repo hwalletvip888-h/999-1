@@ -17,10 +17,11 @@ import { ArrowLeftIcon, CardStackIcon, SparkIcon } from "../components/ui/Icons"
 import { TransactionCard } from "../components/TransactionCard";
 import { DolphinLogo } from "../components/DolphinLogo";
 import { cardLibrary, useCardLibrary } from "../services/cardLibrary";
+import { inviteStore, useInvitedFriends, type InvitedFriend } from "../services/inviteStore";
 import type { HWalletCard, TradeCardCategory } from "../types";
 import type { SavedCard } from "../services/cardLibrary";
 import { toastBus } from "../services/toastBus";
-// import type { TradeCardCategory } from "../types"; // Removed duplicate import
+import * as Clipboard from "expo-clipboard";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -48,6 +49,8 @@ function fmtDate(ts: number) {
 
 export function CardLibraryScreen({ onClose }: CardLibraryScreenProps) {
   const all = useCardLibrary();
+  const friends = useInvitedFriends();
+  const [mainTab, setMainTab] = useState<"cards" | "friends">("cards");
   const [filter, setFilter] = useState<(typeof filters)[number]["id"]>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -97,21 +100,48 @@ export function CardLibraryScreen({ onClose }: CardLibraryScreenProps) {
     <View className="flex-1 bg-bg">
       {/* Header */}
       <View
-        className="flex-row items-center justify-between px-3 py-3"
+        className="px-3 py-3"
         style={{ borderBottomWidth: 1, borderColor: "#F1F3F5" }}
       >
-        <Pressable
-          onPress={onClose}
-          className="h-9 w-9 items-center justify-center rounded-full"
-          style={{ backgroundColor: "#F3F4F6" }}
-        >
-          <ArrowLeftIcon size={18} color="#0F0F0F" />
-        </Pressable>
-        <Text className="text-[17px] font-bold text-ink">我的卡库</Text>
-        <View style={{ width: 36 }} />
+        <View className="flex-row items-center justify-between">
+          <Pressable
+            onPress={onClose}
+            className="h-9 w-9 items-center justify-center rounded-full"
+            style={{ backgroundColor: "#F3F4F6" }}
+          >
+            <ArrowLeftIcon size={18} color="#0F0F0F" />
+          </Pressable>
+          <Text className="text-[17px] font-bold text-ink">我的卡库</Text>
+          <View style={{ width: 36 }} />
+        </View>
+        {/* 卡片 / 好友 切换 */}
+        <View className="mt-3 flex-row items-center rounded-full bg-surface p-1" style={{ gap: 2 }}>
+          <Pressable
+            onPress={() => setMainTab("cards")}
+            className="flex-1 items-center rounded-full py-2"
+            style={{ backgroundColor: mainTab === "cards" ? "#0F0F0F" : "transparent" }}
+          >
+            <Text className="text-[13px] font-semibold" style={{ color: mainTab === "cards" ? "#FFFFFF" : "#6B7280" }}>
+              卡片 ({all.length})
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMainTab("friends")}
+            className="flex-1 items-center rounded-full py-2"
+            style={{ backgroundColor: mainTab === "friends" ? "#0F0F0F" : "transparent" }}
+          >
+            <Text className="text-[13px] font-semibold" style={{ color: mainTab === "friends" ? "#FFFFFF" : "#6B7280" }}>
+              好友 ({friends.length})
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+        {mainTab === "friends" ? (
+          <FriendsTab friends={friends} />
+        ) : (
+        <>
         {/* 仪式感 Hero */}
         {all.length > 0 && firstAt ? (
           <CeremonyHero
@@ -257,6 +287,8 @@ export function CardLibraryScreen({ onClose }: CardLibraryScreenProps) {
                 })()
               : null}
           </View>
+        )}
+      </>
         )}
       </ScrollView>
 
@@ -1568,3 +1600,257 @@ function ReportRow({ card, rank }: { card: SavedCard; rank: number }) {
   );
 }
 
+
+/* ─────────────────────────────────────────────
+   FriendsTab — 好友列表 + 邀请入口
+   ───────────────────────────────────────────── */
+
+const friendAvatars = ["🐬", "🦊", "🐻", "🦁", "🐼", "🐨", "🐰", "🐸", "🦄", "🐙"];
+
+function FriendsTab({ friends }: { friends: InvitedFriend[] }) {
+  const [inviteCode] = useState(() => inviteStore.generateCode());
+
+  async function copyInviteLink() {
+    const link = inviteStore.generateShareLink();
+    try {
+      await Clipboard.setStringAsync(link);
+      toastBus.push({
+        emoji: "📋",
+        title: "邀请链接已复制",
+        subtitle: "发送给朋友即可邀请",
+        tone: "success",
+      });
+    } catch {
+      toastBus.push({
+        emoji: "⚠️",
+        title: "复制失败",
+        subtitle: "请手动复制邀请码",
+        tone: "warn",
+      });
+    }
+  }
+
+  function addDemoFriend() {
+    const names = ["小明", "小红", "阿强", "小美", "大壮", "小花", "阿杰", "小丽"];
+    const name = names[Math.floor(Math.random() * names.length)];
+    const avatar = friendAvatars[Math.floor(Math.random() * friendAvatars.length)];
+    inviteStore.addFriend({
+      nickname: name,
+      avatar,
+      status: Math.random() > 0.3 ? "joined" : "pending",
+    });
+    toastBus.push({
+      emoji: "🎉",
+      title: `${name} 已通过邀请加入`,
+      tone: "success",
+    });
+  }
+
+  return (
+    <View className="px-4 pt-4">
+      {/* 邀请卡片 */}
+      <View style={{ borderRadius: 20, overflow: "hidden", marginBottom: 16 }}>
+        <LinearGradient
+          colors={["#7C3AED", "#5B21B6", "#4338CA"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ padding: 20 }}
+        >
+          {/* 装饰光晕 */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: -20,
+              right: -20,
+              width: 100,
+              height: 100,
+              borderRadius: 50,
+              backgroundColor: "rgba(253,224,71,0.15)",
+            }}
+          />
+          <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "900" }}>
+            邀请好友，一起赚
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: "500", marginTop: 6 }}>
+            分享你的交易卡片，邀请好友加入 H Wallet
+          </Text>
+
+          {/* 邀请码 */}
+          <View
+            style={{
+              marginTop: 14,
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "rgba(255,255,255,0.12)",
+              borderRadius: 14,
+              padding: 12,
+              gap: 10,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "700" }}>
+                我的邀请码
+              </Text>
+              <Text style={{ color: "#FDE68A", fontSize: 18, fontWeight: "900", letterSpacing: 2, marginTop: 2 }}>
+                {inviteCode}
+              </Text>
+            </View>
+            <Pressable
+              onPress={copyInviteLink}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 12,
+                backgroundColor: "#FDE68A",
+              }}
+            >
+              <Text style={{ color: "#78350F", fontSize: 12, fontWeight: "900" }}>
+                复制链接
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* 统计 */}
+          <View style={{ marginTop: 14, flexDirection: "row", gap: 16 }}>
+            <View style={{ flex: 1, alignItems: "center" }}>
+              <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "900" }}>
+                {friends.length}
+              </Text>
+              <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "600" }}>
+                已邀请
+              </Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: "rgba(255,255,255,0.15)" }} />
+            <View style={{ flex: 1, alignItems: "center" }}>
+              <Text style={{ color: "#FFFFFF", fontSize: 22, fontWeight: "900" }}>
+                {friends.filter((f) => f.status === "joined" || f.status === "active").length}
+              </Text>
+              <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "600" }}>
+                已加入
+              </Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: "rgba(255,255,255,0.15)" }} />
+            <View style={{ flex: 1, alignItems: "center" }}>
+              <Text style={{ color: "#FDE68A", fontSize: 22, fontWeight: "900" }}>
+                {friends.filter((f) => f.status === "active").length}
+              </Text>
+              <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontWeight: "600" }}>
+                活跃中
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {/* 好友列表 */}
+      {friends.length === 0 ? (
+        <View className="items-center justify-center px-10 py-12">
+          <Text style={{ fontSize: 48, marginBottom: 12 }}>🐬</Text>
+          <Text className="text-center text-[15px] font-semibold text-ink">
+            还没有邀请好友
+          </Text>
+          <Text className="mt-1 text-center text-[12px] text-muted">
+            分享你的交易卡片或邀请链接，{"\n"}好友加入后会出现在这里。
+          </Text>
+          <Pressable
+            onPress={addDemoFriend}
+            style={{
+              marginTop: 16,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              borderRadius: 999,
+              backgroundColor: "#7C3AED",
+            }}
+          >
+            <Text style={{ color: "#FFFFFF", fontSize: 13, fontWeight: "800" }}>
+              模拟邀请一个好友
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={{ gap: 8 }}>
+          <Text className="mb-1 px-1 text-[13px] font-semibold text-muted">
+            好友列表
+          </Text>
+          {friends.map((friend) => (
+            <FriendRow key={friend.id} friend={friend} />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function FriendRow({ friend }: { friend: InvitedFriend }) {
+  const statusMeta = {
+    pending: { label: "等待加入", color: "#F59E0B", bg: "#FEF3C7" },
+    joined: { label: "已加入", color: "#10B981", bg: "#D1FAE5" },
+    active: { label: "活跃中", color: "#7C3AED", bg: "#EDE9FE" },
+  };
+  const meta = statusMeta[friend.status];
+  const dateStr = fmtDate(friend.invitedAt);
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#FFFFFF",
+        borderRadius: 16,
+        padding: 12,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: "#F1F3F5",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+        elevation: 1,
+      }}
+    >
+      {/* 头像 */}
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 21,
+          backgroundColor: "#F3F4F6",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ fontSize: 22 }}>{friend.avatar || "🐬"}</Text>
+      </View>
+
+      {/* 信息 */}
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: "#0F0F0F" }}>
+            {friend.nickname}
+          </Text>
+          <View
+            style={{
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 6,
+              backgroundColor: meta.bg,
+            }}
+          >
+            <Text style={{ fontSize: 9, fontWeight: "800", color: meta.color }}>
+              {meta.label}
+            </Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+          {friend.cardTitle ? `通过「${friend.cardTitle}」邀请` : `邀请于 ${dateStr}`}
+        </Text>
+      </View>
+
+      {/* 日期 */}
+      <Text style={{ fontSize: 10, color: "#9CA3AF" }}>
+        {dateStr.slice(5)}
+      </Text>
+    </View>
+  );
+}

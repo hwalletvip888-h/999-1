@@ -96,6 +96,38 @@ export type HWalletCard = {
   // GenericCard
   icon?: string;
   subtitle?: string;
+  // PriceCard 行情价格卡片
+  priceData?: {
+    price: number;
+    change24h: number;
+    changePercent24h: number;
+    high24h: number;
+    low24h: number;
+    vol24h: number;
+    fundingRate?: number;
+    sparkData?: number[];
+  };
+  // PositionCard 持仓卡片
+  positions?: Array<{
+    instId: string;
+    side: 'long' | 'short';
+    size: number;
+    avgPrice: number;
+    markPrice: number;
+    unrealizedPnl: number;
+    unrealizedPnlPercent: number;
+    leverage: number;
+    liquidationPrice: number;
+    margin: number;
+  }>;
+  // PortfolioCard 资产总览卡片
+  totalEquity?: number;
+  balances?: Array<{
+    currency: string;
+    available: number;
+    total: number;
+    usdtValue: number;
+  }>;
 };
 
 // 兼容旧代码

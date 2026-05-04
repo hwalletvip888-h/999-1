@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -15,14 +15,19 @@ import { ChatInput } from "../components/ChatInput";
 import { DolphinLogo, type DolphinMood } from "../components/DolphinLogo";
 import { CoinsIcon, SparkIcon, TrendUpIcon } from "../components/ui/Icons";
 import type { FunctionComponent } from "react";
-import { initialMessages } from "../data/mockData";
+// 初始消息为空，用户进入后看到海豚引导页
+const initialMessages: import("../types").ChatMessage[] = [];
 import { handleUserPrompt } from "../services/core/chatOrchestrator";
 import { updateCardStatus } from "../services/core/cardsApi";
+import { cardLibrary } from "../services/cardLibrary";
 import { makeId } from "../utils/id";
 import { nowLabel } from "../utils/format";
 import type { CardStatus, ChatMessage, TradeCard } from "../types";
 
 const TOP_BAR_HEIGHT = 80; // matches TopBar pt-2 + h-14 + pb-4
+
+// Web 平台不需要 KeyboardAvoidingView，用 View 代替
+const KAVWrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
 
 const easterTips = [
   "🐬 嗨～别戳我啦",
@@ -261,8 +266,10 @@ export function ChatScreen() {
       }
     ]);
     scrollToEndSoon();
-    // 3) 约 1 秒后，设为 executed，显示“已模拟执行成功”
+    // 3) 约 1 秒后，设为 executed，显示"已执行成功"，并保存到卡库
     setTimeout(() => {
+      // 找到当前卡片
+      const targetCard = messages.find((m) => m.card?.id === cardId)?.card;
       setMessages((current) =>
         current.map((message) =>
           message.card?.id === cardId
@@ -271,13 +278,17 @@ export function ChatScreen() {
         )
       );
       updateCardStatus(cardId, 'executed');
+      // 保存到卡库
+      if (targetCard) {
+        cardLibrary.add({ ...targetCard, status: 'executed' });
+      }
       setMessages((current) => [
         ...current,
         {
           id: makeId("msg_ai_executed"),
           role: "assistant",
           kind: "text",
-          text: "已模拟执行成功。",
+          text: "✅ 已执行成功，卡片已保存到卡库。",
           createdAt: nowLabel()
         }
       ]);
@@ -310,10 +321,12 @@ export function ChatScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
+    <KAVWrapper
       className="flex-1"
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + TOP_BAR_HEIGHT : 0}
+      {...(Platform.OS !== 'web' ? {
+        behavior: Platform.OS === 'ios' ? 'padding' as const : 'height' as const,
+        keyboardVerticalOffset: Platform.OS === 'ios' ? insets.top + TOP_BAR_HEIGHT : 0,
+      } : {})}
     >
       {messages.length === 0 ? (
         <View
@@ -417,6 +430,7 @@ export function ChatScreen() {
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           contentContainerStyle={{ paddingTop: 8, paddingBottom: 16 }}
         >
           {(() => {
@@ -464,7 +478,7 @@ export function ChatScreen() {
         onChangeText={setInput}
         onSubmit={() => sendMessage()}
       />
-    </KeyboardAvoidingView>
+    </KAVWrapper>
   );
 }
 
