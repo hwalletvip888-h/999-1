@@ -22,7 +22,7 @@ import { updateCardStatus } from "../services/core/cardsApi";
 import { cardLibrary } from "../services/cardLibrary";
 import { makeId } from "../utils/id";
 import { nowLabel } from "../utils/format";
-import type { CardStatus, ChatMessage, TradeCard } from "../types";
+import type { AIStep, CardStatus, ChatMessage, TradeCard } from "../types";
 
 const TOP_BAR_HEIGHT = 80; // matches TopBar pt-2 + h-14 + pb-4
 
@@ -131,32 +131,41 @@ export function ChatScreen() {
     setHeroMood("thinking");
     scrollToEndSoon();
 
-    // 加载节奏
-    const loadingSteps = [
-      "正在理解你的指令...",
-      "正在检查参数与风险等级...",
-      "正在生成卡片..."
-    ];
-    for (let i = 0; i < loadingSteps.length; i++) {
-      await new Promise((res) => setTimeout(res, 500));
-      setMessages((current) => [
-        ...current,
-        {
-          id: makeId("msg_ai_loading"),
-          role: "assistant",
-          kind: "text",
-          text: loadingSteps[i],
-          createdAt: nowLabel()
-        }
-      ]);
-      scrollToEndSoon();
-    }
+    // 步骤指示器消息 ID
+    const stepsMessageId = makeId("msg_ai_steps");
 
-    // 业务主流程
-    const result = await handleUserPrompt(trimmed);
+    // 插入步骤指示器消息
+    setMessages((current) => [
+      ...current,
+      {
+        id: stepsMessageId,
+        role: "assistant",
+        kind: "steps",
+        steps: [{ id: 's1', label: '理解你的意图', icon: '🧠', status: 'active' as const }],
+        createdAt: nowLabel()
+      }
+    ]);
+    scrollToEndSoon();
+
+    // 步骤回调 — 实时更新步骤指示器
+    const onStep = (updatedSteps: AIStep[]) => {
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === stepsMessageId
+            ? { ...m, steps: updatedSteps }
+            : m
+        )
+      );
+      scrollToEndSoon();
+    };
+
+    // 业务主流程（带步骤回调）
+    const result = await handleUserPrompt(trimmed, onStep);
     setAiTyping(false);
-    // 移除 loading 气泡
-    setMessages((current) => current.filter((m) => !m.id.startsWith("msg_ai_loading")));
+
+    // 短暂保留完成状态后移除步骤指示器
+    await new Promise((res) => setTimeout(res, 600));
+    setMessages((current) => current.filter((m) => m.id !== stepsMessageId));
 
     // clarify
     if (!result.ok || !result.data) {

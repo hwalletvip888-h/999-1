@@ -23,16 +23,25 @@ export type AppView = "wallet" | "chat" | "community" | "profile";
 
 export type MessageRole = "user" | "assistant" | "system";
 
-export type MessageKind = "text" | "card";
+export type MessageKind = "text" | "card" | "steps";
 
 
 import type { HWalletCard } from "./card";
+
+export type AIStep = {
+  id: string;
+  label: string;
+  status: "pending" | "active" | "done" | "error";
+  icon?: string; // emoji
+};
+
 export type ChatMessage = {
   id: string;
   role: MessageRole;
   kind: MessageKind;
   text?: string;
   card?: HWalletCard;
+  steps?: AIStep[];
   createdAt: string;
 };
 

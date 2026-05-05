@@ -3,6 +3,7 @@ import Markdown from "react-native-markdown-display";
 import type { ChatMessage } from "../types";
 import { DolphinLogo, type DolphinMood } from "./DolphinLogo";
 import { TransactionCard } from "./TransactionCard";
+import { AIStepIndicator } from "./AIStepIndicator";
 
 type ChatBubbleProps = {
   message: ChatMessage;
@@ -107,6 +108,11 @@ export function ChatBubble({
 }: ChatBubbleProps) {
   if (message.kind === "card" && message.card) {
     return <TransactionCard card={message.card} onConfirm={onConfirmCard} onCancel={onCancelCard} />;
+  }
+
+  // AI 步骤进度展示
+  if (message.kind === "steps" && message.steps) {
+    return <AIStepIndicator steps={message.steps} />;
   }
 
   const isUser = message.role === "user";
