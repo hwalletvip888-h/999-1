@@ -132,10 +132,10 @@ export async function handleUserPrompt(
         const changeStr = ticker.changePercent24h >= 0
           ? `+${ticker.changePercent24h.toFixed(2)}%`
           : `${ticker.changePercent24h.toFixed(2)}%`;
-        let replyText = intent.reply || `${changeIcon} ${symbol} 当前价格 $${ticker.last.toLocaleString()}，24h ${changeStr}`;
-        if (fundingRate) {
-          replyText += `，资金费率 ${(fundingRate.fundingRate * 100).toFixed(4)}%`;
-        }
+        const fundingStr = fundingRate
+          ? `\n资金费率 **${(fundingRate.fundingRate * 100).toFixed(4)}%**`
+          : '';
+        let replyText = intent.reply || `${changeIcon} **${symbol}/USDT** 实时行情\n\n当前价格 **$${ticker.last.toLocaleString()}**\n24h 变动 ${changeStr}${fundingStr}\n\n已为你生成详细行情卡片 👇`;
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
 
@@ -194,7 +194,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `已为你生成 ${symbol} 做多卡片，${leverage}x 杠杆，当前价格 $${ticker.last.toLocaleString()}`,
+            replyText: intent.reply || `📈 为你生成 **${symbol} 做多** 交易卡片\n\n入场价格 **$${ticker.last.toLocaleString()}**\n杠杆 ${leverage}x · 保证金 ${amount} USDT\n风险等级：${leverage >= 10 ? '⚠️ 高' : leverage > 5 ? '中' : '低'}\n\n请确认卡片参数后执行 👇`,
             card
           },
           simulationMode: false
@@ -248,7 +248,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `已为你生成 ${symbol} 做空卡片，${leverage}x 杠杆，当前价格 $${ticker.last.toLocaleString()}`,
+            replyText: intent.reply || `📉 为你生成 **${symbol} 做空** 交易卡片\n\n入场价格 **$${ticker.last.toLocaleString()}**\n杠杆 ${leverage}x · 保证金 ${amount} USDT\n风险等级：${leverage >= 10 ? '⚠️ 高' : leverage > 5 ? '中' : '低'}\n\n请确认卡片参数后执行 👇`,
             card
           },
           simulationMode: false
@@ -311,7 +311,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `已为你生成 ${symbol} 网格策略，区间 $${priceLower.toFixed(0)}~$${priceUpper.toFixed(0)}`,
+            replyText: intent.reply || `🔲 为你生成 **${symbol}/USDT 网格策略**\n\n价格区间 **$${priceLower.toFixed(0)} ~ $${priceUpper.toFixed(0)}**\n网格数 ${gridNum} · 投入 ${amount} USDT\n\n请确认参数后启动 👇`,
             card
           },
           simulationMode: false
@@ -365,7 +365,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `已为你生成兑换卡片：${amount} USDT → ~${estimatedAmount.toFixed(6)} ${toSymbol}`,
+            replyText: intent.reply || `🔄 为你生成 **链上兑换** 卡片\n\n${amount} USDT → **~${estimatedAmount.toFixed(6)} ${toSymbol}**\n参考汇率 1 ${toSymbol} ≈ $${ticker.last.toLocaleString()}\n滑点 0.5% · 预估 Gas ~$0.50\n\n确认后将发起链上交易 👇`,
             card
           },
           simulationMode: false
@@ -424,7 +424,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `已为你生成 ${protocol} 质押卡片，年化 ${apy}%`,
+            replyText: intent.reply || `💰 为你生成 **${protocol} 质押** 卡片\n\n质押 ${amount} ${symbol} · 预估年化 **${apy}%**\n收益代币 ${reward} · 锁仓期 灵活\n\n确认后将发起链上质押 👇`,
             card
           },
           simulationMode: false
@@ -451,8 +451,8 @@ export async function handleUserPrompt(
           ok: true,
           data: {
             replyText: card.positions && card.positions.length > 0
-              ? intent.reply || `你当前共有 ${card.positions.length} 个持仓`
-              : intent.reply || '你当前没有持仓。可以说"100U 做多 BTC"来开仓。',
+              ? intent.reply || `📋 **持仓报告**\n\n当前共有 **${card.positions.length}** 个活跃持仓\n\n详情请查看下方卡片 👇`
+              : intent.reply || `📋 **持仓报告**\n\n当前暂无活跃持仓\n\n可以试试说 "100U 做多 BTC" 来开仓`,
             card
           },
           simulationMode: false
@@ -478,7 +478,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `你的总资产为 $${(card.totalEquity ?? 0).toLocaleString()}`,
+            replyText: intent.reply || `🏦 **资产总览**\n\n账户总权益 **$${(card.totalEquity ?? 0).toLocaleString()}**\n\n详细资产分布请查看下方卡片 👇`,
             card
           },
           simulationMode: false
@@ -492,7 +492,7 @@ export async function handleUserPrompt(
         await delay(300);
         steps = advanceStep(steps, 's2', 'done', onStep);
 
-        const replyText = intent.reply || `我可以帮你：\n\n📊 查行情（如"BTC 价格"）\n📈 开合约（如"100U 做多 BTC"）\n🔲 跑网格（如"ETH 网格策略"）\n🔄 链上兑换（如"100U 换 ETH"）\n💰 质押赚币（如"100U 质押到 Aave"）\n\n请告诉我你想做什么？`;
+        const replyText = intent.reply || `你好！我是 **H**，你的链上交易助手 🐬\n\n我可以帮你：\n\n• **查询行情** — "BTC 价格"\n• **开永续合约** — "100U 做多 BTC"\n• **网格策略** — "ETH 网格策略"\n• **链上兑换** — "100U 换 ETH"\n• **质押赚币** — "100U 质押到 Aave"\n\n直接告诉我你想做什么吧`;
         return {
           ok: true,
           data: { replyText },
