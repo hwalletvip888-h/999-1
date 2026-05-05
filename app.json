@@ -20,6 +20,7 @@
     ],
     "android": {
       "softwareKeyboardLayoutMode": "resize",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#3D1A78"
@@ -28,6 +29,12 @@
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "738e0a95-9d15-4e1c-9bbd-2a8fc672e156"
+      }
+    },
+    "owner": "tai-team"
   }
 }
