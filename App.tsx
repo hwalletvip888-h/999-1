@@ -96,15 +96,15 @@ export default function App() {
       passphrase: creds.passphrase,
       enableRealOrders: true,
     }));
-    pingOkxAuth().then((res) => {
-      toastBus.push({
-        emoji: res.ok ? "🟢" : "🔴",
-        title: res.ok ? "OKX 已连接" : "OKX 鉴权失败",
-        subtitle: res.detail,
-        tone: res.ok ? "success" : "warn",
-        duration: res.ok ? 2200 : 4200
-      });
-    });
+//    pingOkxAuth().then((res) => {
+//      toastBus.push({
+//        emoji: res.ok ? "🟢" : "🔴",
+//        title: res.ok ? "OKX 已连接" : "OKX 鉴权失败",
+//        subtitle: res.detail,
+//        tone: res.ok ? "success" : "warn",
+//        duration: res.ok ? 2200 : 4200
+//      });
+//    });
   }, []);
 
   const isWallet = activeView === "wallet";
