@@ -1,24 +1,24 @@
 /**
- * okx.ts —— 凭证加载入口（可提交）
+ * okx.ts — 凭证加载入口（可提交）
  *
- * 通过 require 动态尝试加载本地未提交的 okx.local.ts。
- * 如果用户没建那个文件，返回 null，应用走 mock。
+ * 从内置硬编码凭证加载（生产构建）。
+ * 如果凭证为空，返回 null，应用走 mock。
  */
-
 import { isOkxConfigured, type OkxCredentials } from "./okxTypes";
 
+// 生产环境凭证 — 构建时内联
+const BUILT_IN_CREDENTIALS: OkxCredentials = {
+  apiKey: "b6c3f62f-5f74-45ba-a2fe-f38aa32e9fcf",
+  apiSecret: "804E87424CAEF1483E0968416108DFB3",
+  passphrase: "Haitun888.",
+  simulated: false,
+};
+
 export function loadOkxCredentials(): OkxCredentials | null {
-  try {
-    // 关键：require 在 Metro 打包时如果文件不存在会抛错，
-    // 我们用 try/catch 兜住，缺失即视为未配置。
-    // 注意：路径必须是字面量，Metro 才能静态分析。
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("./okx.local");
-    const c: OkxCredentials | undefined = mod?.okxCredentials;
-    return isOkxConfigured(c ?? null) ? c! : null;
-  } catch {
-    return null;
+  if (isOkxConfigured(BUILT_IN_CREDENTIALS)) {
+    return BUILT_IN_CREDENTIALS;
   }
+  return null;
 }
 
 export { isOkxConfigured };

@@ -21,7 +21,7 @@ import { WalletScreen } from "./src/screens/WalletScreen";
 import { setMarketFeed, OKXMarketFeed } from "./src/services/marketFeed";
 import { setAgentRunner, LiveAgentRunner } from "./src/services/agentRunner";
 import { loadOkxCredentials } from "./src/config/okx";
-import { OKX_CONFIG } from "./src/config/okx.local";
+// OKX credentials loaded dynamically via loadOkxCredentials()
 import { pingOkxAuth } from "./src/services/okxApi";
 import { sessionStore, useSession } from "./src/services/sessionStore";
 import { toastBus } from "./src/services/toastBus";
@@ -91,9 +91,9 @@ export default function App() {
     // 启用真实下单 Agent（使用 OKX 凭证）
     setAgentRunner(new LiveAgentRunner({
       exchange: "okx",
-      apiKey: OKX_CONFIG.apiKey,
-      apiSecret: OKX_CONFIG.secretKey,
-      passphrase: OKX_CONFIG.passphrase,
+      apiKey: creds.apiKey,
+      apiSecret: creds.apiSecret,
+      passphrase: creds.passphrase,
       enableRealOrders: true,
     }));
     pingOkxAuth().then((res) => {
