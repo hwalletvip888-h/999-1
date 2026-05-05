@@ -9,7 +9,8 @@
  * 
  * 不依赖 onchainos CLI，纯 HTTP 实现
  */
-import * as http from 'http';
+import * as http from "http";
+import { chatWithAI, recognizeIntent } from "./aiChat";
 import * as crypto from 'crypto';
 
 const PORT = parseInt(process.env.WALLET_PORT || '3100');
@@ -250,7 +251,6 @@ async function handleGetAddresses(token: string): Promise<{ ok: boolean; address
     return { ok: false };
   }
 }
-
 // ─── HTTP 服务器 ─────────────────────────────────────────────
 function parseBody(req: http.IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -284,19 +284,47 @@ const server = http.createServer(async (req, res) => {
       const result = await handleSendOtp(body.email);
       res.writeHead(200);
       res.end(JSON.stringify(result));
+
     } else if (url === '/api/auth/verify-otp' && req.method === 'POST') {
       const body = await parseBody(req);
       const result = await handleVerifyOtp(body.email, body.code);
       res.writeHead(200);
       res.end(JSON.stringify(result));
+
     } else if (url === '/api/wallet/addresses' && req.method === 'GET') {
       const token = (req.headers.authorization || '').replace('Bearer ', '');
       const result = await handleGetAddresses(token);
       res.writeHead(200);
       res.end(JSON.stringify(result));
+
+    } else if (url === '/api/ai/chat' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { messages = [], message } = body;
+      if (!message) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'message is required' }));
+        return;
+      }
+      const reply = await chatWithAI(messages, message);
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, reply }));
+
+    } else if (url === '/api/ai/intent' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { message } = body;
+      if (!message) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: 'message is required' }));
+        return;
+      }
+      const intent = await recognizeIntent(message);
+      res.writeHead(200);
+      res.end(JSON.stringify({ ok: true, intent }));
+
     } else if (url === '/health') {
       res.writeHead(200);
-      res.end(JSON.stringify({ ok: true, service: 'h-wallet-backend', mode: 'okx-agentic-real' }));
+      res.end(JSON.stringify({ ok: true, service: 'h-wallet-backend', mode: 'okx-agentic-real', ai: 'deepseek+claude' }));
+
     } else {
       res.writeHead(404);
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -307,13 +335,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (require.main === module || process.argv[1]?.includes('walletBackend')) {
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${PORT}`);
-    console.log(`[WalletBackend] 模式: OKX Agentic Wallet (真实 OTP)`);
-    console.log(`[WalletBackend] OKX API: ${OKX_BASE_URL}`);
-    console.log(`[WalletBackend] 健康检查: http://localhost:${PORT}/health`);
-  });
-}
-
-export { handleSendOtp, handleVerifyOtp, handleGetAddresses };
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${PORT}`);
+  console.log(`[WalletBackend] 模式: OKX Agentic + DeepSeek AI + Claude`);
+  console.log(`[WalletBackend] AI Chat: /api/ai/chat | Intent: /api/ai/intent`);
+  console.log(`[WalletBackend] 健康检查: http://localhost:${PORT}/health`);
+});

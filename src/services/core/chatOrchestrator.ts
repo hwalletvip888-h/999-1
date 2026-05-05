@@ -1,9 +1,9 @@
 /**
- * Chat Orchestrator — Claude AI 驱动版 + 实时步骤回调
- * 使用 Claude AI 进行意图识别，生成精美卡片
+ * Chat Orchestrator — Claude + DeepSeek 双 AI 驱动版 + 实时步骤回调
+ * Claude 意图识别 + DeepSeek 聊天对话，生成精美卡片
  * 通过 onStep 回调实时通知 UI 当前进度
  */
-import { askClaude, type AIIntent } from './claudeAI';
+import { askClaude, chatWithAI, type AIIntent } from './claudeAI';
 import { api } from '../../api/gateway';
 import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
@@ -492,7 +492,7 @@ export async function handleUserPrompt(
         await delay(300);
         steps = advanceStep(steps, 's2', 'done', onStep);
 
-        const replyText = intent.reply || `你好！我是 **H**，你的链上交易助手 🐬\n\n我可以帮你：\n\n• **查询行情** — "BTC 价格"\n• **开永续合约** — "100U 做多 BTC"\n• **网格策略** — "ETH 网格策略"\n• **链上兑换** — "100U 换 ETH"\n• **质押赚币** — "100U 质押到 Aave"\n\n直接告诉我你想做什么吧`;
+        const replyText = intent.reply || await chatWithAI([], input);
         return {
           ok: true,
           data: { replyText },
