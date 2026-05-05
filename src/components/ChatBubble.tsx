@@ -12,27 +12,32 @@ type ChatBubbleProps = {
   onCancelCard?: (cardId: string) => void;
 };
 
+/**
+ * Markdown 样式 — 专业、美观、有层次
+ * 配合结构化 replyText 使用
+ */
 const mdStyles = StyleSheet.create({
   body: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: "#0F0F0F",
+    fontSize: 15,
+    lineHeight: 22,
+    color: "#1A1A1A",
     fontFamily: "Inter_400Regular",
   },
   strong: {
     fontFamily: "Inter_700Bold",
     fontWeight: "700",
+    color: "#0F0F0F",
   },
   heading1: {
-    fontSize: 20,
+    fontSize: 18,
     fontFamily: "Inter_800ExtraBold",
     fontWeight: "800",
     marginBottom: 8,
-    marginTop: 4,
+    marginTop: 6,
     color: "#0F0F0F",
   },
   heading2: {
-    fontSize: 18,
+    fontSize: 16,
     fontFamily: "Inter_700Bold",
     fontWeight: "700",
     marginBottom: 6,
@@ -40,63 +45,77 @@ const mdStyles = StyleSheet.create({
     color: "#0F0F0F",
   },
   heading3: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "Inter_600SemiBold",
     fontWeight: "600",
     marginBottom: 4,
     marginTop: 4,
-    color: "#0F0F0F",
+    color: "#1A1A1A",
   },
   code_inline: {
     fontFamily: "JetBrainsMono_400Regular",
-    fontSize: 14,
+    fontSize: 13,
     backgroundColor: "#F0EDF5",
     borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
     color: "#7C3AED",
   },
   fence: {
     fontFamily: "JetBrainsMono_400Regular",
-    fontSize: 13,
+    fontSize: 12,
     backgroundColor: "#1E1E2E",
     color: "#CDD6F4",
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
     marginVertical: 8,
   },
   code_block: {
     fontFamily: "JetBrainsMono_400Regular",
-    fontSize: 13,
+    fontSize: 12,
     backgroundColor: "#1E1E2E",
     color: "#CDD6F4",
-    borderRadius: 12,
+    borderRadius: 10,
     padding: 12,
   },
   bullet_list: {
     marginVertical: 4,
+    paddingLeft: 2,
   },
   ordered_list: {
     marginVertical: 4,
+    paddingLeft: 2,
   },
   list_item: {
-    marginVertical: 2,
+    marginVertical: 3,
+    flexDirection: "row",
+    alignItems: "flex-start",
   },
   blockquote: {
     backgroundColor: "#F5F3FF",
     borderLeftWidth: 3,
     borderLeftColor: "#7C3AED",
     paddingLeft: 12,
-    paddingVertical: 6,
-    marginVertical: 6,
-    borderRadius: 4,
+    paddingVertical: 8,
+    marginVertical: 8,
+    borderRadius: 6,
   },
   link: {
     color: "#7C3AED",
     textDecorationLine: "underline",
   },
   paragraph: {
-    marginVertical: 2,
+    marginVertical: 3,
+    lineHeight: 22,
+  },
+  hr: {
+    backgroundColor: "#E5E7EB",
+    height: 1,
+    marginVertical: 10,
+  },
+  em: {
+    fontStyle: "italic",
+    color: "#6B7280",
   },
 });
 
@@ -121,7 +140,7 @@ export function ChatBubble({
     return (
       <View className="my-1.5 items-end px-4">
         <View className="max-w-[82%] rounded-3xl bg-surface2 px-4 py-2.5">
-          <Text style={{ fontSize: 16, lineHeight: 24, color: "#0F0F0F", fontFamily: "Inter_400Regular" }}>
+          <Text style={{ fontSize: 15, lineHeight: 22, color: "#0F0F0F", fontFamily: "Inter_400Regular" }}>
             {message.text}
           </Text>
         </View>
@@ -129,20 +148,22 @@ export function ChatBubble({
     );
   }
 
-  // AI message with Markdown rendering
+  // AI message with rich Markdown rendering
   return (
-    <View className="my-1.5 flex-row items-end px-4" style={{ gap: 6 }}>
+    <View className="my-2 flex-row items-end px-4" style={{ gap: 6 }}>
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
         <DolphinLogo size={36} compact mood={avatarMood} />
       </View>
       <View
-        className="max-w-[82%] rounded-2xl rounded-bl-md px-4 py-2.5"
+        className="max-w-[82%] rounded-2xl rounded-bl-md"
         style={{
-          backgroundColor: "#F7F7F8",
+          backgroundColor: "#FAFAFA",
           borderWidth: 1,
           borderColor: "#ECECF1",
           borderLeftWidth: 3,
-          borderLeftColor: "#7C3AED"
+          borderLeftColor: "#7C3AED",
+          paddingHorizontal: 14,
+          paddingVertical: 10,
         }}
       >
         <Markdown style={mdStyles}>{message.text || ""}</Markdown>
