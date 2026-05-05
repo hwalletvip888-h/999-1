@@ -2,14 +2,15 @@
   "expo": {
     "name": "H Wallet",
     "slug": "h-wallet-mvp",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "hwallet",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "splash": {
-      "backgroundColor": "#7C3AED",
-      "resizeMode": "contain"
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3D1A78"
     },
     "web": {
       "bundler": "metro"
@@ -18,25 +19,15 @@
       "**/*"
     ],
     "android": {
-      "package": "com.hwallet.app",
-      "adaptiveIcon": {
-        "backgroundColor": "#7C3AED"
-      },
       "softwareKeyboardLayoutMode": "resize",
-      "versionCode": 1
-    },
-    "ios": {
-      "bundleIdentifier": "com.hwallet.app",
-      "buildNumber": "1"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "fce2e5cc-b9c0-446b-ae18-446ce1c74199"
-      }
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#3D1A78"
+      },
+      "package": "com.hwallet.app"
     },
     "plugins": [
       "expo-font"
-    ],
-    "owner": "hwalletvip"
+    ]
   }
 }

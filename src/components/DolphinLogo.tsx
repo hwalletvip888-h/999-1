@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Text, View } from "react-native";
+import { Image, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -18,19 +18,22 @@ type DolphinLogoProps = {
   compact?: boolean;
   mood?: DolphinMood;
   /**
-   * 头部追踪点（屏幕 pageX/pageY 坐标）。emoji 没有眼睛，所以做"整头转向"。
+   * 头部追踪点（屏幕 pageX/pageY 坐标）。
    * 传 null 时回到默认朝向。
    */
   gaze?: { x: number; y: number } | null;
 };
 
+// 紫金色 H+海豚 Logo
+const LOGO_SOURCE = require("../../assets/logo.png");
+
 /**
- * 🐬 H Wallet AI 灵魂头像 —— 用系统 emoji 做主体，外加 Reanimated 表演：
+ * 🐬 H Wallet AI 灵魂头像 —— 使用紫金色 H+海豚 Logo
+ * 保留动画效果：
  * - 跃出水面（translateY + 倾头）
- * - 涟漪 / 水面线
- * - thinking 时倾头 + 头顶紫色思考气泡
+ * - thinking 时倾头
  * - speaking 时身体弹性"说话"晃动
- * - celebrating 时跳更高 + 4 颗金色光点扇形飞溅
+ * - celebrating 时跳更高 + 金色光点
  */
 export function DolphinLogo({
   size = 140,
@@ -41,10 +44,9 @@ export function DolphinLogo({
 }: DolphinLogoProps) {
   const lift = useSharedValue(0);
   const tilt = useSharedValue(0);
-  const ripple = useSharedValue(0);
-  const pulse = useSharedValue(0); // speaking 时身体弹性
-  const sparkle = useSharedValue(0); // 庆祝粒子
-  const gazeTilt = useSharedValue(0); // 头部转向叠加角
+  const pulse = useSharedValue(0);
+  const sparkle = useSharedValue(0);
+  const gazeTilt = useSharedValue(0);
   const containerRef = useRef<View | null>(null);
   const selfCenter = useRef<{ x: number; y: number } | null>(null);
 
@@ -56,7 +58,6 @@ export function DolphinLogo({
     }
     const dx = gaze.x - selfCenter.current.x;
     const dy = gaze.y - selfCenter.current.y;
-    // 转向角：水平分量为主，限制 ±18°
     const raw = Math.atan2(dx, Math.max(160, Math.abs(dy) + 120)) * (180 / Math.PI);
     const clamped = Math.max(-18, Math.min(18, raw));
     gazeTilt.value = withTiming(clamped, { duration: 320, easing: Easing.out(Easing.cubic) });
@@ -65,7 +66,7 @@ export function DolphinLogo({
   useEffect(() => {
     if (!animated) return;
 
-    const liftAmp = mood === "celebrating" ? -size * 0.22 : mood === "thinking" ? -size * 0.05 : -size * 0.12;
+    const liftAmp = mood === "celebrating" ? -size * 0.15 : mood === "thinking" ? -size * 0.03 : -size * 0.08;
     const liftUp = mood === "celebrating" ? 900 : 1400;
     const liftDn = mood === "celebrating" ? 700 : 1100;
     lift.value = withRepeat(
@@ -77,11 +78,11 @@ export function DolphinLogo({
       false
     );
 
-    const tiltTo = mood === "thinking" ? -16 : mood === "celebrating" ? -12 : -7;
+    const tiltTo = mood === "thinking" ? -8 : mood === "celebrating" ? -6 : -3;
     tilt.value = withRepeat(
       withSequence(
         withTiming(tiltTo, { duration: liftUp, easing: Easing.out(Easing.cubic) }),
-        withTiming(mood === "thinking" ? -10 : 0, {
+        withTiming(mood === "thinking" ? -5 : 0, {
           duration: liftDn,
           easing: Easing.in(Easing.cubic)
         })
@@ -89,19 +90,6 @@ export function DolphinLogo({
       -1,
       false
     );
-
-    if (!compact && mood !== "thinking") {
-      ripple.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 2400, easing: Easing.out(Easing.quad) }),
-          withTiming(0, { duration: 0 })
-        ),
-        -1,
-        false
-      );
-    } else {
-      ripple.value = 0;
-    }
 
     if (mood === "speaking") {
       pulse.value = withRepeat(
@@ -128,32 +116,22 @@ export function DolphinLogo({
     } else {
       sparkle.value = withTiming(0, { duration: 200 });
     }
-  }, [animated, mood, compact, size, lift, tilt, ripple, pulse, sparkle]);
+  }, [animated, mood, compact, size, lift, tilt, pulse, sparkle]);
 
-  const dolphinStyle = useAnimatedStyle(() => ({
+  const logoStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: lift.value },
       { rotate: `${tilt.value + gazeTilt.value}deg` },
-      { scale: 1 + pulse.value * 0.06 }
+      { scale: 1 + pulse.value * 0.04 }
     ]
   }));
-  const rippleStyle = useAnimatedStyle(() => ({
-    opacity: 0.55 - ripple.value * 0.55,
-    transform: [{ scale: 0.55 + ripple.value * 0.7 }]
-  }));
-
-  const waterY = size * 0.78;
-  // 让 emoji 本身贴满容器（emoji 字形会带一些内边距，所以放大一点）
-  const emojiSize = size * 0.92;
 
   return (
     <View
       ref={containerRef}
       onLayout={() => {
-        // 记录自己在屏幕上的中心点
         const node = containerRef.current;
         if (!node) return;
-        // measureInWindow 是 RN 的 native 方法
         node.measureInWindow?.((x: number, y: number, w: number, h: number) => {
           selfCenter.current = { x: x + w / 2, y: y + h / 2 };
         });
@@ -166,109 +144,31 @@ export function DolphinLogo({
         overflow: "visible"
       }}
     >
-      {/* 涟漪 */}
-      {!compact ? (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            {
-              position: "absolute",
-              top: waterY - size * 0.04,
-              width: size * 0.55,
-              height: size * 0.08,
-              borderRadius: size,
-              borderWidth: 1.5,
-              borderColor: "#93C5FD"
-            },
-            rippleStyle
-          ]}
-        />
-      ) : null}
-
       {/* 庆祝粒子 */}
       {mood === "celebrating" ? <CelebrateBurst size={size} progress={sparkle} /> : null}
 
-      {/* thinking 时左上角紫色思考气泡 */}
-      {mood === "thinking" ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            top: size * 0.04,
-            left: size * 0.04,
-            alignItems: "center",
-            gap: 2
-          }}
-        >
-          <View
-            style={{
-              width: size * 0.13,
-              height: size * 0.13,
-              borderRadius: size * 0.07,
-              backgroundColor: "#7C3AED"
-            }}
-          />
-          <View
-            style={{
-              width: size * 0.09,
-              height: size * 0.09,
-              borderRadius: size * 0.05,
-              backgroundColor: "#7C3AED",
-              opacity: 0.75
-            }}
-          />
-          <View
-            style={{
-              width: size * 0.05,
-              height: size * 0.05,
-              borderRadius: size * 0.03,
-              backgroundColor: "#7C3AED",
-              opacity: 0.55
-            }}
-          />
-        </View>
-      ) : null}
-
-      {/* 海豚本体 — emoji */}
+      {/* Logo 本体 */}
       <Animated.View
         style={[
           {
-            position: "absolute",
             width: size,
             height: size,
             alignItems: "center",
             justifyContent: "center"
           },
-          dolphinStyle
+          logoStyle
         ]}
       >
-        <Text
+        <Image
+          source={LOGO_SOURCE}
           style={{
-            fontSize: emojiSize,
-            lineHeight: emojiSize * 1.05,
-            // 让海豚水平镜像更"跃起"姿态：原 emoji 朝右上跳，符合 H Wallet logo 朝向
-            includeFontPadding: false
+            width: size * 0.9,
+            height: size * 0.9,
+            borderRadius: size * 0.15
           }}
-        >
-          🐬
-        </Text>
-      </Animated.View>
-
-      {/* 水面线 */}
-      {!compact ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            top: waterY,
-            width: size * 0.7,
-            height: 2,
-            borderRadius: 2,
-            backgroundColor: "#BFDBFE",
-            opacity: 0.7
-          }}
+          resizeMode="contain"
         />
-      ) : null}
+      </Animated.View>
     </View>
   );
 }

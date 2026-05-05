@@ -105,7 +105,7 @@ export function getRecentReports(count = 5): TrendReport[] {
 async function refreshCacheAsync() {
   if (Date.now() - _cacheTime < CACHE_TTL) return;
   try {
-    const resp = await fetch('http://localhost:3100/api/trend');
+    const resp = await fetch('http://47.82.112.198/api/trend');
     if (resp.ok) {
       const data = await resp.json();
       if (data && data.report) {
