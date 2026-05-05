@@ -162,10 +162,7 @@ export function ChatScreen() {
     // 业务主流程（带步骤回调）
     const result = await handleUserPrompt(trimmed, onStep);
     setAiTyping(false);
-
-    // 短暂保留完成状态后移除步骤指示器
-    await new Promise((res) => setTimeout(res, 600));
-    setMessages((current) => current.filter((m) => m.id !== stepsMessageId));
+    // 步骤指示器保留在消息列表中，组件会自动折叠
 
     // clarify
     if (!result.ok || !result.data) {
