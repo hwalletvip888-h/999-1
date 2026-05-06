@@ -12,7 +12,7 @@
  *
  * 设计：奶白系背景，紫金高亮，与现有 WalletScreen 一致
  */
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Surface } from "../components/ui/Surface";
@@ -20,6 +20,7 @@ import { ChevronRightIcon, SparkIcon, CardStackIcon, LeafIcon, LockIcon } from "
 import { useCardLibrary, type SavedCard } from "../services/cardLibrary";
 import { useMemberProfile } from "../services/memberSystem";
 import { useEmergencyState } from "../services/emergencyStop";
+import { okxOnchainClient, type DefiOpportunity } from "../api/providers/okx/okxOnchainClient";
 import type { AppView } from "../types";
 
 type AgentCenterScreenProps = {
@@ -83,6 +84,20 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
 
   const v5Rows = useMemo(() => cards.map(classifyV5).filter((x): x is StrategyRow => x !== null), [cards]);
   const v6Rows = useMemo(() => cards.map(classifyV6).filter((x): x is StrategyRow => x !== null), [cards]);
+
+  // 今日机会推送（V6 链上发现） — 进入页面时拉一次，缓存到本地 state
+  const [opportunities, setOpportunities] = useState<DefiOpportunity[]>([]);
+  const [opportunitiesMock, setOpportunitiesMock] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    okxOnchainClient.discoverOpportunities({ minApr: 3 }).then((res) => {
+      if (cancelled) return;
+      const safe = (res.data || []).filter((o) => o.securityScore >= 70).slice(0, 3);
+      setOpportunities(safe);
+      setOpportunitiesMock(res.simulationMode);
+    }).catch(() => { /* 静默失败，UI 走空态 */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const v5TotalPnl = v5Rows.reduce((s, r) => s + parseFloat(r.pnlText.replace(/[^\d.\-]/g, "")) * (r.pnlPositive ? 1 : -1), 0);
   const v6TotalPnl = v6Rows.reduce((s, r) => s + parseFloat(r.pnlText.replace(/[^\d.\-]/g, "")) * (r.pnlPositive ? 1 : -1), 0);
@@ -153,6 +168,23 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
           tint="#DCFCE7"
         />
       </View>
+
+      {/* 今日机会推送（V6 链上发现） */}
+      {opportunities.length > 0 ? (
+        <>
+          <SectionHeader
+            title="今日机会"
+            subtitle={opportunitiesMock ? "演示数据 · 服务端装好 onchainos 后自动转真实" : "聪明钱 · 趋势引擎 · 实时扫描"}
+            rightLabel="问 AI"
+            onPressRight={() => onChangeView("chat")}
+          />
+          <View style={{ paddingHorizontal: 16 }}>
+            {opportunities.map((o, i) => (
+              <OpportunityCard key={o.id ?? i} opportunity={o} onPress={() => onChangeView("chat")} />
+            ))}
+          </View>
+        </>
+      ) : null}
 
       {/* V5：AI 合约策略 */}
       <SectionHeader
@@ -283,6 +315,52 @@ function EmptyState({ icon, title, subtitle, cta, onCta }: { icon: React.ReactNo
         <Text style={{ color: "#FFFFFF", fontSize: 12, fontFamily: "Inter_600SemiBold" }}>{cta}</Text>
       </Pressable>
     </View>
+  );
+}
+
+function OpportunityCard({ opportunity, onPress }: { opportunity: DefiOpportunity; onPress: () => void }) {
+  const sourceLabel =
+    opportunity.source === "smart_money" ? "聪明钱" :
+    opportunity.source === "trenches" ? "战壕" :
+    "趋势引擎";
+  const tone = opportunity.riskTag === "low"
+    ? { color: "#15803D", bg: "#DCFCE7" }
+    : opportunity.riskTag === "medium"
+    ? { color: "#B45309", bg: "#FEF3C7" }
+    : { color: "#DC2626", bg: "#FEE2E2" };
+  return (
+    <Pressable onPress={onPress}>
+      <Surface style={{ marginBottom: 10, padding: 14 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#F4F4F5", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+            <Text style={{ fontSize: 14, color: "#0F0F0F", fontFamily: "Inter_700Bold" }}>
+              {opportunity.protocol.slice(0, 2)}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ fontSize: 14, color: "#0F0F0F", fontFamily: "Inter_700Bold" }}>{opportunity.protocol}</Text>
+              <View style={{ marginLeft: 6, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, backgroundColor: tone.bg }}>
+                <Text style={{ fontSize: 10, color: tone.color, fontFamily: "Inter_500Medium" }}>
+                  {sourceLabel}
+                </Text>
+              </View>
+            </View>
+            <Text style={{ marginTop: 2, fontSize: 11, color: "#6B7280" }}>
+              {opportunity.asset} · {opportunity.chain} · TVL ${opportunity.tvlUsd}
+            </Text>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={{ fontSize: 16, color: "#0F0F0F", fontFamily: "Inter_700Bold", letterSpacing: -0.4 }}>
+              {opportunity.apr}%
+            </Text>
+            <Text style={{ fontSize: 10, color: "#9CA3AF", fontFamily: "Inter_500Medium", marginTop: 2 }}>
+              年化 · 安全 {opportunity.securityScore}
+            </Text>
+          </View>
+        </View>
+      </Surface>
+    </Pressable>
   );
 }
 

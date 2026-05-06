@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { CardStatus, TradeCard } from "../types";
+import { computeRarity } from "./rarityEngine";
 
 /**
  * 卡库 (Card Library) — 用户已确认 / 进行中的卡片落地存储。
@@ -135,11 +136,16 @@ export const cardLibrary = {
   add(card: TradeCard) {
     const now = Date.now();
     if (!firstSavedAt) firstSavedAt = now;
+    const pnlUsdt = estimatePnl(card);
+    const volumeUsdt = estimateVolume(card);
+    // 自动评级稀有度（如果卡片自带 rarity 则尊重原值，例如 achievement 卡）
+    const rarity = card.rarity ?? computeRarity(card, { pnlUsdt, volumeUsdt });
     const enriched: SavedCard = {
       ...card,
+      rarity,
       savedAt: now,
-      pnlUsdt: estimatePnl(card),
-      volumeUsdt: estimateVolume(card)
+      pnlUsdt,
+      volumeUsdt
     };
     // 同 id 去重 → 取最新状态
     saved = [enriched, ...saved.filter((c) => c.id !== card.id)];

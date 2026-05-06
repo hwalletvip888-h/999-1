@@ -1178,6 +1178,200 @@ export function TransactionCard(props: TransactionCardProps) {
   if (card.cardType === "strategy" && card.module === "grid") {
     return <AgentCard {...props} />;
   }
+  // SignalCard 链上机会 / 信号（V6）
+  if (card.cardType === "signal") {
+    return <SignalCard {...props} />;
+  }
   // GenericCard 通用
   return <GenericCard {...props} />;
+}
+
+// ─────────────────────────────────────────────────────────────
+// SignalCard — V6 链上机会 / 信号卡片
+// ─────────────────────────────────────────────────────────────
+function SignalCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const interactive = card.status === "preview";
+  const rows = card.rows ?? [];
+  const sourceMeta: Record<string, { label: string; emoji: string; color: string; bg: string }> = {
+    smart_money: { label: "聪明钱",   emoji: "🐋", color: "#1D4ED8", bg: "#DBEAFE" },
+    kol:         { label: "KOL 喊单", emoji: "📣", color: "#B45309", bg: "#FEF3C7" },
+    trenches:    { label: "战壕新币", emoji: "⚔️", color: "#BE185D", bg: "#FCE7F3" },
+    trend_engine:{ label: "趋势引擎", emoji: "📈", color: "#15803D", bg: "#DCFCE7" }
+  };
+  const src = sourceMeta[card.signalSource ?? ""] ?? sourceMeta.trend_engine;
+
+  const apr = card.protocolApr ?? "—";
+  const security = typeof card.securityScore === "number" ? card.securityScore : null;
+  const securityTone = security == null
+    ? { fg: "#6B7280", bg: "#F3F4F6", label: "未审计" }
+    : security >= 90 ? { fg: "#15803D", bg: "#DCFCE7", label: "高安全" }
+    : security >= 75 ? { fg: "#1D4ED8", bg: "#DBEAFE", label: "中等" }
+    : { fg: "#B45309", bg: "#FEF3C7", label: "需注意" };
+
+  return (
+    <View className="mx-4 my-2">
+      <Surface padded={false}>
+        {/* 顶部：渐变带 + 信号源标签 */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingHorizontal: 14,
+            paddingTop: 12,
+            paddingBottom: 10,
+            borderBottomWidth: 1,
+            borderBottomColor: "#F3F4F6"
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: src.bg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 }}>
+              <Text style={{ fontSize: 11 }}>{src.emoji}</Text>
+              <Text style={{ marginLeft: 4, fontSize: 10, color: src.color, fontFamily: "Inter_600SemiBold", letterSpacing: 0.3 }}>
+                {src.label}
+              </Text>
+            </View>
+            {card.simulationMode ? (
+              <View style={{ marginLeft: 6, backgroundColor: "#FEF3C7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                <Text style={{ fontSize: 9, color: "#B45309", fontFamily: "Inter_500Medium" }}>演示数据</Text>
+              </View>
+            ) : null}
+          </View>
+          <StatusPill status={card.status} />
+        </View>
+
+        {/* 标题区 */}
+        <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+          <Text style={{ fontSize: 17, color: "#0F0F0F", fontFamily: "Inter_700Bold", letterSpacing: -0.4 }}>
+            {card.title}
+          </Text>
+          {card.subtitle ? (
+            <Text style={{ marginTop: 2, fontSize: 12, color: "#6B7280", fontFamily: "Inter_400Regular" }}>
+              {card.subtitle}
+            </Text>
+          ) : null}
+        </View>
+
+        {/* 大数字区：APR + 安全分 */}
+        <View
+          style={{
+            flexDirection: "row",
+            paddingHorizontal: 14,
+            paddingBottom: 12,
+            gap: 10
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "#FEFCE8",
+              borderRadius: 12,
+              padding: 12,
+              borderWidth: 1,
+              borderColor: "#FDE68A"
+            }}
+          >
+            <Text style={{ fontSize: 10, color: "#92400E", fontFamily: "Inter_500Medium", letterSpacing: 0.5, textTransform: "uppercase" }}>
+              年化收益
+            </Text>
+            <Text style={{ marginTop: 4, fontSize: 22, color: "#0F0F0F", fontFamily: "Inter_700Bold", letterSpacing: -0.6 }}>
+              {apr}
+              <Text style={{ fontSize: 14, color: "#6B7280", fontFamily: "Inter_500Medium" }}> %</Text>
+            </Text>
+            {card.protocolTvl ? (
+              <Text style={{ marginTop: 2, fontSize: 10, color: "#6B7280", fontFamily: "Inter_400Regular" }}>
+                TVL ${card.protocolTvl}
+              </Text>
+            ) : null}
+          </View>
+
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: securityTone.bg,
+              borderRadius: 12,
+              padding: 12
+            }}
+          >
+            <Text style={{ fontSize: 10, color: securityTone.fg, fontFamily: "Inter_500Medium", letterSpacing: 0.5, textTransform: "uppercase" }}>
+              安全分
+            </Text>
+            <Text style={{ marginTop: 4, fontSize: 22, color: "#0F0F0F", fontFamily: "Inter_700Bold", letterSpacing: -0.6 }}>
+              {security ?? "—"}
+              {security !== null ? <Text style={{ fontSize: 14, color: "#6B7280", fontFamily: "Inter_500Medium" }}>/100</Text> : null}
+            </Text>
+            <Text style={{ marginTop: 2, fontSize: 10, color: securityTone.fg, fontFamily: "Inter_500Medium" }}>
+              {securityTone.label}
+            </Text>
+          </View>
+        </View>
+
+        {/* AI 解释 */}
+        {card.aiSummary ? (
+          <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+            <Text style={{ fontSize: 12, lineHeight: 18, color: "#374151", fontFamily: "Inter_400Regular" }}>
+              {card.aiSummary}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* 备选机会列表 */}
+        {rows.length > 0 ? (
+          <View style={{ paddingHorizontal: 14, paddingBottom: 8 }}>
+            <Text style={{ marginBottom: 6, fontSize: 10, color: "#9CA3AF", fontFamily: "Inter_500Medium", letterSpacing: 0.5, textTransform: "uppercase" }}>
+              其他候选
+            </Text>
+            <View style={{ backgroundColor: "#F9FAFB", borderRadius: 10, paddingVertical: 4, paddingHorizontal: 10 }}>
+              {rows.map((row, i) => (
+                <View
+                  key={`${card.id}_${row.label}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 6,
+                    borderTopWidth: i === 0 ? 0 : 1,
+                    borderTopColor: "#F3F4F6"
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: "#374151", fontFamily: "Inter_500Medium" }}>{row.label}</Text>
+                  <Text style={{ fontSize: 12, color: "#0F0F0F", fontFamily: "Inter_600SemiBold" }}>{row.value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {/* 警示 */}
+        {card.warning ? (
+          <View style={{ marginHorizontal: 14, marginBottom: 10, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "#FEF3C7", borderRadius: 10, flexDirection: "row" }}>
+            <Text style={{ fontSize: 11 }}>⚠️</Text>
+            <Text style={{ flex: 1, marginLeft: 6, fontSize: 11, lineHeight: 15, color: "#92400E", fontFamily: "Inter_400Regular" }}>
+              {card.warning}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* 操作 */}
+        {interactive ? (
+          <View className="flex-row gap-2 border-t border-line px-4 py-3">
+            <Button
+              label={card.secondaryAction ?? "换一个"}
+              variant="secondary"
+              size="sm"
+              onPress={() => onCancel?.(card.id)}
+              className="flex-1"
+            />
+            <Button
+              label={card.primaryAction ?? "一键进入"}
+              variant="primary"
+              size="sm"
+              onPress={() => onConfirm?.(card.id)}
+              className="flex-1"
+            />
+          </View>
+        ) : null}
+      </Surface>
+    </View>
+  );
 }

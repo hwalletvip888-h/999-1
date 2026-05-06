@@ -9,7 +9,17 @@
 const API_BASE = 'https://api.hvip.io';
 
 export interface AIIntent {
-  action: 'price' | 'trade_long' | 'trade_short' | 'grid' | 'swap' | 'earn' | 'position' | 'portfolio' | 'chat';
+  action:
+    | 'price'
+    | 'trade_long'
+    | 'trade_short'
+    | 'grid'
+    | 'swap'
+    | 'earn'
+    | 'position'
+    | 'portfolio'
+    | 'signal'   // V6 链上机会发现（聪明钱信号 / DeFi 推荐）
+    | 'chat';
   symbol?: string;
   amount?: number;
   leverage?: number;
@@ -113,6 +123,10 @@ function fallbackIntent(input: string): AIIntent {
   }
   if (/兑换|swap|换成|买入/.test(lower)) {
     return { action: 'swap', symbol, amount, reply: '' };
+  }
+  // 信号 / 机会发现要在 earn 之前判断（关键词重叠时 signal 优先）
+  if (/机会|信号|聪明钱|smart\s*money|链上(赚|赚币)|发现|推荐|找(币|机会|项目)|kol|战壕|trenches/.test(lower)) {
+    return { action: 'signal', reply: '' };
   }
   if (/赚币|earn|质押|stake|理财|apy/.test(lower)) {
     const isEth = /eth|以太/.test(lower);

@@ -10,6 +10,8 @@ import type { HWalletCard } from '../../types/card';
 import type { AIStep } from '../../types';
 import { makeId } from '../../utils/id';
 import { buildPriceCard, buildPositionCard, buildPortfolioCard } from './cardApi';
+// V6 链上机会发现客户端
+import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
 
 /** 步骤回调类型 */
 export type OnStepCallback = (steps: AIStep[]) => void;
@@ -523,6 +525,117 @@ export async function handleUserPrompt(
             card
           },
           simulationMode: false
+        };
+      }
+
+      // ─── 链上机会 / 信号发现（V6 链上赚币） ───
+      case 'signal': {
+        // s2 扫描链上聪明钱
+        steps = advanceStep(steps, 's2', 'active', onStep);
+        const [oppRes, sigRes] = await Promise.all([
+          okxOnchainClient.discoverOpportunities({ minApr: 3 }),
+          okxOnchainClient.fetchSignals({})
+        ]);
+        steps = advanceStep(steps, 's2', 'done', onStep);
+        await delay(150);
+
+        // s3 过滤 + 安全分级
+        steps = advanceStep(steps, 's3', 'active', onStep);
+        const opps: DefiOpportunity[] = (oppRes.data || []).filter((o) => o.securityScore >= 70).slice(0, 5);
+        const signals: DexSignal[] = (sigRes.data || []).slice(0, 5);
+        const isMock = oppRes.simulationMode || sigRes.simulationMode;
+        await delay(220);
+        steps = advanceStep(steps, 's3', 'done', onStep);
+        await delay(150);
+
+        // s4 出卡（取最优一条 → 主信号卡；其余写到 rows 里给用户横向参考）
+        steps = advanceStep(steps, 's4', 'active', onStep);
+
+        // 决策优先级：先看高安全 + 高 APR 的 DeFi 机会，没有再退到 dex 信号
+        let card: HWalletCard;
+        if (opps.length > 0) {
+          const best = [...opps].sort((a, b) => parseFloat(b.apr) - parseFloat(a.apr))[0];
+          card = {
+            id: makeId('card_signal'),
+            productLine: 'v6',
+            module: 'earn',
+            cardType: 'signal',
+            header: '机会卡片',
+            title: `${best.protocol} · ${best.asset} 链上机会`,
+            subtitle: `${best.chain.toUpperCase()} · 来源 ${best.source === 'smart_money' ? '聪明钱' : best.source === 'trenches' ? '战壕' : '趋势引擎'}`,
+            riskLevel: best.riskTag === 'low' ? '低' : best.riskTag === 'medium' ? '中' : '高',
+            status: 'preview',
+            simulationMode: isMock,
+            userPrompt: input,
+            aiSummary: best.description,
+            createdAt: now,
+            signalSource: best.source,
+            protocolApr: best.apr,
+            protocolTvl: best.tvlUsd,
+            securityScore: best.securityScore,
+            expectedReturn: `年化 ${best.apr}%`,
+            rows: opps.slice(0, 4).map((o) => ({
+              label: o.protocol,
+              value: `${o.apr}% · ${o.chain}`
+            })),
+            warning: isMock ? '当前为演示数据，正式数据需服务器装好 onchainos CLI。' : '链上机会受合约风险与市场波动影响，建议小额试水。',
+            primaryAction: '一键进入',
+            secondaryAction: '换一个'
+          };
+        } else if (signals.length > 0) {
+          const top = signals[0];
+          card = {
+            id: makeId('card_signal'),
+            productLine: 'v6',
+            module: 'wallet',
+            cardType: 'signal',
+            header: '机会卡片',
+            title: `${top.symbol} · ${top.chain.toUpperCase()} 链上信号`,
+            subtitle: `${top.signalType === 'smart_money_buy' ? '聪明钱买入' : top.signalType === 'kol_call' ? 'KOL 喊单' : '战壕新币'}`,
+            riskLevel: '中',
+            status: 'preview',
+            simulationMode: isMock,
+            userPrompt: input,
+            aiSummary: top.description,
+            createdAt: now,
+            signalSource: top.signalType === 'smart_money_buy' ? 'smart_money'
+              : top.signalType === 'kol_call' ? 'kol'
+              : 'trenches',
+            rows: [
+              { label: '价格', value: `$${top.priceUsd}` },
+              { label: '24h', value: top.changePct24h },
+              { label: '市值', value: top.marketCapUsd },
+              { label: '来源', value: top.source }
+            ],
+            warning: '新币 / Meme 风险极大，请确认合约安全后再小额买入。',
+            primaryAction: '查看详情',
+            secondaryAction: '换一个'
+          };
+        } else {
+          // 完全没机会：返回提示（不出卡）
+          steps = advanceStep(steps, 's4', 'done', onStep);
+          return {
+            ok: true,
+            data: {
+              replyText: intent.reply || '🌑 暂未发现符合条件的链上机会，可能需要等链上信号引擎暖启动。',
+            },
+            simulationMode: isMock
+          };
+        }
+
+        steps = advanceStep(steps, 's4', 'done', onStep);
+
+        return {
+          ok: true,
+          data: {
+            replyText: intent.reply || (
+              opps.length > 0
+                ? `🛰️ 已为你扫描 **${opps.length}** 个链上赚币机会\n\n最佳：**${opps[0].protocol}** 年化 **${opps[0].apr}%** · 安全分 ${opps[0].securityScore}/100\n\n点开卡片查看详情 👇`
+                : `📡 链上信号已就绪：${signals[0]?.symbol}\n\n点击卡片查看详情 👇`
+            ),
+            card
+          },
+          simulationMode: isMock
         };
       }
 

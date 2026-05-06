@@ -21,6 +21,7 @@ import {
   SparkIcon
 } from "../components/ui/Icons";
 import { sessionStore, useSession } from "../services/sessionStore";
+import { refreshAddresses } from "../services/walletApi";
 import { toastBus } from "../services/toastBus";
 import type { AppView } from "../types";
 import { getProfileStats } from "../services/core/userApi";
@@ -79,6 +80,23 @@ const menu: {
 export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
   const session = useSession();
 
+  // 挂载时主动刷新一次地址（兜底"登录了没地址"场景：verify 时 OKX 没回 addressList）
+  useEffect(() => {
+    if (!session?.token) return;
+    let cancelled = false;
+    refreshAddresses().then((next) => {
+      if (cancelled || !next || !session) return;
+      // 只在地址有更新时写回 session（避免无限触发 useSession）
+      const oldAddr = session.addresses;
+      const sameEvm = (oldAddr?.evm?.[0]?.address ?? "") === (next.evm?.[0]?.address ?? "");
+      const sameSol = (oldAddr?.solana?.[0]?.address ?? "") === (next.solana?.[0]?.address ?? "");
+      if (!sameEvm || !sameSol) {
+        sessionStore.set({ ...session, addresses: next });
+      }
+    }).catch(() => { /* 网络失败静默 */ });
+    return () => { cancelled = true; };
+  }, [session?.token]);
+
   const handleLogout = () => {
     Alert.alert("退出登录", "退出后需重新输入邮箱验证码，确定吗？", [
       { text: "取消", style: "cancel" },
@@ -118,6 +136,20 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
         {/* 个人 hero */}
         <ProfileHero email={session?.email ?? ""} accountId={session?.accountId ?? ""} />
+
+        {/* 链上钱包地址（Agent Wallet 多链） */}
+        {session?.addresses ? (
+          <View className="mt-5 px-4">
+            <Text className="mb-2.5 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">
+              我的钱包地址
+            </Text>
+            <Surface padded={false} elevation={1}>
+              <AddressRow chain="EVM" address={session.addresses.evm?.[0]?.address ?? ""} />
+              <AddressRow chain="Solana" address={session.addresses.solana?.[0]?.address ?? ""} divider />
+              <AddressRow chain="X Layer" address={session.addresses.xlayer?.[0]?.address ?? ""} divider />
+            </Surface>
+          </View>
+        ) : null}
 
         {/* 数据三联 */}
         <View className="mt-5 px-4">
@@ -189,6 +221,46 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
         <Text className="mt-5 text-center text-[12px] text-muted">v1.0.0 · H Wallet</Text>
       </ScrollView>
     </View>
+  );
+}
+
+/* ============= 链上地址行 ============= */
+
+function AddressRow({ chain, address, divider }: { chain: string; address: string; divider?: boolean }) {
+  const display = address
+    ? `${address.slice(0, 6)}...${address.slice(-6)}`
+    : "未生成";
+  const isEmpty = !address || address === "N/A";
+
+  async function copy() {
+    if (!address || isEmpty) return;
+    await Clipboard.setStringAsync(address);
+    toastBus.push({ emoji: "📋", title: "地址已复制", subtitle: chain, tone: "success", duration: 1500 });
+  }
+
+  return (
+    <Pressable
+      onPress={copy}
+      disabled={isEmpty}
+      className={`flex-row items-center px-4 py-3 active:bg-surface ${divider ? "border-t border-line" : ""}`}
+    >
+      <View className="mr-3 h-9 w-9 items-center justify-center rounded-2xl" style={{ backgroundColor: "#F4F4F5" }}>
+        <Text className="text-[12px] font-semibold text-ink">
+          {chain === "EVM" ? "Ξ" : chain === "Solana" ? "◎" : "X"}
+        </Text>
+      </View>
+      <View className="flex-1">
+        <Text className="text-[14px] font-semibold text-ink">{chain}</Text>
+        <Text className={`mt-0.5 text-[12px] ${isEmpty ? "text-muted italic" : "text-muted"}`} style={{ fontFamily: isEmpty ? undefined : "JetBrainsMono_400Regular" }}>
+          {display}
+        </Text>
+      </View>
+      {!isEmpty ? (
+        <View className="rounded-full bg-surface px-2.5 py-1">
+          <Text className="text-[11px] font-semibold text-ink">复制</Text>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
