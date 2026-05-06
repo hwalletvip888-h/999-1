@@ -13,14 +13,23 @@ export type CardType =
   | "strategy"
   | "wallet_action"
   | "risk_alert"
-  | "info";
+  | "info"
+  // 链上赚币机会推送（来自 V6 信号引擎，无需 / 不可直接执行）
+  | "signal"
+  // 卡库稀有度系统的成就卡（用户达成里程碑产生）
+  | "achievement";
 
 export type CardHeader =
   | "交易卡片"
   | "策略卡片"
   | "钱包操作卡"
   | "风险提示"
-  | "信息卡片";
+  | "信息卡片"
+  | "机会卡片"
+  | "成就卡片";
+
+// 卡片稀有度（卡库系统第二阶段会升级为链上 NFT）
+export type CardRarity = "common" | "fine" | "rare" | "legendary" | "mythic";
 
 export type CardStatus =
   | "preview"
@@ -128,6 +137,26 @@ export type HWalletCard = {
     total: number;
     usdtValue: number;
   }>;
+  // ─── 卡库系统 / 会员等级 ────────────────────────────────
+  rarity?: CardRarity;
+  achievementHints?: string[];
+  // ─── 五道安全锁（PRD 核心设计，必须实现）────────────────
+  authLimitUsd?: number;        // 第一锁：授权金额上限
+  stopLossPct?: number;          // 第二锁：平台统一止损线（默认 10）
+  cooldownEndsAt?: number;       // 第三锁：冷静期截止 UNIX ms
+  emergencyStopRef?: string;     // 第四锁：紧急停止标记（被全局红按钮触发后写入）
+  auditTrail?: Array<{           // 第五锁：实时透明日志
+    ts: number;
+    actor: "user" | "ai" | "system";
+    action: string;
+    detail?: string;
+  }>;
+  // ─── 链上赚币机会卡（signal 类型）专用 ──────────────────
+  signalSource?: "smart_money" | "kol" | "trenches" | "trend_engine";
+  protocolApr?: string;
+  protocolTvl?: string;
+  securityScore?: number;        // 0-100；< 60 视为有风险
+  expectedReturn?: string;
 };
 
 // 兼容旧代码

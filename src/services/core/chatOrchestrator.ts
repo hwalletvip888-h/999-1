@@ -14,11 +14,16 @@ import { buildPriceCard, buildPositionCard, buildPortfolioCard } from './cardApi
 /** 步骤回调类型 */
 export type OnStepCallback = (steps: AIStep[]) => void;
 
-/** 根据 action 生成对应的步骤列表 */
+/**
+ * 根据 action 生成对应的步骤列表（5 步制：理解 → 查数据 → 风控 → 出卡 → 等待确认）
+ * 第 6/7 步（执行中 / 已上链 / 入库）由 ChatScreen.confirmCard 在用户点确认后单独追加。
+ */
 function buildSteps(action: string): AIStep[] {
   const base: AIStep[] = [
     { id: 's1', label: '理解你的意图', icon: '🧠', status: 'pending' },
   ];
+  // 风控预检：体现 AI 在为用户负责（PRD 五道安全锁的视觉钩子）
+  const safety: AIStep = { id: 's_safety', label: '风控预检（五道安全锁）', icon: '🛡️', status: 'pending' };
 
   switch (action) {
     case 'price':
@@ -34,6 +39,7 @@ function buildSteps(action: string): AIStep[] {
         ...base,
         { id: 's2', label: '获取最新价格', icon: '💹', status: 'pending' },
         { id: 's3', label: '计算风险参数', icon: '⚡', status: 'pending' },
+        safety,
         { id: 's4', label: '生成交易卡片', icon: '🎴', status: 'pending' },
       ];
     case 'grid':
@@ -41,6 +47,7 @@ function buildSteps(action: string): AIStep[] {
         ...base,
         { id: 's2', label: '分析价格区间', icon: '📐', status: 'pending' },
         { id: 's3', label: '获取 AI 推荐参数', icon: '🤖', status: 'pending' },
+        safety,
         { id: 's4', label: '生成网格策略卡片', icon: '🎴', status: 'pending' },
       ];
     case 'swap':
@@ -48,6 +55,7 @@ function buildSteps(action: string): AIStep[] {
         ...base,
         { id: 's2', label: '查询兑换汇率', icon: '🔄', status: 'pending' },
         { id: 's3', label: '估算到账数量', icon: '🧮', status: 'pending' },
+        safety,
         { id: 's4', label: '生成兑换卡片', icon: '🎴', status: 'pending' },
       ];
     case 'earn':
@@ -55,6 +63,7 @@ function buildSteps(action: string): AIStep[] {
         ...base,
         { id: 's2', label: '查询协议收益率', icon: '💰', status: 'pending' },
         { id: 's3', label: '评估风险等级', icon: '🛡️', status: 'pending' },
+        safety,
         { id: 's4', label: '生成质押卡片', icon: '🎴', status: 'pending' },
       ];
     case 'position':
@@ -70,6 +79,13 @@ function buildSteps(action: string): AIStep[] {
         { id: 's2', label: '汇总账户资产', icon: '🏦', status: 'pending' },
         { id: 's3', label: '计算总权益', icon: '📊', status: 'pending' },
         { id: 's4', label: '生成资产报告', icon: '🎴', status: 'pending' },
+      ];
+    case 'signal':
+      return [
+        ...base,
+        { id: 's2', label: '扫描链上聪明钱', icon: '🐋', status: 'pending' },
+        { id: 's3', label: '过滤新币 / Meme 安全', icon: '🛡️', status: 'pending' },
+        { id: 's4', label: '生成机会卡片', icon: '🎴', status: 'pending' },
       ];
     default:
       return [
@@ -91,6 +107,17 @@ function advanceStep(steps: AIStep[], stepId: string, status: AIStep['status'], 
 /** 延迟工具 */
 function delay(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));
+}
+
+/** 推进风控预检步骤（仅当步骤列表里包含 s_safety 时生效） */
+async function advanceSafety(steps: AIStep[], onStep?: OnStepCallback): Promise<AIStep[]> {
+  const hasSafety = steps.some((s) => s.id === 's_safety');
+  if (!hasSafety) return steps;
+  let next = advanceStep(steps, 's_safety', 'active', onStep);
+  await delay(280);
+  next = advanceStep(next, 's_safety', 'done', onStep);
+  await delay(140);
+  return next;
 }
 
 export async function handleUserPrompt(
@@ -164,6 +191,8 @@ export async function handleUserPrompt(
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
 
+        steps = await advanceSafety(steps, onStep);
+
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card: HWalletCard = {
           id: makeId('card_perp'),
@@ -217,6 +246,8 @@ export async function handleUserPrompt(
         await delay(300);
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
+
+        steps = await advanceSafety(steps, onStep);
 
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card: HWalletCard = {
@@ -277,6 +308,8 @@ export async function handleUserPrompt(
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
 
+        steps = await advanceSafety(steps, onStep);
+
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card: HWalletCard = {
           id: makeId('card_grid'),
@@ -335,6 +368,8 @@ export async function handleUserPrompt(
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
 
+        steps = await advanceSafety(steps, onStep);
+
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card: HWalletCard = {
           id: makeId('card_swap'),
@@ -391,6 +426,8 @@ export async function handleUserPrompt(
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
 
+        steps = await advanceSafety(steps, onStep);
+
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card: HWalletCard = {
           id: makeId('card_earn'),
@@ -443,6 +480,8 @@ export async function handleUserPrompt(
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
 
+        steps = await advanceSafety(steps, onStep);
+
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card = await buildPositionCard(input);
         steps = advanceStep(steps, 's4', 'done', onStep);
@@ -470,6 +509,8 @@ export async function handleUserPrompt(
         await delay(200);
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
+
+        steps = await advanceSafety(steps, onStep);
 
         steps = advanceStep(steps, 's4', 'active', onStep);
         const card = await buildPortfolioCard(input);

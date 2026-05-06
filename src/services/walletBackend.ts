@@ -1,17 +1,27 @@
 /**
  * WalletBackend — H Wallet 后端服务
- * 
- * 实现方式：
- * 1. 邮箱 OTP 登录：调用 OKX Agentic Wallet 真实 API
- *    - /priapi/v5/wallet/agentic/auth/init → OKX 发送验证码到用户邮箱
- *    - /priapi/v5/wallet/agentic/auth/verify → 验证 OTP，自动创建钱包
- * 2. 地址查询：通过 JWT token 调用 OKX wallet API
- * 
- * 不依赖 onchainos CLI，纯 HTTP 实现
+ *
+ * 通过 IAgentWalletProvider 抽象选择两种实现：
+ *   - OnchainosCliAgentWalletProvider（默认，按用户决策）
+ *     · 服务器装 `pip install onchainos`
+ *     · shell-out 调 `onchainos wallet login/verify/addresses`
+ *   - OkxHttpAgentWalletProvider（fallback）
+ *     · 直接打 OKX priapi/v5/wallet/agentic/* HTTP 接口
+ *     · CLI 不可用时自动启用
+ *
+ * 暴露端点：
+ *   - POST /api/auth/send-otp           （旧端点，向后兼容）
+ *   - POST /api/auth/verify-otp         （旧端点）
+ *   - POST /api/agent-wallet/send-code  （onchainos-skills 推荐）
+ *   - POST /api/agent-wallet/verify     （onchainos-skills 推荐）
+ *   - GET  /api/wallet/addresses        （刷新地址表）
+ *   - GET  /health
+ *   - POST /api/ai/chat       /api/ai/intent
  */
 import * as http from "http";
 import { chatWithAI, recognizeIntent } from "./aiChat";
 import * as crypto from 'crypto';
+import { getAgentWalletProvider } from "./agentWalletProviders";
 
 const PORT = parseInt(process.env.WALLET_PORT || '3100');
 const OKX_API_KEY = process.env.OKX_API_KEY || '';
@@ -92,6 +102,28 @@ interface OtpSession {
 const otpSessions = new Map<string, OtpSession>();
 
 // ─── API 处理函数 ─────────────────────────────────────────────
+
+/**
+ * 发送 OTP — 委托给 IAgentWalletProvider
+ * 优先 onchainos CLI；不可用时回退到 OKX priapi HTTP 调用
+ */
+async function handleSendOtpViaProvider(email: string): Promise<{ ok: boolean; error?: string }> {
+  const provider = await getAgentWalletProvider();
+  return provider.sendOtp(email);
+}
+
+async function handleVerifyOtpViaProvider(email: string, code: string) {
+  const provider = await getAgentWalletProvider();
+  return provider.verifyOtp(email, code);
+}
+
+async function handleGetAddressesViaProvider(token: string) {
+  const provider = await getAgentWalletProvider();
+  return provider.getAddresses(token);
+}
+
+// ─── 旧实现（已被 provider 替代，保留作为 HTTP 实现的 in-line 参考） ──
+// （下面的 handleSendOtp / handleVerifyOtp / handleGetAddresses 已被路由 不再调用）
 
 /**
  * 发送 OTP — 调用 OKX Agentic Wallet 真实 API
@@ -279,21 +311,29 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
 
   try {
-    if (url === '/api/auth/send-otp' && req.method === 'POST') {
+    // 旧端点：/api/auth/* | 新端点（onchainos-skills 推荐）：/api/agent-wallet/*
+    const isSendOtp =
+      (url === '/api/auth/send-otp' || url === '/api/agent-wallet/send-code') && req.method === 'POST';
+    const isVerifyOtp =
+      (url === '/api/auth/verify-otp' || url === '/api/agent-wallet/verify') && req.method === 'POST';
+    const isGetAddrs =
+      (url === '/api/wallet/addresses' || url === '/api/agent-wallet/addresses') && req.method === 'GET';
+
+    if (isSendOtp) {
       const body = await parseBody(req);
-      const result = await handleSendOtp(body.email);
+      const result = await handleSendOtpViaProvider(body.email);
       res.writeHead(200);
       res.end(JSON.stringify(result));
 
-    } else if (url === '/api/auth/verify-otp' && req.method === 'POST') {
+    } else if (isVerifyOtp) {
       const body = await parseBody(req);
-      const result = await handleVerifyOtp(body.email, body.code);
+      const result = await handleVerifyOtpViaProvider(body.email, body.code);
       res.writeHead(200);
       res.end(JSON.stringify(result));
 
-    } else if (url === '/api/wallet/addresses' && req.method === 'GET') {
+    } else if (isGetAddrs) {
       const token = (req.headers.authorization || '').replace('Bearer ', '');
-      const result = await handleGetAddresses(token);
+      const result = await handleGetAddressesViaProvider(token);
       res.writeHead(200);
       res.end(JSON.stringify(result));
 
@@ -322,8 +362,15 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true, intent }));
 
     } else if (url === '/health') {
+      const provider = await getAgentWalletProvider();
       res.writeHead(200);
-      res.end(JSON.stringify({ ok: true, service: 'h-wallet-backend', mode: 'okx-agentic-real', ai: 'deepseek+claude' }));
+      res.end(JSON.stringify({
+        ok: true,
+        service: 'h-wallet-backend',
+        agentWallet: provider.id, // 'cli' | 'http'
+        mode: 'okx-agentic-real',
+        ai: 'deepseek+claude'
+      }));
 
     } else {
       res.writeHead(404);
@@ -335,9 +382,15 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
   console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${PORT}`);
-  console.log(`[WalletBackend] 模式: OKX Agentic + DeepSeek AI + Claude`);
   console.log(`[WalletBackend] AI Chat: /api/ai/chat | Intent: /api/ai/intent`);
   console.log(`[WalletBackend] 健康检查: http://localhost:${PORT}/health`);
+  // 启动时探测 Agent Wallet provider，将选择结果写到日志
+  try {
+    const provider = await getAgentWalletProvider();
+    console.log(`[WalletBackend] 📡 Agent Wallet 提供方 = ${provider.id} ${provider.id === 'cli' ? '(onchainos CLI)' : '(OKX priapi HTTP fallback)'}`);
+  } catch (err: any) {
+    console.error(`[WalletBackend] ⚠️ Agent Wallet provider 初始化失败：${err.message}`);
+  }
 });

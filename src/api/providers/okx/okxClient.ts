@@ -1,5 +1,10 @@
 /**
- * OKX REST API v5 HTTP 客户端
+ * okxClient — OKX V5 CEX REST API HTTP 客户端
+ *
+ * ⚠️ 产品线归属：V5（AI 合约策略）
+ *   - 本文件只服务 V5 产品线（永续 / 网格 / 现货 / Algo 等中心化交易所交易）
+ *   - V6（链上赚币）请使用 ./okxOnchainClient
+ *   - 两者命名锁定，不互相调用，参见 H_Wallet_V5_V6_Product_Skills.md
  *
  * 基于 okx-contract-monitor 技能模板改写，
  * 适配 React Native (Expo) 环境：使用 fetch 替代 Node https 模块。
@@ -8,84 +13,12 @@
  * 签名内容 = timestamp + method + requestPath + body
  */
 
-import CryptoJS from 'crypto-js';
+// 传输层 + 签名 / 类型 → 都来自中性 core，V5/V6 共享同一份实现，不互相依赖
+import { request as coreRequest, type OkxCredentials, type OkxResponse } from './okxHttpCore';
 
-// ─── 类型定义 ──────────────────────────────────────────────────
-
-export interface OkxCredentials {
-  apiKey: string;
-  secretKey: string;
-  passphrase: string;
-}
-
-export interface OkxResponse<T = any> {
-  code: string;
-  msg: string;
-  data: T;
-}
-
-// ─── 配置 ──────────────────────────────────────────────────────
-
-const BASE_URL = 'https://www.okx.com';
-const TIMEOUT_MS = 15000;
-
-// ─── 签名 ──────────────────────────────────────────────────────
-
-function sign(
-  timestamp: string,
-  method: string,
-  path: string,
-  body: string,
-  secretKey: string
-): string {
-  const msg = timestamp + method + path + body;
-  const hash = CryptoJS.HmacSHA256(msg, secretKey);
-  return CryptoJS.enc.Base64.stringify(hash);
-}
-
-// ─── 请求封装 ──────────────────────────────────────────────────
-
-export async function request<T = any>(
-  method: 'GET' | 'POST',
-  path: string,
-  creds?: OkxCredentials | null,
-  body?: Record<string, any>
-): Promise<OkxResponse<T>> {
-  const ts = new Date().toISOString();
-  const bodyStr = body ? JSON.stringify(body) : '';
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  if (creds) {
-    headers['OK-ACCESS-KEY'] = creds.apiKey;
-    headers['OK-ACCESS-SIGN'] = sign(ts, method, path, bodyStr, creds.secretKey);
-    headers['OK-ACCESS-TIMESTAMP'] = ts;
-    headers['OK-ACCESS-PASSPHRASE'] = creds.passphrase;
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const res = await fetch(`${BASE_URL}${path}`, {
-      method,
-      headers,
-      body: method === 'POST' && bodyStr ? bodyStr : undefined,
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    return json as OkxResponse<T>;
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      throw new Error(`[OKX] 请求超时: ${method} ${path}`);
-    }
-    throw new Error(`[OKX] 请求失败: ${err.message}`);
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// re-export 给现有 V5 服务（H_PerpetualApi / H_GridApi / H_AlgoApi / H_BotApi 等）使用
+export type { OkxCredentials, OkxResponse };
+export const request = coreRequest;
 
 // ─── 公开接口（无需签名） ──────────────────────────────────────
 

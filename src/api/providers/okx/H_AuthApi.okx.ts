@@ -8,8 +8,9 @@ import type {
   H_Session,
   H_UserProfile,
 } from '../../contracts/H_AuthApi';
-import type { OkxCredentials } from './okxClient';
-import * as okxClient from './okxClient';
+// 平台中性层 — 走通用传输，不跟任一产品线绑定
+import type { OkxCredentials } from './okxHttpCore';
+import * as okxClient from './okxHttpCore';
 
 /** 本地会话存储（运行时） */
 let currentSession: H_Session | null = null;

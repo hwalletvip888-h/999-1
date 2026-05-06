@@ -234,20 +234,45 @@ export function ChatScreen() {
     );
   }
 
-  /** 不同卡类型，确认后落到不同的「最终态」并入库。 */
+  /**
+   * 不同卡类型，确认后落到不同的「最终态」并入库。
+   * 优先看 productLine + module（V5/V6 协议），向后兼容老的 category 字段。
+   */
   function statusOnConfirm(card: TradeCard): CardStatus {
-    switch (card.category) {
-      case "agent":
-        return "running"; // Agent → 进入运行中
-      case "perpetual":
-        return "executed"; // 合约 → 已成交
-      case "swap":
-        return "executed";
-      case "stake":
-        return "running"; // 质押 → 持续生息
-      default:
-        return "confirmed";
+    // V5：合约即时成交；网格 → 持续运行
+    if (card.productLine === "v5") {
+      if (card.module === "perpetual") return "executed";
+      if (card.module === "grid") return "running";
     }
+    // V6：链上 swap 即时成交；赚币持续运行
+    if (card.productLine === "v6") {
+      if (card.module === "swap") return "executed";
+      if (card.module === "earn") return "running";
+      if (card.module === "wallet") return "executed";
+    }
+    // 兼容旧 category 字段
+    switch (card.category) {
+      case "agent": return "running";
+      case "perpetual": return "executed";
+      case "swap": return "executed";
+      case "stake": return "running";
+      case "earn": return "running";
+      case "grid": return "running";
+      default: return "confirmed";
+    }
+  }
+
+  /** 根据卡片产品线/类型给个文案，让 AI 反馈更准 */
+  function executionReplyFor(card: TradeCard, status: CardStatus): string {
+    if (status === "running") {
+      if (card.productLine === "v6") return "✅ 已上链并启动，策略将持续生息，可在 Agent 中心查看。";
+      return "✅ 策略已启动，正在运行中，可在 Agent 中心查看实时数据。";
+    }
+    if (status === "executed") {
+      if (card.productLine === "v6") return "✅ 链上交易已确认，卡片已保存到卡库。";
+      return "✅ 已成交，卡片已保存到卡库。";
+    }
+    return "✅ 已确认，卡片已保存到卡库。";
   }
 
   function confirmCard(cardId: string) {
@@ -260,7 +285,7 @@ export function ChatScreen() {
       )
     );
     setHeroMood("thinking");
-    // 2) 显示“模拟执行中...”
+    // 2) 显示"模拟执行中..."
     setMessages((current) => [
       ...current,
       {
@@ -272,21 +297,26 @@ export function ChatScreen() {
       }
     ]);
     scrollToEndSoon();
-    // 3) 约 1 秒后，设为 executed，显示"已执行成功"，并保存到卡库
+    // 3) 约 1 秒后，根据卡片类型决定最终状态，归档到卡库
     setTimeout(() => {
       // 找到当前卡片
       const targetCard = messages.find((m) => m.card?.id === cardId)?.card;
+      const finalStatus: CardStatus = targetCard ? statusOnConfirm(targetCard) : "executed";
       setMessages((current) =>
         current.map((message) =>
           message.card?.id === cardId
-            ? { ...message, card: { ...message.card, status: 'executed' as import("../types/card").CardStatus } }
+            ? { ...message, card: { ...message.card, status: finalStatus } }
             : message
         )
       );
-      updateCardStatus(cardId, 'executed');
-      // 保存到卡库
+      updateCardStatus(cardId, finalStatus);
+      // 保存到卡库（带审计日志，第五锁）
       if (targetCard) {
-        cardLibrary.add({ ...targetCard, status: 'executed' });
+        const auditTrail = [
+          ...(targetCard.auditTrail ?? []),
+          { ts: Date.now(), actor: "user" as const, action: "confirm", detail: targetCard.aiSummary }
+        ];
+        cardLibrary.add({ ...targetCard, status: finalStatus, auditTrail });
       }
       setMessages((current) => [
         ...current,
@@ -294,7 +324,7 @@ export function ChatScreen() {
           id: makeId("msg_ai_executed"),
           role: "assistant",
           kind: "text",
-          text: "✅ 已执行成功，卡片已保存到卡库。",
+          text: targetCard ? executionReplyFor(targetCard, finalStatus) : "✅ 已确认，卡片已保存到卡库。",
           createdAt: nowLabel()
         }
       ]);

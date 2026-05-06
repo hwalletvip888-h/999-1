@@ -11,8 +11,9 @@ import type {
 } from '../../contracts/H_RiskApi';
 import type { H_OpenPositionParams } from '../../contracts/H_PerpetualApi';
 import type { H_CreateGridParams } from '../../contracts/H_GridApi';
-import type { OkxCredentials } from './okxClient';
-import * as okxClient from './okxClient';
+// 平台中性层 — 走通用传输，不跟任一产品线绑定
+import type { OkxCredentials } from './okxHttpCore';
+import * as okxClient from './okxHttpCore';
 
 /** 默认风控限额 */
 const DEFAULT_LIMITS: H_RiskLimits = {

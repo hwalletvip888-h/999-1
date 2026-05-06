@@ -13,9 +13,11 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { GradientBackground } from "./src/components/GradientBackground";
 import { TopBar } from "./src/components/TopBar";
 import { AppToast } from "./src/components/AppToast";
+import { EmergencyStopButton } from "./src/components/EmergencyStopButton";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { ChatScreen } from "./src/screens/ChatScreen";
 import { CommunityScreen } from "./src/screens/CommunityScreen";
+import { AgentCenterScreen } from "./src/screens/AgentCenterScreen";
 import { ProfileScreen } from "./src/screens/ProfileScreen";
 import { WalletScreen } from "./src/screens/WalletScreen";
 import { setMarketFeed, OKXMarketFeed } from "./src/services/marketFeed";
@@ -109,7 +111,11 @@ export default function App() {
 
   const isWallet = activeView === "wallet";
   const isProfile = activeView === "profile";
-  const tabView: AppView = activeView === "community" ? "community" : "chat";
+  // 顶部胶囊三段：对话 / 社区 / Agent；其它视图（钱包、我的）通过滑入层覆盖
+  const tabView: AppView =
+    activeView === "community" ? "community" :
+    activeView === "agent" ? "agent" :
+    "chat";
 
   // Wallet slides in from left → right (translateX: -SCREEN_WIDTH → 0)
   const walletX = useSharedValue(-SCREEN_WIDTH);
@@ -160,12 +166,18 @@ export default function App() {
       <GradientBackground>
         <StatusBar style="dark" />
 
-        {/* 主页面:对话/社区 */}
+        {/* 主页面:对话 / 社区 / Agent 三段切换 */}
         <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right"]}>
           <View className="flex-1">
             <TopBar activeView={activeView} onChangeView={setActiveView} />
             <View className="flex-1">
-              {tabView === "community" ? <CommunityScreen /> : <ChatScreen />}
+              {tabView === "community" ? (
+                <CommunityScreen />
+              ) : tabView === "agent" ? (
+                <AgentCenterScreen onChangeView={setActiveView} />
+              ) : (
+                <ChatScreen />
+              )}
             </View>
           </View>
         </SafeAreaView>
@@ -209,6 +221,9 @@ export default function App() {
             <ProfileScreen onChangeView={setActiveView} />
           </SafeAreaView>
         </Animated.View>
+
+        {/* 全局紧急停止红按钮 — 第四锁，仅有运行中策略时浮现 */}
+        <EmergencyStopButton />
 
         {/* 全局通知条 — 始终位于最上层 */}
         <AppToast />

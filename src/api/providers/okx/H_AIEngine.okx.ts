@@ -15,6 +15,7 @@ import type {
 } from '../../contracts/H_AIEngine';
 import type { HWalletCard } from '../../../types/card';
 import { makeId } from '../../../utils/id';
+// V5 流程（合约下单 / 行情）— 走 V5 业务客户端
 import * as okxClient from './okxClient';
 import { getTrendSummary } from '../../../services/trendEngine';
 

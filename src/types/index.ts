@@ -19,7 +19,8 @@ export type TradeCardRow = {
 export type Candle = { o: number; h: number; l: number; c: number };
 
 export type { SavedCard } from "../services/cardLibrary";
-export type AppView = "wallet" | "chat" | "community" | "profile";
+// AppView 顶部胶囊三段：对话 / 社区 / Agent；钱包从左滑入；个人中心从右滑入
+export type AppView = "wallet" | "chat" | "community" | "agent" | "profile";
 
 export type MessageRole = "user" | "assistant" | "system";
 

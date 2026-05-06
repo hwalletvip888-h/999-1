@@ -11,8 +11,9 @@ import type {
   H_PortfolioSuggestion,
   H_RiskScore,
 } from '../../contracts/H_AnalyticsApi';
-import type { OkxCredentials } from './okxClient';
-import * as okxClient from './okxClient';
+// 平台中性层 — 走通用传输，不跟任一产品线绑定
+import type { OkxCredentials } from './okxHttpCore';
+import * as okxClient from './okxHttpCore';
 
 export class OkxH_AnalyticsApi implements IH_AnalyticsApi {
   private creds: OkxCredentials;

@@ -18,6 +18,7 @@ import type { HWalletCard } from '../../../types/card';
 import { OkxH_AIEngine } from './H_AIEngine.okx';
 import { OkxH_IntentRouter } from './H_IntentRouter.okx';
 import { makeId } from '../../../utils/id';
+// V5 流程（合约下单 / 网格 / 平仓）— 走 V5 业务客户端
 import * as okxClient from './okxClient';
 
 interface PendingAction {
