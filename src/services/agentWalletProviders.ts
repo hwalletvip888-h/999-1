@@ -61,10 +61,29 @@ const SOLANA_CHAIN_INDEX = "501";
 const XLAYER_CHAIN_INDEX = "196";
 
 export function classifyAddresses(addressList: any[]): AgentWalletAddresses {
+  // 已是目标结构时直接返回
+  if (
+    addressList &&
+    !Array.isArray(addressList) &&
+    Array.isArray((addressList as any).evm) &&
+    Array.isArray((addressList as any).solana) &&
+    Array.isArray((addressList as any).xlayer)
+  ) {
+    return addressList as AgentWalletAddresses;
+  }
+
+  const source: any[] = Array.isArray(addressList)
+    ? addressList
+    : Array.isArray((addressList as any)?.addressList)
+      ? (addressList as any).addressList
+      : Array.isArray((addressList as any)?.data)
+        ? (addressList as any).data
+        : [];
+
   const evm: ChainAddress[] = [];
   const solana: ChainAddress[] = [];
   const xlayer: ChainAddress[] = [];
-  for (const raw of addressList ?? []) {
+  for (const raw of source) {
     const item: ChainAddress = {
       chainIndex: String(raw.chainIndex ?? raw.chain_index ?? ""),
       chainName: String(raw.chainName ?? raw.chain_name ?? "Unknown"),

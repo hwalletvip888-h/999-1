@@ -42,6 +42,55 @@ const USE_MOCK = !WALLET_API_BASE;
 const STORAGE_KEY = "h_wallet.session.v1";
 const PENDING_OTP_KEY = "h_wallet.mock.pending_otp"; // mock-only
 
+function normalizeAddresses(input: any): WalletAddresses | null {
+  if (!input) return null;
+
+  // 已是标准结构
+  if (input.evm && input.solana && input.xlayer) {
+    return {
+      evm: Array.isArray(input.evm) ? input.evm : [],
+      solana: Array.isArray(input.solana) ? input.solana : [],
+      xlayer: Array.isArray(input.xlayer) ? input.xlayer : []
+    };
+  }
+
+  // 后端偶尔会直接返回 addressList 数组
+  const list: any[] = Array.isArray(input)
+    ? input
+    : Array.isArray(input.addressList)
+      ? input.addressList
+      : Array.isArray(input.data)
+        ? input.data
+        : [];
+  if (!list.length) return null;
+
+  const evm: ChainAddress[] = [];
+  const solana: ChainAddress[] = [];
+  const xlayer: ChainAddress[] = [];
+  for (const raw of list) {
+    const chainIndex = String(raw.chainIndex ?? raw.chain_index ?? "");
+    const chainName = String(raw.chainName ?? raw.chain_name ?? "Unknown");
+    const address = String(raw.address ?? "");
+    const item = { chainIndex, chainName, address };
+    if (chainIndex === "501") {
+      solana.push(item);
+    } else if (chainIndex === "196") {
+      xlayer.push(item);
+      evm.push(item);
+    } else {
+      evm.push(item);
+    }
+  }
+
+  return { evm, solana, xlayer };
+}
+
+function hasRealAddress(addrs: WalletAddresses | null | undefined): boolean {
+  if (!addrs) return false;
+  const all = [...(addrs.evm ?? []), ...(addrs.solana ?? []), ...(addrs.xlayer ?? [])];
+  return all.some((a) => !!a.address && a.address !== "N/A");
+}
+
 /* ==================== 持久化 session ==================== */
 
 let cachedSession: Session | null = null;
@@ -99,18 +148,39 @@ export async function verifyOtp(
         token?: string;
         accountId?: string;
         isNew?: boolean;
-        addresses?: WalletAddresses;
+        addresses?: any;
         error?: string;
       }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim });
 
-  if (!result.ok || !result.token || !result.accountId || !result.addresses) {
+  if (!result.ok || !result.token || !result.accountId) {
     return { ok: false, error: result.error ?? "验证失败" };
   }
+
+  // verify 返回的地址结构不稳定：先归一化，若为空则立即补拉一次
+  let addresses = normalizeAddresses(result.addresses);
+  if (!hasRealAddress(addresses) && !USE_MOCK) {
+    try {
+      const res = await fetch(`${WALLET_API_BASE}/api/wallet/addresses`, {
+        headers: { Authorization: `Bearer ${result.token}` }
+      });
+      const data = await res.json();
+      if (data?.ok) {
+        const normalized = normalizeAddresses(data.addresses);
+        if (normalized) addresses = normalized;
+      }
+    } catch {
+      // 忽略，走下方兜底
+    }
+  }
+  if (!addresses) {
+    addresses = { evm: [], solana: [], xlayer: [] };
+  }
+
   const session: Session = {
     token: result.token,
     email: trimmed,
     accountId: result.accountId,
-    addresses: result.addresses,
+    addresses,
     isNew: result.isNew ?? false
   };
   await saveSession(session);
@@ -126,10 +196,11 @@ export async function refreshAddresses(): Promise<WalletAddresses | null> {
       headers: { Authorization: `Bearer ${s.token}` }
     });
     const data = await res.json();
-    if (data?.ok && data.addresses) {
-      const next: Session = { ...s, addresses: data.addresses };
+    const normalized = normalizeAddresses(data?.addresses);
+    if (data?.ok && normalized) {
+      const next: Session = { ...s, addresses: normalized };
       await saveSession(next);
-      return data.addresses;
+      return normalized;
     }
   } catch {
     /* 网络失败回落到缓存 */

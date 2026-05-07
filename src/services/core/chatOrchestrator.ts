@@ -569,7 +569,7 @@ export async function handleUserPrompt(
             userPrompt: input,
             aiSummary: best.description,
             createdAt: now,
-            signalSource: best.source,
+            signalSource: best.source === 'trend' ? 'trend_engine' : best.source,
             protocolApr: best.apr,
             protocolTvl: best.tvlUsd,
             securityScore: best.securityScore,

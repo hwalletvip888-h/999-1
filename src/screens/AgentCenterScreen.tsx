@@ -68,7 +68,7 @@ function classifyV6(card: SavedCard): StrategyRow | null {
     id: card.id,
     title: card.title,
     subtitle: isEarn
-      ? `${card.stakeProtocol ?? card.protocol ?? "DeFi"} · 年化 ${card.stakeApy ?? card.protocolApr ?? "—"}%`
+      ? `${card.stakeProtocol ?? "DeFi"} · 年化 ${card.stakeApy ?? card.protocolApr ?? "—"}%`
       : `${card.fromSymbol ?? ""} → ${card.toSymbol ?? ""}`,
     pnlText: pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`,
     pnlPositive: pnl >= 0,
