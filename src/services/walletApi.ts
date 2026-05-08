@@ -121,12 +121,24 @@ export function getCachedSession(): Session | null {
   return cachedSession;
 }
 
+const OTP_POST_DEADLINE_MS = 32_000;
+
+function raceOtpPost<T extends { ok: boolean; error?: string }>(p: Promise<T>): Promise<T> {
+  const timeout: Promise<T> = new Promise((resolve) =>
+    setTimeout(
+      () => resolve({ ok: false, error: "请求超时，请检查网络后重试" } as T),
+      OTP_POST_DEADLINE_MS
+    )
+  );
+  return Promise.race([p, timeout]);
+}
+
 export async function sendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const trimmed = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     return { ok: false, error: "邮箱格式不正确" };
   }
-  return postJson("/api/auth/send-otp", { email: trimmed });
+  return raceOtpPost(postJson("/api/auth/send-otp", { email: trimmed }));
 }
 
 export async function verifyOtp(
@@ -138,14 +150,16 @@ export async function verifyOtp(
   if (!/^\d{6}$/.test(codeTrim)) {
     return { ok: false, error: "验证码应为 6 位数字" };
   }
-  const result = await postJson<{
-    ok: boolean;
-    token?: string;
-    accountId?: string;
-    isNew?: boolean;
-    addresses?: any;
-    error?: string;
-  }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim });
+  const result = await raceOtpPost(
+    postJson<{
+      ok: boolean;
+      token?: string;
+      accountId?: string;
+      isNew?: boolean;
+      addresses?: any;
+      error?: string;
+    }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim })
+  );
 
   if (!result.ok || !result.token || !result.accountId) {
     return { ok: false, error: result.error ?? "验证失败" };
