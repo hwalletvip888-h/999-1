@@ -19,9 +19,17 @@ echo "[remote-deploy] fetch origin/$REF ..."
 git fetch origin "$REF"
 git reset --hard "origin/$REF"
 
+# 关键：bash 已把当前脚本读进缓冲区，git reset 替换文件后旧 bytes 仍在执行，
+# 会导致后面跑的是“旧版 remote-deploy.sh”的逻辑。第一次 reset 后立刻
+# re-exec 新版脚本，确保后续 npm install / pm2 restart / health-check 用的是新文件。
+if [[ -z "${REMOTE_DEPLOY_REEXECED:-}" ]]; then
+  echo "[remote-deploy] re-exec into freshly-pulled deploy/remote-deploy.sh ..."
+  REMOTE_DEPLOY_REEXECED=1 DEPLOY_PROJECT_DIR="$ROOT" DEPLOY_REF="$REF" exec bash "$ROOT/deploy/remote-deploy.sh"
+fi
+
 echo "[remote-deploy] npm install (ci 与 lock 不一致时自动回退 npm install)"
-if ! npm ci 2>/dev/null; then
-  npm install
+if ! npm ci --no-audit --no-fund 2>/dev/null; then
+  npm install --no-audit --no-fund
 fi
 
 echo "[remote-deploy] db hooks ..."
