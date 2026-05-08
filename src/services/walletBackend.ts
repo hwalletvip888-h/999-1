@@ -205,11 +205,72 @@ function mapClientChainToCli(chain: string): string {
   return "ethereum";
 }
 
-function mapSymbolToSwapToken(symbol: string): string {
-  const s = String(symbol || "").toLowerCase();
-  if (!s) return s;
-  if (["usdt", "usdc", "eth", "sol", "okb", "bnb", "matic", "avax", "dai", "weth", "wbtc"].includes(s)) return s;
-  return s;
+/**
+ * 把（symbol, chain）映射到 OKX DEX 聚合器要的代币合约地址。
+ * 原生币（ETH/SOL/OKB/BNB/MATIC/AVAX 等）用 EVM 通用占位 0xeeee...eeee；
+ * Solana 原生 SOL 用 wrapped SOL 合约。
+ *
+ * 注意：CLI 的 swap quote/execute 必须传合约地址，不是 symbol。
+ */
+const NATIVE_EVM = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const NATIVE_SOL = "So11111111111111111111111111111111111111112";
+
+const TOKEN_BY_CHAIN: Record<string, Record<string, string>> = {
+  xlayer: {
+    OKB: NATIVE_EVM,
+    USDT: "0x1e4a5963abfd975d8c9021ce480b42188849d41d",
+    USDC: "0x74b7f16337b8972027f6196a17a631ac6de26d22",
+    ETH:  "0x5a77f1443d16ee5761d310e38b62f77f726bc71c",
+    WBTC: "0xea034fb02eb1808c2cc3adbc15f447b93cbe08e1",
+  },
+  ethereum: {
+    ETH:  NATIVE_EVM,
+    WETH: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    USDT: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+    USDC: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    DAI:  "0x6b175474e89094c44da98b954eedeac495271d0f",
+    WBTC: "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+    OKB:  "0x75231f58b43240c9718dd58b4967c5114342a86c",
+  },
+  bsc: {
+    BNB:  NATIVE_EVM,
+    USDT: "0x55d398326f99059ff775485246999027b3197955",
+    USDC: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+    ETH:  "0x2170ed0880ac9a755fd29b2688956bd959f933f8",
+  },
+  polygon: {
+    MATIC: NATIVE_EVM,
+    USDT:  "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+    USDC:  "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+    WETH:  "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619",
+    ETH:   "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619",
+  },
+  arbitrum: {
+    ETH:  NATIVE_EVM,
+    USDT: "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",
+    USDC: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+    WBTC: "0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f",
+  },
+  base: {
+    ETH:  NATIVE_EVM,
+    USDC: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    USDT: "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
+  },
+  solana: {
+    SOL:  NATIVE_SOL,
+    USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  },
+};
+
+function symbolToContract(symbol: string, chain: string): string {
+  const s = String(symbol || "").trim().toUpperCase();
+  const c = mapClientChainToCli(chain);
+  if (!s) return "";
+  // 已经是合约地址直接返回
+  if (s.startsWith("0X") && s.length === 42) return s.toLowerCase();
+  if (c === "solana" && s.length >= 32 && s.length <= 64 && !s.includes(" ")) return symbol;
+  return TOKEN_BY_CHAIN[c]?.[s] || "";
 }
 
 function pickWalletAddressByChain(addresses: any, chain: string): string {
@@ -548,6 +609,33 @@ async function handleGetBalanceViaProvider_legacy(token: string) {
   };
 }
 
+/**
+ * 从 wallet status 拿到当前 selectedAccount 在指定链上的地址（用于 swap execute --wallet）。
+ */
+function getCurrentWalletAddress(home: string, chain: string): string {
+  try {
+    const status = runOnchainosJson(["wallet", "status"], home, 10_000);
+    const addrs = runOnchainosJson(["wallet", "addresses"], home, 10_000);
+    const list = addrs?.data?.addressList || addrs?.data || [];
+    const accountId = status?.data?.currentAccountId || "";
+    const cliChain = mapClientChainToCli(chain);
+    const isSolana = cliChain === "solana";
+    for (const a of Array.isArray(list) ? list : []) {
+      if (accountId && a?.accountId !== accountId) continue;
+      const cName = String(a?.chainName || "").toLowerCase();
+      if (isSolana && (cName === "sol" || cName === "solana")) return String(a.address);
+      if (!isSolana && (cName === "eth" || cName === "ethereum" || cName === "evm" || a?.addressType === "eoa")) return String(a.address);
+    }
+    // fallback：取第一个非 N/A 地址
+    for (const a of Array.isArray(list) ? list : []) {
+      if (a?.address && a.address !== "N/A") return String(a.address);
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
 async function handleSwapQuoteViaCli(
   token: string,
   body: { fromChain: string; fromSymbol: string; fromAmount: string; toChain: string; toSymbol: string; slippageBps?: number }
@@ -559,22 +647,30 @@ async function handleSwapQuoteViaCli(
   let home: string;
   try { home = homeFromToken(token).home; } catch (err: any) { return { ok: false, error: err?.message || "无效 token" }; }
   const chain = mapClientChainToCli(body.fromChain || body.toChain);
-  const fromToken = mapSymbolToSwapToken(body.fromSymbol);
-  const toToken = mapSymbolToSwapToken(body.toSymbol);
+  const fromContract = symbolToContract(body.fromSymbol, body.fromChain || body.toChain);
+  const toContract = symbolToContract(body.toSymbol, body.toChain || body.fromChain);
   const amount = String(body.fromAmount || "").trim();
-  if (!fromToken || !toToken || !amount) return { ok: false, error: "参数不完整" };
+  if (!fromContract) return { ok: false, error: `不支持的源代币 ${body.fromSymbol}（${chain}）` };
+  if (!toContract) return { ok: false, error: `不支持的目标代币 ${body.toSymbol}（${chain}）` };
+  if (!amount) return { ok: false, error: "金额不能为空" };
   const data = runOnchainosJson([
     "swap", "quote",
-    "--from", fromToken,
-    "--to", toToken,
+    "--from", fromContract,
+    "--to", toContract,
     "--readable-amount", amount,
     "--chain", chain
   ], home);
-  if (data?.ok === false) return { ok: false, error: data?.error || "兑换报价失败" };
-  const d = data?.data ?? data ?? {};
-  const toAmt = Number(d?.toAmount ?? d?.toTokenAmount ?? 0);
-  const fromAmt = Number(d?.fromAmount ?? d?.fromTokenAmount ?? amount);
-  const impactPct = Number(d?.priceImpact ?? d?.priceImpactPercent ?? d?.priceImpactPercentage ?? 0);
+  if (data?.ok === false) return { ok: false, error: data?.error || data?.msg || "兑换报价失败" };
+  // OKX 返回 data 是数组（每个路由一个），取第一个最优路由
+  const list = Array.isArray(data?.data) ? data.data : [data?.data];
+  const d: any = list[0] ?? {};
+  const fromTokenAmt = String(d?.fromTokenAmount ?? "");
+  const toTokenAmt = String(d?.toTokenAmount ?? "");
+  const fromDec = Number(d?.dexRouterList?.[0]?.fromToken?.decimal ?? 18);
+  const toDec = Number(d?.dexRouterList?.[0]?.toToken?.decimal ?? 18);
+  const fromAmt = fromTokenAmt ? Number(fromTokenAmt) / Math.pow(10, fromDec) : Number(amount);
+  const toAmt = toTokenAmt ? Number(toTokenAmt) / Math.pow(10, toDec) : 0;
+  const impactPct = Number(d?.priceImpactPercentage ?? d?.priceImpact ?? 0);
   return {
     ok: true,
     fromChain: body.fromChain,
@@ -585,7 +681,7 @@ async function handleSwapQuoteViaCli(
     toAmount: String(Number.isFinite(toAmt) && toAmt > 0 ? toAmt : 0),
     rate: fromAmt > 0 && toAmt > 0 ? String(toAmt / fromAmt) : "0",
     routerLabel: Array.isArray(d?.dexRouterList) && d.dexRouterList.length
-      ? d.dexRouterList.map((x: any) => x?.dexName).filter(Boolean).join(" / ")
+      ? d.dexRouterList.map((x: any) => x?.dexProtocol?.dexName ?? x?.dexName).filter(Boolean).join(" / ")
       : "OKX DEX Aggregator",
     estimatedGasUsd: String(d?.tradeFee ?? d?.estimateGasFee ?? "0"),
     slippageBps: Number(body.slippageBps ?? 50),
@@ -604,22 +700,31 @@ async function handleSwapExecuteViaCli(
   let home: string;
   try { home = homeFromToken(token).home; } catch (err: any) { return { ok: false, error: err?.message || "无效 token" }; }
   const chain = mapClientChainToCli(body.fromChain || body.toChain);
-  const fromToken = mapSymbolToSwapToken(body.fromSymbol);
-  const toToken = mapSymbolToSwapToken(body.toSymbol);
+  const fromContract = symbolToContract(body.fromSymbol, body.fromChain || body.toChain);
+  const toContract = symbolToContract(body.toSymbol, body.toChain || body.fromChain);
   const amount = String(body.fromAmount || "").trim();
-  if (!fromToken || !toToken || !amount) return { ok: false, error: "参数不完整" };
+  if (!fromContract) return { ok: false, error: `不支持的源代币 ${body.fromSymbol}（${chain}）` };
+  if (!toContract) return { ok: false, error: `不支持的目标代币 ${body.toSymbol}（${chain}）` };
+  if (!amount) return { ok: false, error: "金额不能为空" };
+
+  // OKX swap execute 必须传 --wallet（用户钱包地址）
+  const walletAddr = getCurrentWalletAddress(home, body.fromChain || body.toChain);
+  if (!walletAddr) return { ok: false, error: "无法获取当前钱包地址，请重新登录" };
+
   const args = [
     "swap", "execute",
-    "--from", fromToken,
-    "--to", toToken,
+    "--from", fromContract,
+    "--to", toContract,
     "--readable-amount", amount,
     "--chain", chain,
+    "--wallet", walletAddr,
+    "--force",
   ];
   if (typeof body.slippageBps === "number" && body.slippageBps > 0) {
     args.push("--slippage", String(body.slippageBps / 100));
   }
-  const data = runOnchainosJson(args, home, 90_000);
-  if (data?.ok === false) return { ok: false, error: data?.error || "兑换提交失败" };
+  const data = runOnchainosJson(args, home, 120_000);
+  if (data?.ok === false) return { ok: false, error: data?.error || data?.msg || "兑换提交失败" };
   const d = data?.data ?? data ?? {};
   const txHash = String(d?.swapTxHash ?? d?.txHash ?? "");
   if (!txHash) return { ok: false, error: "未返回交易哈希" };
@@ -644,7 +749,8 @@ async function handleWalletSendViaCli(
     "wallet", "send",
     "--readable-amount", amount,
     "--recipient", toAddress,
-    "--chain", chain
+    "--chain", chain,
+    "--force",
   ];
   const symbol = String(body.symbol || "").toUpperCase();
   const tokenAddress = String(body.tokenAddress || "").trim();

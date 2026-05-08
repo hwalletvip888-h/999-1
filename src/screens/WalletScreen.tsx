@@ -1288,6 +1288,11 @@ function WithdrawScreen({
   }
 
   if (page === "address") {
+    const isEvmLike = network === "X Layer" || network === "Ethereum";
+    const looksValid =
+      isEvmLike
+        ? /^0x[a-fA-F0-9]{40}$/.test(address.trim())
+        : address.trim().length >= 32 && address.trim().length <= 64;
     return (
       <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
         <View className="flex-row items-center px-3 pb-1 pt-1">
@@ -1297,18 +1302,95 @@ function WithdrawScreen({
           <Text className="ml-1 text-[30px] font-bold text-ink">收款地址</Text>
         </View>
         <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 2 }}>
-          <TextInput
-            value={address}
-            onChangeText={setAddress}
-            placeholder="输入钱包地址或域名"
-            placeholderTextColor="#9CA3AF"
-            className="text-[34px] font-semibold text-ink"
-          />
-          <View className="mt-3 flex-row justify-end">
-            <Pressable className="rounded-full border border-line bg-surface px-4 py-2 active:opacity-80">
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderWidth: 1,
+              borderColor: looksValid ? "#10B981" : "#E5E7EB",
+              borderRadius: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              minHeight: 88,
+            }}
+          >
+            <TextInput
+              value={address}
+              onChangeText={setAddress}
+              placeholder={isEvmLike ? "粘贴或输入 0x… 收款地址" : "粘贴 Solana 收款地址"}
+              placeholderTextColor="#9CA3AF"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              multiline
+              style={{
+                fontSize: 16,
+                color: "#0F0F0F",
+                fontWeight: "600",
+                paddingTop: 0,
+                paddingBottom: 0,
+                lineHeight: 22,
+              }}
+            />
+            {looksValid ? (
+              <Text style={{ marginTop: 6, fontSize: 12, color: "#059669", fontWeight: "600" }}>
+                ✓ 地址格式正确
+              </Text>
+            ) : null}
+          </View>
+          <View className="mt-3 flex-row" style={{ gap: 8, justifyContent: "flex-end" }}>
+            <Pressable
+              onPress={async () => {
+                try {
+                  const v = await Clipboard.getStringAsync();
+                  if (v && v.trim()) {
+                    setAddress(v.trim());
+                  } else {
+                    Alert.alert("剪贴板为空", "复制一个地址再点粘贴");
+                  }
+                } catch (e) {
+                  Alert.alert("无法读取剪贴板", String((e as any)?.message || e));
+                }
+              }}
+              className="rounded-full border border-line bg-surface px-4 py-2 active:opacity-80"
+            >
               <Text className="text-[14px] font-semibold text-ink2">粘贴</Text>
             </Pressable>
+            {address.length > 0 ? (
+              <Pressable
+                onPress={() => setAddress("")}
+                className="rounded-full border border-line bg-surface px-4 py-2 active:opacity-80"
+              >
+                <Text className="text-[14px] font-semibold text-ink2">清空</Text>
+              </Pressable>
+            ) : null}
           </View>
+          {looksValid ? (
+            <Pressable
+              onPress={() => {
+                rememberAddress(address.trim());
+                setPage("amount");
+              }}
+              className="mt-3 active:opacity-90"
+              style={{
+                borderRadius: 14,
+                overflow: "hidden",
+                shadowColor: "#7C3AED",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.28,
+                shadowRadius: 12,
+                elevation: 4,
+              }}
+            >
+              <LinearGradient
+                colors={["#7C3AED", "#5B21B6"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{ height: 48, alignItems: "center", justifyContent: "center" }}
+              >
+                <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>下一步</Text>
+              </LinearGradient>
+            </Pressable>
+          ) : null}
         </View>
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
           <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
