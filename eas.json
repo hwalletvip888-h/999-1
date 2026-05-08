@@ -16,7 +16,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_HWALLET_API_BASE": "http://64.90.1.102:3100"
+        "EXPO_PUBLIC_HWALLET_API_BASE": "https://api.hvip.io"
       }
     },
     "production": {

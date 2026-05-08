@@ -10,7 +10,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 
-const DEFAULT_HWALLET_API_BASE = "http://64.90.1.102:3100";
+const DEFAULT_HWALLET_API_BASE = "https://api.hvip.io";
 
 /** H Wallet 后端根 URL，去掉末尾 `/` */
 export function getHwalletApiBase(): string {
