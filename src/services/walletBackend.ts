@@ -1,37 +1,69 @@
 /**
  * WalletBackend — H Wallet 后端服务
  *
- * 通过 IAgentWalletProvider 抽象选择两种实现：
- *   - OnchainosCliAgentWalletProvider（默认，按用户决策）
- *     · 服务器装 `pip install onchainos`
- *     · shell-out 调 `onchainos wallet login/verify/addresses`
- *   - OkxHttpAgentWalletProvider（fallback）
- *     · 直接打 OKX priapi/v5/wallet/agentic/* HTTP 接口
- *     · CLI 不可用时自动启用
+ * 架构（多用户 CLI per-user 隔离）：
+ *   - 服务器装 onchainos CLI（v3.1.3+）
+ *   - 每个登录的 App 用户分配独立的 CLI 状态目录：
+ *     ONCHAINOS_HOME=$HWALLET_CLI_HOME_ROOT/<sha256(email)[:16]>
+ *   - 登录态、TEE session key、wallets.json 全部存在该目录里，互相隔离
+ *   - 后端把 App 的 session token 解码出 email → 派生该用户的 ONCHAINOS_HOME → spawn CLI
+ *   - 所有钱包操作（OTP 发码 / 验码 / 余额 / 地址 / 转账 / 兑换）都走 CLI，
+ *     OKX 官方 CLI 负责 HPKE / EdDSA / TEE session 全套加密细节
  *
- * 暴露端点：
- *   - POST /api/auth/send-otp           （旧端点，向后兼容）
- *   - POST /api/auth/verify-otp         （旧端点）
- *   - POST /api/agent-wallet/send-code  （onchainos-skills 推荐）
- *   - POST /api/agent-wallet/verify     （onchainos-skills 推荐）
- *   - GET  /api/wallet/addresses        （刷新地址表）
+ * 端点：
+ *   - POST /api/auth/send-otp           { email } → 发码到邮箱
+ *   - POST /api/auth/verify-otp         { email, code } → 返回 session token + 地址
+ *   - POST /api/agent-wallet/send-code  （旧端点别名）
+ *   - POST /api/agent-wallet/verify     （旧端点别名）
+ *   - GET  /api/wallet/addresses        Authorization: Bearer <token>
+ *   - GET  /api/v6/wallet/portfolio     Authorization: Bearer <token>
+ *   - POST /api/v6/wallet/send          { token, chain, symbol, toAddress, amount, tokenAddress? }
+ *   - POST /api/v6/dex/swap-quote       { token, fromChain, fromSymbol, fromAmount, toChain, toSymbol, slippageBps? }
+ *   - POST /api/v6/dex/swap-execute     { token, fromChain, fromSymbol, fromAmount, toChain, toSymbol, slippageBps? }
+ *   - POST /api/ai/chat | /api/ai/intent
  *   - GET  /health
- *   - POST /api/ai/chat       /api/ai/intent
  */
 import * as http from "http";
+import * as fs from "fs";
+import * as nodePath from "path";
 import { chatWithAI, recognizeIntent } from "./aiChat";
 import * as crypto from 'crypto';
 import { execFileSync } from "child_process";
-import { OkxHttpAgentWalletProvider, getAgentWalletProvider } from "./agentWalletProviders";
 
-/** 邮箱 OTP 会话 token 内含 accessToken 时：必须用 Agentic HTTP，不能用本机 CLI（与用户无关） */
-function sessionTokenHasAccessToken(token: string): boolean {
-  try {
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString()) as { accessToken?: string };
-    return !!decoded?.accessToken;
-  } catch {
-    return false;
-  }
+// ─── per-user CLI 隔离 ───────────────────────────────────────────────
+const CLI_HOME_ROOT = process.env.HWALLET_CLI_HOME_ROOT || "/var/lib/h-wallet/cli";
+
+function ensureCliHomeRoot(): void {
+  try { fs.mkdirSync(CLI_HOME_ROOT, { recursive: true, mode: 0o700 }); } catch { /* ignore */ }
+}
+
+function emailToHash(email: string): string {
+  return crypto.createHash("sha256").update(String(email).trim().toLowerCase()).digest("hex").slice(0, 16);
+}
+
+function homeForEmail(email: string): string {
+  ensureCliHomeRoot();
+  const dir = nodePath.join(CLI_HOME_ROOT, emailToHash(email));
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
+interface DecodedToken { email: string; accountId: string; createdAt: number }
+
+function decodeSessionToken(token: string): DecodedToken {
+  if (!token) throw new Error("缺少 token");
+  let raw: string;
+  try { raw = Buffer.from(token, "base64").toString(); } catch { throw new Error("无效 token"); }
+  let obj: any;
+  try { obj = JSON.parse(raw); } catch { throw new Error("无效 token"); }
+  const email = String(obj?.email || "").trim().toLowerCase();
+  if (!email) throw new Error("token 缺少 email");
+  return { email, accountId: String(obj?.accountId || ""), createdAt: Number(obj?.createdAt || 0) };
+}
+
+function homeFromToken(token: string): { home: string; email: string; accountId: string } {
+  const t = decodeSessionToken(token);
+  return { home: homeForEmail(t.email), email: t.email, accountId: t.accountId };
 }
 
 const PORT = parseInt(process.env.WALLET_PORT || '3100');
@@ -128,16 +160,38 @@ function isOnchainosCliAvailable(): boolean {
   return _onchainosCliAvailable;
 }
 
-function runOnchainosJson(args: string[]): any {
-  const out = execFileSync("onchainos", args, {
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 60_000
-  });
-  const trimmed = String(out || "").trim();
+/**
+ * 调用 onchainos CLI 并解析输出 JSON。CLI 默认就是 JSON 输出。
+ * - home: 当传入时设置 ONCHAINOS_HOME，让 CLI 在该用户专属的 sandbox 里读写状态
+ * - 即使 CLI 退出码非 0，也尝试解析 stdout 中的错误 JSON（CLI 失败时仍会输出 {ok:false,error}）
+ */
+function runOnchainosJson(args: string[], home?: string, timeoutMs = 60_000): any {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (home) env.ONCHAINOS_HOME = home;
+  let stdout = "";
+  let stderr = "";
+  try {
+    stdout = execFileSync("onchainos", args, {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: timeoutMs,
+      env,
+    });
+  } catch (err: any) {
+    stdout = err?.stdout?.toString() || "";
+    stderr = err?.stderr?.toString() || "";
+  }
+  const trimmed = String(stdout || "").trim();
   const first = trimmed.indexOf("{");
-  const json = first >= 0 ? trimmed.slice(first) : trimmed;
-  return JSON.parse(json);
+  const jsonStr = first >= 0 ? trimmed.slice(first) : trimmed;
+  if (!jsonStr) {
+    throw new Error(stderr.trim() || "onchainos CLI 无输出");
+  }
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    throw new Error(stderr.trim() || trimmed || "onchainos CLI 输出解析失败");
+  }
 }
 
 function mapClientChainToCli(chain: string): string {
@@ -172,34 +226,120 @@ function pickWalletAddressByChain(addresses: any, chain: string): string {
   return a && a !== "N/A" ? String(a) : "";
 }
 
-// ─── API 处理函数 ─────────────────────────────────────────────
+// ─── API 处理函数（CLI per-user） ──────────────────────────────────
 
-/**
- * 发送 OTP — 委托给 IAgentWalletProvider
- * 优先 onchainos CLI；不可用时回退到 OKX priapi HTTP 调用
- */
-async function handleSendOtpViaProvider(email: string): Promise<{ ok: boolean; error?: string }> {
-  const provider = await getAgentWalletProvider();
-  return provider.sendOtp(email);
-}
-
-async function handleVerifyOtpViaProvider(email: string, code: string) {
-  const provider = await getAgentWalletProvider();
-  return provider.verifyOtp(email, code);
-}
-
-async function handleGetAddressesViaProvider(token: string) {
-  if (sessionTokenHasAccessToken(token)) {
-    return new OkxHttpAgentWalletProvider().getAddresses(token);
+/** 发送邮箱 OTP — 调用 `onchainos wallet login <email>`，CLI 走 priapi/auth/init */
+async function handleSendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
+  const e = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return { ok: false, error: "邮箱格式不正确" };
+  if (!isOnchainosCliAvailable()) return { ok: false, error: "服务器尚未启用钱包通道（onchainos CLI 未就绪）" };
+  try {
+    const home = homeForEmail(e);
+    const data = runOnchainosJson(["wallet", "login", e, "--locale", "zh-CN"], home, 30_000);
+    if (data?.ok === false) return { ok: false, error: data?.error || "发送验证码失败" };
+    return { ok: true };
+  } catch (err: any) {
+    console.error(`[WalletBackend] sendOtp 异常:`, err?.message || err);
+    return { ok: false, error: err?.message || "发送验证码失败" };
   }
-  const provider = await getAgentWalletProvider();
-  return provider.getAddresses(token);
 }
 
-async function handleGetBalanceViaProvider(token: string) {
-  if (!token) {
-    return { ok: false, error: "缺少 token" };
+/** 校验邮箱 OTP — 调用 `onchainos wallet verify <code>`，成功后取地址表，构造 session token */
+async function handleVerifyOtp(email: string, code: string): Promise<{
+  ok: boolean; token?: string; accountId?: string; isNew?: boolean; addresses?: any; error?: string;
+}> {
+  const e = String(email || "").trim().toLowerCase();
+  const c = String(code || "").trim();
+  if (!e || !c) return { ok: false, error: "邮箱或验证码缺失" };
+  if (!isOnchainosCliAvailable()) return { ok: false, error: "服务器尚未启用钱包通道（onchainos CLI 未就绪）" };
+  try {
+    const home = homeForEmail(e);
+    const verifyResp = runOnchainosJson(["wallet", "verify", c], home, 60_000);
+    if (verifyResp?.ok === false) return { ok: false, error: verifyResp?.error || "验证码错误或已过期" };
+
+    const accountId = String(verifyResp?.data?.accountId || "");
+    const isNew = !!verifyResp?.data?.isNew;
+
+    let addresses: any = { evm: [], solana: [], xlayer: [] };
+    try {
+      const addrResp = runOnchainosJson(["wallet", "addresses"], home, 30_000);
+      if (addrResp?.ok && addrResp?.data) {
+        addresses = {
+          evm: Array.isArray(addrResp.data.evm) ? addrResp.data.evm : [],
+          solana: Array.isArray(addrResp.data.solana) ? addrResp.data.solana : [],
+          xlayer: Array.isArray(addrResp.data.xlayer) ? addrResp.data.xlayer : [],
+        };
+      }
+    } catch (err) {
+      console.warn(`[WalletBackend] verify 后取地址表失败：`, (err as any)?.message);
+    }
+
+    const token = Buffer.from(JSON.stringify({
+      email: e, accountId, createdAt: Date.now(),
+    })).toString("base64");
+
+    return { ok: true, token, accountId, isNew, addresses };
+  } catch (err: any) {
+    console.error(`[WalletBackend] verifyOtp 异常:`, err?.message || err);
+    return { ok: false, error: err?.message || "验证失败" };
   }
+}
+
+/** 取该用户的多链地址表（直接读 CLI 状态，不发网络请求） */
+async function handleGetAddresses(token: string): Promise<{ ok: boolean; addresses?: any; accountId?: string; error?: string }> {
+  try {
+    const { home, accountId } = homeFromToken(token);
+    const data = runOnchainosJson(["wallet", "addresses"], home, 15_000);
+    if (data?.ok === false) return { ok: false, error: data?.error || "获取地址失败" };
+    const addresses = {
+      evm: Array.isArray(data?.data?.evm) ? data.data.evm : [],
+      solana: Array.isArray(data?.data?.solana) ? data.data.solana : [],
+      xlayer: Array.isArray(data?.data?.xlayer) ? data.data.xlayer : [],
+    };
+    return { ok: true, addresses, accountId };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "获取地址失败" };
+  }
+}
+
+/** 该用户的资产汇总 — 调 `onchainos wallet balance`，CLI 内部走签名 WaaS 接口 */
+async function handleGetBalance(token: string): Promise<any> {
+  try {
+    const { home } = homeFromToken(token);
+    const data = runOnchainosJson(["wallet", "balance"], home, 30_000);
+    if (data?.ok === false) return { ok: false, error: data?.error || "获取资产失败" };
+    const d = data?.data ?? {};
+    const totalUsd = String(d?.totalUsd ?? d?.totalAssetValue ?? d?.totalAssets ?? "0");
+    const rawTokens: any[] =
+      Array.isArray(d?.tokens) ? d.tokens
+        : Array.isArray(d?.tokenList) ? d.tokenList
+          : Array.isArray(d?.assetsList) ? d.assetsList
+            : Array.isArray(d?.tokenAssets) ? d.tokenAssets
+              : [];
+    const tokens = rawTokens
+      .map((t: any) => ({
+        chainIndex: String(t?.chainIndex ?? t?.chainId ?? ""),
+        symbol: String(t?.symbol ?? t?.tokenSymbol ?? "").toUpperCase(),
+        amount: String(t?.balance ?? t?.amount ?? t?.coinAmount ?? "0"),
+        usdValue: String(t?.usdValue ?? t?.value ?? t?.assetValue ?? "0"),
+        contract: t?.tokenAddress ?? t?.tokenContractAddress ?? undefined,
+      }))
+      .filter((t: any) => Number(t.amount) > 0 || Number(t.usdValue) > 0);
+    return { ok: true, totalUsd, tokens, lastUpdatedAt: new Date().toISOString() };
+  } catch (err: any) {
+    console.error(`[WalletBackend] getBalance 异常:`, err?.message || err);
+    return { ok: false, error: err?.message || "获取资产失败" };
+  }
+}
+
+// ─── 兼容旧调用名 ─────────────────────────────────────────────
+async function handleSendOtpViaProvider(email: string) { return handleSendOtp(email); }
+async function handleVerifyOtpViaProvider(email: string, code: string) { return handleVerifyOtp(email, code); }
+async function handleGetAddressesViaProvider(token: string) { return handleGetAddresses(token); }
+
+// ─── 旧版聚合余额（保留作为低优先 fallback；当前路由直接走 handleGetBalance） ──
+async function handleGetBalanceViaProvider_legacy(token: string) {
+  if (!token) return { ok: false, error: "缺少 token" };
   const addressesResp = await handleGetAddressesViaProvider(token);
   if (!addressesResp?.ok || !addressesResp.addresses) {
     return { ok: false, error: "获取钱包地址失败" };
@@ -300,6 +440,8 @@ async function handleSwapQuoteViaCli(
   if (!isOnchainosCliAvailable()) {
     return { ok: false, error: "服务器尚未启用兑换通道（onchainos CLI 未就绪），请稍后再试" };
   }
+  let home: string;
+  try { home = homeFromToken(token).home; } catch (err: any) { return { ok: false, error: err?.message || "无效 token" }; }
   const chain = mapClientChainToCli(body.fromChain || body.toChain);
   const fromToken = mapSymbolToSwapToken(body.fromSymbol);
   const toToken = mapSymbolToSwapToken(body.toSymbol);
@@ -311,7 +453,8 @@ async function handleSwapQuoteViaCli(
     "--to", toToken,
     "--readable-amount", amount,
     "--chain", chain
-  ]);
+  ], home);
+  if (data?.ok === false) return { ok: false, error: data?.error || "兑换报价失败" };
   const d = data?.data ?? data ?? {};
   const toAmt = Number(d?.toAmount ?? d?.toTokenAmount ?? 0);
   const fromAmt = Number(d?.fromAmount ?? d?.fromTokenAmount ?? amount);
@@ -338,29 +481,29 @@ async function handleSwapExecuteViaCli(
   token: string,
   body: { fromChain: string; fromSymbol: string; fromAmount: string; toChain: string; toSymbol: string; slippageBps?: number }
 ) {
+  if (!token) return { ok: false, error: "缺少 token" };
   if (!isOnchainosCliAvailable()) {
     return { ok: false, error: "服务器尚未启用兑换通道（onchainos CLI 未就绪），请稍后再试" };
   }
-  const addressesResp = await handleGetAddressesViaProvider(token);
-  if (!addressesResp?.ok || !addressesResp?.addresses) return { ok: false, error: "获取钱包地址失败" };
+  let home: string;
+  try { home = homeFromToken(token).home; } catch (err: any) { return { ok: false, error: err?.message || "无效 token" }; }
   const chain = mapClientChainToCli(body.fromChain || body.toChain);
-  const wallet = pickWalletAddressByChain(addressesResp.addresses, chain);
-  if (!wallet) return { ok: false, error: "未找到可用钱包地址" };
   const fromToken = mapSymbolToSwapToken(body.fromSymbol);
   const toToken = mapSymbolToSwapToken(body.toSymbol);
   const amount = String(body.fromAmount || "").trim();
+  if (!fromToken || !toToken || !amount) return { ok: false, error: "参数不完整" };
   const args = [
     "swap", "execute",
     "--from", fromToken,
     "--to", toToken,
     "--readable-amount", amount,
     "--chain", chain,
-    "--wallet", wallet
   ];
   if (typeof body.slippageBps === "number" && body.slippageBps > 0) {
     args.push("--slippage", String(body.slippageBps / 100));
   }
-  const data = runOnchainosJson(args);
+  const data = runOnchainosJson(args, home, 90_000);
+  if (data?.ok === false) return { ok: false, error: data?.error || "兑换提交失败" };
   const d = data?.data ?? data ?? {};
   const txHash = String(d?.swapTxHash ?? d?.txHash ?? "");
   if (!txHash) return { ok: false, error: "未返回交易哈希" };
@@ -375,6 +518,8 @@ async function handleWalletSendViaCli(
   if (!isOnchainosCliAvailable()) {
     return { ok: false, error: "服务器尚未启用转账通道（onchainos CLI 未就绪），请稍后再试" };
   }
+  let home: string;
+  try { home = homeFromToken(token).home; } catch (err: any) { return { ok: false, error: err?.message || "无效 token" }; }
   const chain = mapClientChainToCli(body.chain);
   const amount = String(body.amount || "").trim();
   const toAddress = String(body.toAddress || "").trim();
@@ -413,174 +558,14 @@ async function handleWalletSendViaCli(
       if (usdcByChain[chain]) args.push("--contract-token", usdcByChain[chain]);
     }
   }
-  const data = runOnchainosJson(args);
+  const data = runOnchainosJson(args, home, 90_000);
+  if (data?.ok === false) return { ok: false, error: data?.error || "转账失败" };
   const d = data?.data ?? data ?? {};
   const txHash = String(d?.txHash || "");
   if (!txHash) return { ok: false, error: d?.error || "未返回交易哈希" };
   return { ok: true, txHash, status: "submitted" };
 }
 
-// ─── 旧实现（已被 provider 替代，保留作为 HTTP 实现的 in-line 参考） ──
-// （下面的 handleSendOtp / handleVerifyOtp / handleGetAddresses 已被路由 不再调用）
-
-/**
- * 发送 OTP — 调用 OKX Agentic Wallet 真实 API
- * OKX 会发送验证码到用户邮箱
- */
-async function handleSendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
-  if (!email || !email.includes('@')) {
-    return { ok: false, error: '请输入有效的邮箱地址' };
-  }
-
-  try {
-    // 调用 OKX Agentic Wallet auth/init 接口
-    const result = await okxAgenticPublic('/priapi/v5/wallet/agentic/auth/init', {
-      email,
-      locale: 'zh-CN',
-    });
-
-    if (result.code === '0' && result.data?.[0]?.flowId) {
-      const flowId = result.data[0].flowId;
-      const keyPair = generateTempKeyPair();
-
-      otpSessions.set(email, {
-        email,
-        flowId,
-        tempPrivateKey: keyPair.privateKey,
-        tempPublicKey: keyPair.publicKey,
-        expiresAt: Date.now() + 10 * 60 * 1000,
-        attempts: 0,
-      });
-
-      console.log(`[WalletBackend] ✅ OTP 已发送到 ${email}, flowId: ${flowId}`);
-      return { ok: true };
-    } else {
-      const errMsg = result.msg || result.error || '发送验证码失败';
-      console.error(`[WalletBackend] ❌ OTP 发送失败:`, result);
-      return { ok: false, error: errMsg };
-    }
-  } catch (err: any) {
-    console.error(`[WalletBackend] ❌ OTP 请求异常:`, err);
-    return { ok: false, error: err.message || '网络请求失败' };
-  }
-}
-
-/**
- * 验证 OTP — 调用 OKX Agentic Wallet 真实 API
- * 验证成功后自动创建钱包（如果是新用户）
- */
-async function handleVerifyOtp(email: string, code: string): Promise<{
-  ok: boolean;
-  token?: string;
-  accountId?: string;
-  isNew?: boolean;
-  addresses?: any;
-  error?: string;
-}> {
-  const session = otpSessions.get(email);
-  if (!session) {
-    return { ok: false, error: '请先发送验证码' };
-  }
-
-  if (Date.now() > session.expiresAt) {
-    otpSessions.delete(email);
-    return { ok: false, error: '验证码已过期，请重新发送' };
-  }
-
-  session.attempts++;
-  if (session.attempts > 5) {
-    otpSessions.delete(email);
-    return { ok: false, error: '验证次数过多，请重新发送' };
-  }
-
-  try {
-    // 调用 OKX Agentic Wallet auth/verify 接口
-    const result = await okxAgenticPublic('/priapi/v5/wallet/agentic/auth/verify', {
-      email,
-      flowId: session.flowId,
-      otp: code,
-      tempPubKey: session.tempPublicKey,
-    });
-
-    if (result.code === '0' && result.data?.[0]) {
-      const verifyData = result.data[0];
-      const accountId = verifyData.accountId || '';
-      const accessToken = verifyData.accessToken || '';
-
-      otpSessions.delete(email);
-
-      // 解析 OKX 返回的 addressesList
-      const rawAddresses = verifyData.addressList || [];
-      const evmAddresses: any[] = [];
-      const solanaAddresses: any[] = [];
-      const xlayerAddresses: any[] = [];
-      for (const addr of rawAddresses) {
-        const item = { chainIndex: String(addr.chainIndex), chainName: addr.chainName, address: addr.address };
-        if (addr.chainIndex === 501) { solanaAddresses.push(item); }
-        else if (addr.chainIndex === 196) { xlayerAddresses.push(item); evmAddresses.push(item); }
-        else { evmAddresses.push(item); }
-      }
-      const addresses = {
-        evm: evmAddresses.length > 0 ? evmAddresses : [{ chainIndex: "1", chainName: "Ethereum", address: "N/A" }],
-        solana: solanaAddresses.length > 0 ? solanaAddresses : [{ chainIndex: "501", chainName: "Solana", address: "N/A" }],
-        xlayer: xlayerAddresses.length > 0 ? xlayerAddresses : [{ chainIndex: "196", chainName: "X Layer", address: "N/A" }],
-      };
-
-      const token = Buffer.from(JSON.stringify({
-        email, accountId, accessToken,
-        teeId: verifyData.teeId || "", projectId: verifyData.projectId || "",
-        createdAt: Date.now(),
-      })).toString("base64");
-
-      return { ok: true, token, accountId, isNew: verifyData.isNew !== false, addresses };
-    } else {
-      const errMsg = result.msg || result.error || '验证码错误';
-      console.error(`[WalletBackend] ❌ OTP 验证失败:`, result);
-      return { ok: false, error: errMsg };
-    }
-  } catch (err: any) {
-    console.error(`[WalletBackend] ❌ OTP 验证异常:`, err);
-    return { ok: false, error: err.message || '验证请求失败' };
-  }
-}
-
-/**
- * 获取钱包地址
- */
-async function handleGetAddresses(token: string): Promise<{ ok: boolean; addresses?: any; accountId?: string }> {
-  if (!token) {
-    return { ok: false };
-  }
-  try {
-    const decoded = JSON.parse(Buffer.from(token, 'base64').toString());
-    const { accountId, accessToken } = decoded;
-
-    if (accountId && accessToken) {
-      try {
-        const url = `${OKX_BASE_URL}/priapi/v5/wallet/agentic/account/addresses`;
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'ok-client-version': CLIENT_VERSION,
-            'Ok-Access-Client-type': 'agent-cli',
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        });
-        const result = await response.json();
-        if (result.code === '0' && result.data) {
-          return { ok: true, addresses: result.data, accountId };
-        }
-      } catch (err) {
-        console.warn('[WalletBackend] 获取地址失败:', err);
-      }
-    }
-
-    return { ok: true, accountId: accountId || '', addresses: null };
-  } catch {
-    return { ok: false };
-  }
-}
 // ─── HTTP 服务器 ─────────────────────────────────────────────
 function parseBody(req: http.IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -643,7 +628,7 @@ const server = http.createServer(async (req, res) => {
 
     } else if (isGetBalance) {
       const token = (req.headers.authorization || '').replace('Bearer ', '');
-      const result = await handleGetBalanceViaProvider(token);
+      const result = await handleGetBalance(token);
       res.writeHead(200);
       res.end(JSON.stringify(result));
 
@@ -708,12 +693,12 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true, intent }));
 
     } else if (url === '/health') {
-      const provider = await getAgentWalletProvider();
       res.writeHead(200);
       res.end(JSON.stringify({
         ok: true,
         service: 'h-wallet-backend',
-        agentWallet: provider.id, // 'cli' | 'http'
+        agentWallet: isOnchainosCliAvailable() ? 'cli-per-user' : 'unavailable',
+        cliHomeRoot: CLI_HOME_ROOT,
         mode: 'okx-agentic-real',
         ai: 'deepseek+claude'
       }));
@@ -728,15 +713,14 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', async () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${PORT}`);
   console.log(`[WalletBackend] AI Chat: /api/ai/chat | Intent: /api/ai/intent`);
   console.log(`[WalletBackend] 健康检查: http://localhost:${PORT}/health`);
-  // 启动时探测 Agent Wallet provider，将选择结果写到日志
-  try {
-    const provider = await getAgentWalletProvider();
-    console.log(`[WalletBackend] 📡 Agent Wallet 提供方 = ${provider.id} ${provider.id === 'cli' ? '(onchainos CLI)' : '(OKX priapi HTTP fallback)'}`);
-  } catch (err: any) {
-    console.error(`[WalletBackend] ⚠️ Agent Wallet provider 初始化失败：${err.message}`);
+  ensureCliHomeRoot();
+  if (isOnchainosCliAvailable()) {
+    console.log(`[WalletBackend] 📡 Agent Wallet 模式 = cli-per-user，CLI 状态根目录 = ${CLI_HOME_ROOT}`);
+  } else {
+    console.error(`[WalletBackend] ⚠️ onchainos CLI 不可用，钱包功能将无法工作。请在服务器执行: curl -sSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | sh`);
   }
 });
