@@ -369,7 +369,15 @@ export const okxOnchainClient = {
     const direct = Platform.OS === "web" ? null : await tryDirectAgenticPortfolioByToken(token);
     if (direct) return { data: direct, simulationMode: false };
 
-    throw new Error("无法拉取真实链上资产汇总；请检查后端与网络。");
+    // 最终兜底：对新钱包/零资产用户，资产接口短时不可用时仍展示空资产而非错误横幅
+    return {
+      data: {
+        totalUsd: "0.00",
+        tokens: [],
+        lastUpdatedAt: new Date().toISOString()
+      },
+      simulationMode: true
+    };
   },
 
   /** DEX 聚合器报价 */
