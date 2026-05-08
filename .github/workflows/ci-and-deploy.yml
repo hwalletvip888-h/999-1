@@ -1,0 +1,74 @@
+# CI + 可选：SSH 部署服务器 + EAS Update（JS 热更新）
+#
+# 必跑：push 到 main/master 会 npm ci + typecheck。
+# 服务器部署：仓库 Variables 设 ENABLE_SSH_DEPLOY=true；Secrets 设 DEPLOY_SSH_HOST / DEPLOY_SSH_USER / DEPLOY_SSH_KEY；
+#   可选 Variables：DEPLOY_PROJECT_DIR（默认 /opt/h-wallet）、DEPLOY_SSH_PORT（默认 22）。
+# OTA：Variables 设 ENABLE_EAS_OTA=true；Secrets 设 EXPO_TOKEN（expo.dev 账号 Token）。main 上构建的 App 须为 production channel 且含 expo-updates。
+#
+name: CI and deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+  deploy-server:
+    needs: quality
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_SSH_DEPLOY == 'true'
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ vars.DEPLOY_SSH_PORT != '' && vars.DEPLOY_SSH_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            export DEPLOY_REF="${{ github.ref_name }}"
+            export DEPLOY_PROJECT_DIR="${{ vars.DEPLOY_PROJECT_DIR }}"
+            if [ -z "${DEPLOY_PROJECT_DIR}" ]; then export DEPLOY_PROJECT_DIR="/opt/h-wallet"; fi
+            exec bash "${DEPLOY_PROJECT_DIR}/deploy/remote-deploy.sh"
+
+  eas-ota:
+    needs: quality
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_EAS_OTA == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: EAS Update (production channel)
+        run: eas update --channel production --message "${{ github.sha }}" --non-interactive
