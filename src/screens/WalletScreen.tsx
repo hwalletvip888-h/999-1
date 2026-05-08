@@ -1,6 +1,6 @@
 import React from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Dimensions, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Dimensions, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
@@ -20,18 +20,12 @@ import {
   ArrowLeftIcon,
   ArrowUpIcon,
   BellIcon,
-  CardStackIcon,
   ChevronRightIcon,
-  LeafIcon,
-  LockIcon,
-  ScanIcon,
   SearchIcon,
   SparkIcon,
   SwapIcon
 } from "../components/ui/Icons";
 import { TokenIcon } from "../components/ui/TokenIcons";
-import { CardLibraryScreen } from "./CardLibraryScreen";
-import { useCardLibrary } from "../services/cardLibrary";
 import { api } from "../api/gateway";
 import { okxOnchainClient } from "../api/providers/okx/okxOnchainClient";
 import type { AppView } from "../types";
@@ -46,64 +40,11 @@ type WalletScreenProps = {
   onChangeView: (view: AppView) => void;
 };
 
-const heroActions = [
-  { id: "deposit", label: "充值", Icon: ArrowDownIcon },
-  { id: "withdraw", label: "提现", Icon: ArrowUpIcon },
-  { id: "swap", label: "兑换", Icon: SwapIcon, primary: true },
-  { id: "scan", label: "扫码", Icon: ScanIcon }
-];
-
-const services: {
-  id: string;
-  title: string;
-  subtitle: string;
-  Icon: (p: { size?: number; color?: string }) => React.ReactNode;
-  bg: string[];
-  color: string;
-  locked?: boolean;
-}[] = [
-  {
-    id: "cards",
-    title: "卡库",
-    subtitle: "12 笔交易",
-    Icon: CardStackIcon,
-    bg: ["#EEF2FF", "#E0E7FF"],
-    color: "#4338CA"
-  },
-  {
-    id: "earn",
-    title: "链上赚币",
-    subtitle: "稳健收益",
-    Icon: LeafIcon,
-    bg: ["#DCFCE7", "#BBF7D0"],
-    color: "#15803D"
-  },
-  {
-    id: "staking",
-    title: "质押",
-    subtitle: "即将开放",
-    Icon: LockIcon,
-    bg: ["#FEF3C7", "#FDE68A"],
-    color: "#B45309",
-    locked: true
-  },
-  {
-    id: "dph",
-    title: "DPH",
-    subtitle: "灰度测试中",
-    Icon: SwapIcon,
-    bg: ["#FCE7F3", "#FBCFE8"],
-    color: "#BE185D",
-    locked: true
-  }
-];
-
 const defaultSpark = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const session = useSession();
   const [hideBalance, setHideBalance] = useState(false);
-  const [tab, setTab] = useState<"assets" | "nft" | "activity">("assets");
   const [totalBalance, setTotalBalance] = useState("0.00");
   const [pnlPercent, setPnlPercent] = useState("+0.0%");
   const [monthPnl, setMonthPnl] = useState("+$0.00");
@@ -434,31 +375,13 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
       cancelled = true;
     };
   }, [session?.token]);
-  const [libraryOpen, setLibraryOpen] = useState(false);
-  const [libraryMounted, setLibraryMounted] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
   const [swapMounted, setSwapMounted] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositMounted, setDepositMounted] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawMounted, setWithdrawMounted] = useState(false);
-  const library = useCardLibrary();
 
-  // 卡库从右滑入；关闭时延迟卸载以保留动画
-  const libraryX = useSharedValue(SCREEN_W);
-  useEffect(() => {
-    if (libraryOpen) {
-      setLibraryMounted(true);
-      libraryX.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
-    } else if (libraryMounted) {
-      libraryX.value = withTiming(SCREEN_W, { duration: 280, easing: Easing.out(Easing.cubic) });
-      const t = setTimeout(() => setLibraryMounted(false), 300);
-      return () => clearTimeout(t);
-    }
-  }, [libraryOpen, libraryMounted, libraryX]);
-  const libraryStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: libraryX.value }]
-  }));
   const swapX = useSharedValue(SCREEN_W);
   useEffect(() => {
     if (swapOpen) {
@@ -586,36 +509,36 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           />
         </View>
 
-        {/* 操作区：快捷操作 */}
-        <View style={{ marginTop: uiSpace.sectionGap + 6, paddingHorizontal: uiSpace.pageX }}>
-          <Surface elevation={1} padded={false}>
-            <View className="flex-row items-center justify-around px-2 py-2.5">
-              {heroActions.map(({ id, label, Icon, primary }) => (
-                <Pressable
-                  key={id}
-                  accessibilityRole="button"
-                  className="items-center active:opacity-60"
-                  onPress={() => {
-                    if (id === "swap") setSwapOpen(true);
-                    if (id === "deposit") setDepositOpen(true);
-                    if (id === "withdraw") setWithdrawOpen(true);
-                  }}
-                >
-                  <View
-                    className="h-11 w-11 items-center justify-center rounded-2xl"
-                    style={{
-                      backgroundColor: primary ? "#EDE9FE" : "#F3F4F6",
-                      borderWidth: primary ? 1 : 0,
-                      borderColor: primary ? "#C4B5FD" : "transparent"
-                    }}
-                  >
-                    <Icon size={19} color={primary ? "#5B21B6" : "#0F0F0F"} />
-                  </View>
-                  <Text className="mt-2 text-[13px] font-medium text-ink2">{label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </Surface>
+        {/* 操作区：3 张大色块卡 — 充值 / 提现 / 兑换。点哪都跑不了 */}
+        <View
+          style={{
+            marginTop: uiSpace.sectionGap + 6,
+            paddingHorizontal: uiSpace.pageX,
+            flexDirection: "row",
+            gap: 10,
+          }}
+        >
+          <ActionCard
+            label="充值"
+            sub="收款 · 二维码"
+            Icon={ArrowDownIcon}
+            colors={["#10B981", "#059669"]}
+            onPress={() => setDepositOpen(true)}
+          />
+          <ActionCard
+            label="提现"
+            sub="发送到任意地址"
+            Icon={ArrowUpIcon}
+            colors={["#7C3AED", "#5B21B6"]}
+            onPress={() => setWithdrawOpen(true)}
+          />
+          <ActionCard
+            label="兑换"
+            sub="500+ DEX 聚合"
+            Icon={SwapIcon}
+            colors={["#F59E0B", "#D97706"]}
+            onPress={() => setSwapOpen(true)}
+          />
         </View>
 
         {/* Agent 状态条：放在操作后，形成主流程连续性 */}
@@ -623,184 +546,22 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           <AgentBanner compact onNavigate={onChangeView} />
         </View>
 
-        {/* 资产列表表头：分段标签 + 添加代币（同一容器） */}
-        <View style={{ marginTop: 14, paddingHorizontal: uiSpace.pageX }}>
-          <Surface padded={false} elevation={1} style={{ overflow: "hidden" }}>
-            <View className="p-1">
-              <View className="flex-row items-center gap-1 rounded-full bg-surface p-1">
-                <SegmentTab label="资产" active={tab === "assets"} onPress={() => setTab("assets")} />
-                <SegmentTab label="NFT" active={tab === "nft"} onPress={() => setTab("nft")} />
-                <SegmentTab label="活动" active={tab === "activity"} onPress={() => setTab("activity")} />
-              </View>
-            </View>
-          </Surface>
-        </View>
-
         {/* 资产列表 — 单一来源：链上真实持仓，按 symbol 跨链聚合 */}
-        {tab === "assets" && (
-          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
-            <AgentWalletPanel
-              rows={filteredAssets}
-              breakdown={filteredBreakdown}
-              loading={agentAssetLoading}
-              onDeposit={() => setDepositOpen(true)}
-            />
-            {filteredAssets.length > 0 && !agentAssetLoading && (
-              <Pressable
-                className="mt-2 flex-row items-center justify-center rounded-xl border border-line bg-surface py-2.5 active:opacity-70"
-                onPress={() => setDepositOpen(true)}
-              >
-                <Text className="text-[13px] font-semibold text-ink2">+ 充入更多代币</Text>
-              </Pressable>
-            )}
+        <View style={{ marginTop: 14, paddingHorizontal: uiSpace.pageX, paddingBottom: 24 }}>
+          <View className="mb-2 flex-row items-center justify-between px-1">
+            <Text className="text-[13px] font-semibold uppercase tracking-wider text-muted">资产</Text>
+            {filteredAssets.length > 0 && !agentAssetLoading ? (
+              <Text className="text-[12px] text-muted">{filteredAssets.length} 个币种</Text>
+            ) : null}
           </View>
-        )}
-
-        {tab === "nft" && (
-          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
-            <Surface elevation={1} className="items-center py-10">
-              <Text className="text-[14px] text-muted">暂无 NFT 收藏</Text>
-            </Surface>
-          </View>
-        )}
-
-        {tab === "activity" && (
-          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
-            <Surface elevation={1} className="items-center py-10">
-              <Text className="text-[14px] text-muted">暂无活动记录</Text>
-            </Surface>
-          </View>
-        )}
-
-        {/* 服务网格 */}
-        <View style={{ marginTop: 18, paddingHorizontal: uiSpace.pageX }}>
-          <Surface elevation={1} padded={false}>
-            <View className="px-4 pt-3">
-              <Text className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-muted">服务</Text>
-            </View>
-            <View className="px-3 pb-3">
-              <View className="flex-row flex-wrap gap-3">
-            {services.map(({ id, title, subtitle, Icon, bg, color, locked }) => {
-              const display =
-                id === "cards"
-                  ? library.length > 0
-                    ? `${library.length} 张已归档`
-                    : "点击查看"
-                  : subtitle;
-              return (
-                <TiltCard
-                  key={id}
-                  style={{ width: "47.5%" }}
-                  shadowColor={color}
-                  onPress={
-                    id === "cards"
-                      ? () => setLibraryOpen(true)
-                      : id === "earn"
-                      ? () => onChangeView("chat")
-                      : undefined
-                  }
-                >
-                  <View style={{ borderRadius: 18, overflow: "hidden" }}>
-                    <LinearGradient
-                      colors={bg as [string, string]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={{
-                        padding: 14,
-                        height: 100,
-                        justifyContent: "space-between",
-                        borderRadius: 18,
-                        opacity: locked ? 0.55 : 1
-                      }}
-                    >
-                      <View
-                        className="h-9 w-9 items-center justify-center rounded-xl"
-                        style={{ backgroundColor: "rgba(255,255,255,0.65)" }}
-                      >
-                        <Icon size={18} color={color} />
-                      </View>
-                      <View>
-                        <Text className="text-[16px] font-bold" style={{ color }}>
-                          {title}
-                        </Text>
-                        <Text className="text-[12px]" style={{ color, opacity: locked ? 0.95 : 0.72 }}>
-                          {display}
-                        </Text>
-                      </View>
-                    </LinearGradient>
-
-                    {/* 锁定设计：右上角小锁徽章，表明“中期上线” */}
-                    {locked ? (
-                      <View
-                        style={{
-                          position: "absolute",
-                          top: 8,
-                          right: 8,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          backgroundColor: "rgba(15,15,15,0.75)",
-                          borderRadius: 999,
-                          paddingHorizontal: 7,
-                          paddingVertical: 3,
-                          gap: 3
-                        }}
-                      >
-                        <LockIcon size={10} color="#FCD34D" />
-                        <Text
-                          style={{ fontSize: 9, fontWeight: "700", color: "#FDE68A" }}
-                        >
-                          即将开放
-                        </Text>
-                      </View>
-                    ) : null}
-                    {!locked ? (
-                      <View
-                        style={{
-                          position: "absolute",
-                          top: 8,
-                          right: 8,
-                          borderRadius: 999,
-                          paddingHorizontal: 7,
-                          paddingVertical: 3,
-                          backgroundColor: "rgba(255,255,255,0.72)"
-                        }}
-                      >
-                        <Text style={{ fontSize: 9, fontWeight: "700", color }}>
-                          可用
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </TiltCard>
-              );
-            })}
-              </View>
-            </View>
-          </Surface>
+          <AgentWalletPanel
+            rows={filteredAssets}
+            breakdown={filteredBreakdown}
+            loading={agentAssetLoading}
+            onDeposit={() => setDepositOpen(true)}
+          />
         </View>
       </ScrollView>
-
-      {/* 底部搜索框 · 占位占型，后续接代币/地址/合约搜索 */}
-      {!swapMounted ? <WalletSearchBar /> : null}
-
-      {/* 卡库 · 从右滑入（仅打开时挂载，避免遮挡返回） */}
-      {libraryMounted ? (
-        <Animated.View
-          style={[
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "#FFFFFF"
-            },
-            libraryStyle
-          ]}
-        >
-          <CardLibraryScreen onClose={() => setLibraryOpen(false)} />
-        </Animated.View>
-      ) : null}
 
       {/* 兑换二级页 · 从右滑入 */}
       {swapMounted ? (
@@ -996,7 +757,7 @@ function DepositScreen({
   assets: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
 }) {
   type DepositPage = "main" | "token" | "network";
-  const [page, setPage] = useState<DepositPage>("token");
+  const [page, setPage] = useState<DepositPage>("main");
   const [symbol, setSymbol] = useState<string>("USDT");
   const [network, setNetwork] = useState<"X Layer" | "Ethereum" | "Solana">("X Layer");
   const [tokenSearch, setTokenSearch] = useState("");
@@ -1265,10 +1026,31 @@ function DepositScreen({
             </View>
             <Pressable
               onPress={copyCurrentAddress}
-              className="mx-4 mb-4 h-11 items-center justify-center rounded-xl bg-ink active:opacity-80"
-              style={{ shadowColor: "#111827", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 10, elevation: 4 }}
+              className="mx-4 mb-4 active:opacity-90"
+              style={{
+                borderRadius: 16,
+                overflow: "hidden",
+                shadowColor: "#059669",
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.28,
+                shadowRadius: 14,
+                elevation: 6,
+              }}
             >
-              <Text className="text-[14px] font-semibold text-white">复制地址</Text>
+              <LinearGradient
+                colors={["#10B981", "#059669"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
+                  height: 52,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "800", color: "#FFFFFF" }}>
+                  复制收款地址
+                </Text>
+              </LinearGradient>
             </Pressable>
           </Surface>
         </View>
@@ -2193,150 +1975,88 @@ function SwapScreen({
   );
 }
 
-/* ─────────────────────────────────────────────
-   底部搜索栏 · MVP 占位
-   - 输入框聚焦展示快捷分类（代币 / 地址 / 合约）
-   - 后续接入：搜索代币、地址、合约
-   ───────────────────────────────────────────── */
-function WalletSearchBar() {
-  const [query, setQuery] = useState("");
-  const [focused, setFocused] = useState(false);
-  const [kbHeight, setKbHeight] = useState(0);
-
-  // 键盘出现/隐藏时，抬高搜索条
-  useEffect(() => {
-    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvt, (e) => {
-      setKbHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvt, () => setKbHeight(0));
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  const quickChips = [
-    { id: "token", label: "代币", emoji: "🪙" },
-    { id: "address", label: "地址", emoji: "📮" },
-    { id: "contract", label: "合约", emoji: "📜" }
-  ];
-
-  return (
-    <View
-      pointerEvents="box-none"
-      style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        bottom: kbHeight, // 随键盘抬高
-        paddingHorizontal: 12,
-        paddingTop: 8,
-        paddingBottom: kbHeight > 0 ? 8 : 14,
-        backgroundColor: "rgba(255,255,255,0.92)",
-        borderTopWidth: 1,
-        borderTopColor: "#F1F3F5"
-      }}
-    >
-      {/* 聚焦时展示快捷分类 */}
-      {focused ? (
-        <View className="mb-2 flex-row" style={{ gap: 6 }}>
-          {quickChips.map((c) => (
-            <Pressable
-              key={c.id}
-              onPress={() => setQuery((q) => (q ? q : `${c.label}: `))}
-              className="flex-row items-center rounded-full px-3 py-1.5"
-              style={{ backgroundColor: "#F3F4F6" }}
-            >
-              <Text style={{ fontSize: 12, marginRight: 4 }}>{c.emoji}</Text>
-              <Text className="text-[12px] font-semibold" style={{ color: "#374151" }}>
-                {c.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
-      <View
-        className="flex-row items-center rounded-2xl px-3"
-        style={{
-          backgroundColor: "#F3F4F6",
-          borderWidth: 1,
-          borderColor: focused ? "#7C3AED" : "transparent",
-          height: 44
-        }}
-      >
-        <SearchIcon size={18} color={focused ? "#7C3AED" : "#9CA3AF"} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder="搜索代币 / 地址 / 合约"
-          placeholderTextColor="#9CA3AF"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={{
-            flex: 1,
-            marginLeft: 8,
-            fontSize: 14,
-            color: "#0F0F0F",
-            paddingVertical: 0
-          }}
-        />
-        {query.length > 0 ? (
-          <Pressable
-            onPress={() => setQuery("")}
-            hitSlop={8}
-            className="ml-1 h-5 w-5 items-center justify-center rounded-full"
-            style={{ backgroundColor: "#D1D5DB" }}
-          >
-            <Text style={{ color: "#FFFFFF", fontSize: 11, lineHeight: 12 }}>×</Text>
-          </Pressable>
-        ) : (
-          <View
-            className="ml-1 rounded-full px-2 py-0.5"
-            style={{ backgroundColor: "#E5E7EB", flexDirection: "row", alignItems: "center", gap: 3 }}
-          >
-            <LockIcon size={10} color="#6B7280" />
-            <Text className="text-[10px] font-semibold" style={{ color: "#6B7280" }}>
-              即将开放
-            </Text>
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-
-function SegmentTab({
+/**
+ * 充值 / 提现 / 兑换 — 大色块按钮，点哪都能命中。
+ * 56pt 图标，18pt 主标题，12pt 子标题，垂直填充。
+ */
+function ActionCard({
   label,
-  active,
-  onPress
+  sub,
+  Icon,
+  colors,
+  onPress,
 }: {
   label: string;
-  active: boolean;
+  sub: string;
+  Icon: (p: { size?: number; color?: string }) => React.ReactNode;
+  colors: [string, string];
   onPress: () => void;
 }) {
+  const scale = useSharedValue(1);
+  const aStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       onPress={onPress}
-      className={`flex-1 items-center rounded-full py-2 ${active ? "bg-bg" : ""}`}
-      style={
-        active
-          ? {
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.06,
-              shadowRadius: 3
-            }
-          : undefined
-      }
+      onPressIn={() => {
+        scale.value = withTiming(0.96, { duration: 100, easing: Easing.out(Easing.quad) });
+      }}
+      onPressOut={() => {
+        scale.value = withTiming(1, { duration: 200, easing: Easing.out(Easing.cubic) });
+      }}
+      style={[
+        {
+          flex: 1,
+          borderRadius: 20,
+          overflow: "hidden",
+          shadowColor: colors[1],
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.32,
+          shadowRadius: 14,
+          elevation: 6,
+        },
+        aStyle,
+      ]}
     >
-      <Text className={`text-[15px] ${active ? "font-bold text-ink" : "font-medium text-muted"}`}>{label}</Text>
-    </Pressable>
+      <LinearGradient
+        colors={colors}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{
+          paddingVertical: 16,
+          paddingHorizontal: 12,
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: 108,
+        }}
+      >
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: "rgba(255,255,255,0.22)",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 8,
+          }}
+        >
+          <Icon size={20} color="#FFFFFF" />
+        </View>
+        <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{label}</Text>
+        <Text
+          style={{
+            color: "rgba(255,255,255,0.78)",
+            fontSize: 10.5,
+            marginTop: 2,
+            fontWeight: "500",
+          }}
+          numberOfLines={1}
+        >
+          {sub}
+        </Text>
+      </LinearGradient>
+    </AnimatedPressable>
   );
 }
 
@@ -3109,52 +2829,6 @@ function HeroCard({
         </>
       ) : null}
     </View>
-  );
-}
-
-/**
- * 服务卡按压视差:按下时缩 0.96,松开 spring 弹回。
- */
-function TiltCard({
-  children,
-  style,
-  shadowColor,
-  onPress
-}: {
-  children: React.ReactNode;
-  style?: any;
-  shadowColor: string;
-  onPress?: () => void;
-}) {
-  const scale = useSharedValue(1);
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }]
-  }));
-  return (
-    <AnimatedPressable
-      accessibilityRole="button"
-      onPress={onPress}
-      onPressIn={() => {
-        scale.value = withTiming(0.95, { duration: 120, easing: Easing.out(Easing.quad) });
-      }}
-      onPressOut={() => {
-        scale.value = withTiming(1, { duration: 220, easing: Easing.out(Easing.cubic) });
-      }}
-      style={[
-        style,
-        aStyle,
-        {
-          borderRadius: 18,
-          overflow: "hidden",
-          shadowColor,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.16,
-          shadowRadius: 14
-        }
-      ]}
-    >
-      {children}
-    </AnimatedPressable>
   );
 }
 
