@@ -285,6 +285,76 @@ async function handleVerifyOtp(email: string, code: string): Promise<{
   }
 }
 
+/** 列出该邮箱下所有子账户（直接读 CLI 的 wallets.json 状态文件，最快） */
+async function handleListAccounts(token: string): Promise<{
+  ok: boolean;
+  currentAccountId?: string;
+  accounts?: Array<{ accountId: string; accountName: string; evmAddress?: string; solAddress?: string }>;
+  error?: string;
+}> {
+  try {
+    const { home } = homeFromToken(token);
+    const file = nodePath.join(home, "wallets.json");
+    if (!fs.existsSync(file)) return { ok: false, error: "钱包状态未初始化" };
+    const w = JSON.parse(fs.readFileSync(file, "utf-8"));
+    const accountsMap = (w?.accountsMap || {}) as Record<string, any>;
+    const list = Object.entries(accountsMap).map(([aid, acc]) => {
+      const addrs: any[] = Array.isArray(acc?.addressList) ? acc.addressList : [];
+      const evm = addrs.find((a) => a?.chainName === "eth")?.address;
+      const sol = addrs.find((a) => a?.chainName === "sol")?.address;
+      return {
+        accountId: aid,
+        accountName: String(acc?.accountName || `Account ${aid.slice(0, 4)}`),
+        evmAddress: evm || undefined,
+        solAddress: sol || undefined,
+      };
+    });
+    return {
+      ok: true,
+      currentAccountId: String(w?.selectedAccountId || ""),
+      accounts: list,
+    };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "读取账户列表失败" };
+  }
+}
+
+/** 切换激活子账户 */
+async function handleSwitchAccount(token: string, accountId: string): Promise<{
+  ok: boolean; currentAccountId?: string; error?: string;
+}> {
+  try {
+    const { home } = homeFromToken(token);
+    const aid = String(accountId || "").trim();
+    if (!aid) return { ok: false, error: "缺少 accountId" };
+    const data = runOnchainosJson(["wallet", "switch", aid], home, 20_000);
+    if (data?.ok === false) return { ok: false, error: data?.error || "切换失败" };
+    // 切换后可能 wallets.json 已更新，再校验一次
+    const status = runOnchainosJson(["wallet", "status"], home, 10_000);
+    return { ok: true, currentAccountId: String(status?.data?.currentAccountId || aid) };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "切换失败" };
+  }
+}
+
+/** 新增子账户 — 调用 `wallet add`，CLI 内部生成新的 accountId + 地址表 */
+async function handleAddAccount(token: string): Promise<{
+  ok: boolean; accountId?: string; accountName?: string; error?: string;
+}> {
+  try {
+    const { home } = homeFromToken(token);
+    const data = runOnchainosJson(["wallet", "add"], home, 30_000);
+    if (data?.ok === false) return { ok: false, error: data?.error || "新建账户失败" };
+    return {
+      ok: true,
+      accountId: String(data?.data?.accountId || ""),
+      accountName: String(data?.data?.accountName || ""),
+    };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "新建账户失败" };
+  }
+}
+
 /** 取该用户的多链地址表（直接读 CLI 状态，不发网络请求） */
 async function handleGetAddresses(token: string): Promise<{ ok: boolean; addresses?: any; accountId?: string; error?: string }> {
   try {
@@ -662,6 +732,9 @@ const server = http.createServer(async (req, res) => {
     const isSwapQuote = url === '/api/v6/dex/swap-quote' && req.method === 'POST';
     const isSwapExecute = url === '/api/v6/dex/swap-execute' && req.method === 'POST';
     const isWalletSend = url === '/api/v6/wallet/send' && req.method === 'POST';
+    const isListAccounts = url === '/api/wallet/accounts' && req.method === 'GET';
+    const isSwitchAccount = url === '/api/wallet/accounts/switch' && req.method === 'POST';
+    const isAddAccount = url === '/api/wallet/accounts/add' && req.method === 'POST';
 
     if (isSendOtp) {
       const body = await parseBody(req);
@@ -721,6 +794,25 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       res.writeHead(200);
+      res.end(JSON.stringify(result));
+
+    } else if (isListAccounts) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const result = await handleListAccounts(token);
+      res.writeHead(200);
+      res.end(JSON.stringify(result));
+
+    } else if (isSwitchAccount) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const body = await parseBody(req);
+      const result = await handleSwitchAccount(token, body?.accountId);
+      res.writeHead(result.ok ? 200 : 400);
+      res.end(JSON.stringify(result));
+
+    } else if (isAddAccount) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const result = await handleAddAccount(token);
+      res.writeHead(result.ok ? 200 : 400);
       res.end(JSON.stringify(result));
 
     } else if (url === '/api/ai/chat' && req.method === 'POST') {

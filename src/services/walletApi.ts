@@ -240,6 +240,87 @@ export async function logout(): Promise<void> {
   await clearSession();
 }
 
+// ─── 子账户管理 ─────────────────────────────────────────────
+
+export type WalletAccount = {
+  accountId: string;
+  accountName: string;
+  evmAddress?: string;
+  solAddress?: string;
+};
+
+/** 列出当前邮箱下所有子账户 */
+export async function listAccounts(): Promise<{
+  ok: boolean;
+  currentAccountId?: string;
+  accounts: WalletAccount[];
+  error?: string;
+}> {
+  const s = await loadSession();
+  if (!s) return { ok: false, accounts: [], error: "未登录" };
+  const url = hwalletAbsoluteUrl("/api/wallet/accounts");
+  if (!url) return { ok: false, accounts: [], error: "未配置后端地址" };
+  try {
+    const res = await fetchWithTimeout(url, {
+      headers: { Authorization: `Bearer ${s.token}` }
+    });
+    const raw = await res.text();
+    const data = raw ? JSON.parse(raw) : {};
+    if (!data?.ok) return { ok: false, accounts: [], error: data?.error || "拉取失败" };
+    return {
+      ok: true,
+      currentAccountId: data.currentAccountId,
+      accounts: Array.isArray(data.accounts) ? data.accounts : [],
+    };
+  } catch (err: any) {
+    return { ok: false, accounts: [], error: err?.message || "网络异常" };
+  }
+}
+
+/** 切换激活子账户（顶部选择器调用） */
+export async function switchAccount(accountId: string): Promise<{ ok: boolean; error?: string; currentAccountId?: string }> {
+  const s = await loadSession();
+  if (!s) return { ok: false, error: "未登录" };
+  const url = hwalletAbsoluteUrl("/api/wallet/accounts/switch");
+  if (!url) return { ok: false, error: "未配置后端地址" };
+  try {
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${s.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId }),
+    });
+    const raw = await res.text();
+    const data = raw ? JSON.parse(raw) : {};
+    if (!data?.ok) return { ok: false, error: data?.error || "切换失败" };
+    // 同步更新本地 session 的 accountId
+    const next: Session = { ...s, accountId: String(data.currentAccountId || accountId) };
+    await saveSession(next);
+    return { ok: true, currentAccountId: next.accountId };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "网络异常" };
+  }
+}
+
+/** 新增子账户 */
+export async function addAccount(): Promise<{ ok: boolean; accountId?: string; accountName?: string; error?: string }> {
+  const s = await loadSession();
+  if (!s) return { ok: false, error: "未登录" };
+  const url = hwalletAbsoluteUrl("/api/wallet/accounts/add");
+  if (!url) return { ok: false, error: "未配置后端地址" };
+  try {
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${s.token}`, "Content-Type": "application/json" },
+    });
+    const raw = await res.text();
+    const data = raw ? JSON.parse(raw) : {};
+    if (!data?.ok) return { ok: false, error: data?.error || "新建账户失败" };
+    return { ok: true, accountId: data.accountId, accountName: data.accountName };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "网络异常" };
+  }
+}
+
 /** 移动端弱网 / 服务端不可达时，无超时会导致界面一直卡在「发送中」 */
 const FETCH_TIMEOUT_MS = 28_000;
 

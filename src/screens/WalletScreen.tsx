@@ -1,5 +1,5 @@
 import React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Dimensions, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -36,8 +36,8 @@ import { api } from "../api/gateway";
 import { okxOnchainClient } from "../api/providers/okx/okxOnchainClient";
 import type { AppView } from "../types";
 import { isPositive } from "../utils/format";
-import { useSession } from "../services/sessionStore";
-import { refreshAddresses } from "../services/walletApi";
+import { useSession, sessionStore } from "../services/sessionStore";
+import { refreshAddresses, listAccounts, switchAccount, addAccount, type WalletAccount } from "../services/walletApi";
 import { uiColors, uiSpace } from "../theme/uiSystem";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -116,10 +116,50 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const [agentAssetLoading, setAgentAssetLoading] = useState(true);
   // 同 symbol 跨链分布：{ USDT: [{chain:'xlayer',qty:1.04,usdValue:1.04}, ...] }
   const [tokenBreakdown, setTokenBreakdown] = useState<Record<string, Array<{chain: string; chainLabel: string; qty: number; usdValue: number; contract?: string}>>>({});
+  // 顶部 HeroCard 上的网络过滤器：全部 / EVM / SOL → 控制资产列表 + 总余额一起变
+  const [chainFilter, setChainFilter] = useState<"all" | "evm" | "solana">("all");
+  // PnL 时间窗（暂只切 UI，数字目前都是 0；后面对接 OKX 历史 API 后会有真实数据）
+  const [timeWindow, setTimeWindow] = useState<30 | 90 | 180 | 360>(30);
+  // 子账户切换
+  const [accountList, setAccountList] = useState<WalletAccount[]>([]);
+  const [accountListLoading, setAccountListLoading] = useState(false);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
+  const [accountSwitching, setAccountSwitching] = useState(false);
 
   const accountIdMasked = session?.accountId
     ? `${session.accountId.slice(0, 6)}…${session.accountId.slice(-4)}`
     : "未连接";
+
+  // 根据 chainFilter 过滤 + 按链重新聚合的资产行；filteredTotal 同步反映
+  const isSolanaChain = (c: string) => String(c || "").toLowerCase() === "solana";
+  const { filteredAssets, filteredBreakdown, filteredTotalUsd } = useMemo(() => {
+    const fb: typeof tokenBreakdown = {};
+    let totalUsd = 0;
+    const rows: typeof agentAssets = [];
+    for (const row of agentAssets) {
+      const all = tokenBreakdown[row.symbol] ?? [];
+      const matched =
+        chainFilter === "all"
+          ? all
+          : chainFilter === "solana"
+            ? all.filter((b) => isSolanaChain(b.chain))
+            : all.filter((b) => !isSolanaChain(b.chain));
+      if (matched.length === 0) continue;
+      const qty = matched.reduce((s, b) => s + b.qty, 0);
+      const usd = matched.reduce((s, b) => s + b.usdValue, 0);
+      if (!(qty > 0 || usd > 0.001)) continue;
+      fb[row.symbol] = matched;
+      totalUsd += usd;
+      rows.push({ ...row, qty, valueUsd: usd });
+    }
+    rows.sort((a, b) => b.valueUsd - a.valueUsd);
+    return { filteredAssets: rows, filteredBreakdown: fb, filteredTotalUsd: totalUsd };
+  }, [chainFilter, agentAssets, tokenBreakdown]);
+
+  const filteredTotalLabel = filteredTotalUsd.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   // 加载 Agent Wallet 汇总（仅真实接口，无本地模拟兜底）
   useEffect(() => {
@@ -213,6 +253,80 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   useEffect(() => {
     refreshAddresses().catch(() => {});
   }, []);
+
+  // 拉子账户列表（顶部切换器用）
+  const reloadAccountList = async () => {
+    if (!session?.token) return;
+    setAccountListLoading(true);
+    try {
+      const res = await listAccounts();
+      if (res.ok) setAccountList(res.accounts);
+    } finally {
+      setAccountListLoading(false);
+    }
+  };
+  useEffect(() => {
+    reloadAccountList().catch(() => {});
+  }, [session?.token, session?.accountId]);
+
+  // 触发重新拉资产 — 切换账号 / 新建账号后调用
+  const reloadEverything = async () => {
+    setAgentAssetLoading(true);
+    setLoading(true);
+    try {
+      if (!session?.token) return;
+      const portfolio = await okxOnchainClient.getWalletPortfolio(session.token);
+      const tokens = portfolio.data.tokens ?? [];
+      // 这两个 useEffect 会自动重跑，这里只是兜底
+      void tokens;
+    } catch {
+      /* noop */
+    }
+    // 强制触发上面两个 useEffect [session?.token]：通过 update accountId 在 sessionStore，让 useSession 改变引用
+    const cur = sessionStore.get();
+    if (cur) await sessionStore.set({ ...cur });
+  };
+
+  const handleSwitchAccount = async (accountId: string) => {
+    if (!accountId || accountId === session?.accountId) {
+      setAccountPickerOpen(false);
+      return;
+    }
+    setAccountSwitching(true);
+    try {
+      const res = await switchAccount(accountId);
+      if (!res.ok) {
+        Alert.alert("切换失败", res.error || "请稍后重试");
+        return;
+      }
+      await reloadAccountList();
+      await reloadEverything();
+      setAccountPickerOpen(false);
+    } finally {
+      setAccountSwitching(false);
+    }
+  };
+
+  const handleAddAccount = async () => {
+    setAccountSwitching(true);
+    try {
+      const res = await addAccount();
+      if (!res.ok) {
+        Alert.alert("新建失败", res.error || "请稍后重试");
+        return;
+      }
+      // wallet add 后 CLI 自动激活了新账户，本地 session 也要同步
+      if (res.accountId) {
+        const cur = sessionStore.get();
+        if (cur) await sessionStore.set({ ...cur, accountId: res.accountId });
+      }
+      await reloadAccountList();
+      await reloadEverything();
+      setAccountPickerOpen(false);
+    } finally {
+      setAccountSwitching(false);
+    }
+  };
 
   // 资产面板行 — 来源是真实持仓：按 symbol 跨链聚合，只保留余额 > 0 的币种，
   // 再用 OKX 行情拉单价 + 24h 涨跌（拉不到就用持仓 USD 估值反推）
@@ -400,11 +514,19 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           <ArrowLeftIcon size={22} />
         </Pressable>
 
-        {/* 中间钱包地址胶囊 */}
-        <Pressable className="flex-row items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 active:opacity-70">
+        {/* 中间钱包地址胶囊 — 点击展开账号选择器 */}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setAccountPickerOpen(true);
+            reloadAccountList().catch(() => {});
+          }}
+          className="flex-row items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 active:opacity-70"
+        >
           <View className="h-2 w-2 rounded-full bg-emerald-500" />
           <Text className="text-[14px] font-semibold text-ink">Agent Wallet</Text>
           <Text className="text-[13px] text-muted">{accountIdMasked}</Text>
+          <Text style={{ fontSize: 11, color: "#94A3B8", marginLeft: 2 }}>▾</Text>
         </Pressable>
 
         <Pressable
@@ -451,7 +573,17 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         ) : null}
         {/* Hero 卡 */}
         <View style={{ paddingHorizontal: uiSpace.pageX, paddingTop: 12 }}>
-          <HeroCard hideBalance={hideBalance} totalBalance={totalBalance} pnlPercent={pnlPercent} monthPnl={monthPnl} portfolioSpark={portfolioSpark} />
+          <HeroCard
+            hideBalance={hideBalance}
+            totalBalance={filteredTotalLabel}
+            pnlPercent={pnlPercent}
+            monthPnl={monthPnl}
+            portfolioSpark={portfolioSpark}
+            chainFilter={chainFilter}
+            onChangeChainFilter={setChainFilter}
+            timeWindow={timeWindow}
+            onChangeTimeWindow={setTimeWindow}
+          />
         </View>
 
         {/* 操作区：快捷操作 */}
@@ -508,12 +640,12 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         {tab === "assets" && (
           <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
             <AgentWalletPanel
-              rows={agentAssets}
-              breakdown={tokenBreakdown}
+              rows={filteredAssets}
+              breakdown={filteredBreakdown}
               loading={agentAssetLoading}
               onDeposit={() => setDepositOpen(true)}
             />
-            {agentAssets.length > 0 && !agentAssetLoading && (
+            {filteredAssets.length > 0 && !agentAssetLoading && (
               <Pressable
                 className="mt-2 flex-row items-center justify-center rounded-xl border border-line bg-surface py-2.5 active:opacity-70"
                 onPress={() => setDepositOpen(true)}
@@ -723,6 +855,132 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         >
           <WithdrawScreen onClose={() => setWithdrawOpen(false)} assets={agentAssets} session={session} />
         </Animated.View>
+      ) : null}
+
+      {/* 账号选择器 — 点中间胶囊弹出 */}
+      {accountPickerOpen ? (
+        <Pressable
+          onPress={() => !accountSwitching && setAccountPickerOpen(false)}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15,15,15,0.45)",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingTop: 12,
+              paddingBottom: 28,
+              paddingHorizontal: 16,
+            }}
+          >
+            <View style={{ alignItems: "center", marginBottom: 12 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "#E5E7EB" }} />
+            </View>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F0F0F", marginBottom: 4 }}>
+              切换账号
+            </Text>
+            <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 14 }}>
+              同邮箱下可建多个独立子账户，地址各自隔离
+            </Text>
+
+            {accountListLoading ? (
+              <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                <Text style={{ fontSize: 13, color: "#94A3B8" }}>加载中…</Text>
+              </View>
+            ) : (
+              <View>
+                {accountList.map((acc) => {
+                  const active = acc.accountId === session?.accountId;
+                  const masked = `${acc.accountId.slice(0, 6)}…${acc.accountId.slice(-4)}`;
+                  return (
+                    <Pressable
+                      key={acc.accountId}
+                      onPress={() => handleSwitchAccount(acc.accountId)}
+                      disabled={accountSwitching}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: 14,
+                        paddingHorizontal: 12,
+                        borderRadius: 14,
+                        borderWidth: active ? 2 : 1,
+                        borderColor: active ? "#7C3AED" : "#E5E7EB",
+                        backgroundColor: active ? "#F5F3FF" : "#FFFFFF",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: active ? "#7C3AED" : "#E5E7EB",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 12,
+                        }}
+                      >
+                        <Text style={{ color: active ? "#FFFFFF" : "#6B7280", fontWeight: "700", fontSize: 14 }}>
+                          {acc.accountName?.match(/\d+/)?.[0] || "•"}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F0F0F" }}>{acc.accountName}</Text>
+                          {active ? (
+                            <View style={{ backgroundColor: "#7C3AED", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                              <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "700" }}>当前</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }} numberOfLines={1}>
+                          ID {masked}
+                        </Text>
+                        {acc.evmAddress ? (
+                          <Text style={{ fontSize: 11, color: "#64748B", marginTop: 1 }} numberOfLines={1}>
+                            EVM {acc.evmAddress.slice(0, 8)}…{acc.evmAddress.slice(-6)}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {!active ? (
+                        <Text style={{ fontSize: 12, color: "#7C3AED", fontWeight: "600" }}>切换</Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  onPress={handleAddAccount}
+                  disabled={accountSwitching}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 14,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderStyle: "dashed",
+                    borderColor: "#A78BFA",
+                    backgroundColor: "#FAF5FF",
+                    marginTop: 4,
+                  }}
+                >
+                  <Text style={{ color: "#7C3AED", fontWeight: "700", fontSize: 14 }}>
+                    {accountSwitching ? "处理中…" : "+ 新建子账户"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -2517,13 +2775,21 @@ function HeroCard({
   totalBalance,
   pnlPercent,
   monthPnl,
-  portfolioSpark
+  portfolioSpark,
+  chainFilter,
+  onChangeChainFilter,
+  timeWindow,
+  onChangeTimeWindow,
 }: {
   hideBalance: boolean;
   totalBalance: string;
   pnlPercent: string;
   monthPnl: string;
   portfolioSpark: number[];
+  chainFilter: "all" | "evm" | "solana";
+  onChangeChainFilter: (v: "all" | "evm" | "solana") => void;
+  timeWindow: 30 | 90 | 180 | 360;
+  onChangeTimeWindow: (v: 30 | 90 | 180 | 360) => void;
 }) {
   const driftA = useSharedValue(0); // 金色光晕 0→1
   const driftB = useSharedValue(0); // 紫色光晕 0→1
@@ -2641,11 +2907,39 @@ function HeroCard({
           ]}
         />
 
-        {/* 顶部 */}
+        {/* 顶部：网络过滤分段 */}
         <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1">
-            <View className="h-1.5 w-1.5 rounded-full bg-amber-300" />
-            <Text className="text-[13px] font-semibold text-white">Multi-chain</Text>
+          <View className="flex-row items-center gap-1 rounded-full bg-white/10 p-0.5">
+            {([
+              { key: "all", label: "全部" },
+              { key: "evm", label: "EVM" },
+              { key: "solana", label: "SOL" },
+            ] as const).map((opt) => {
+              const active = chainFilter === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => onChangeChainFilter(opt.key)}
+                  accessibilityRole="button"
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: active ? "rgba(255,255,255,0.95)" : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: "700",
+                      color: active ? "#3D1A78" : "rgba(255,255,255,0.85)",
+                    }}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
           <View className="flex-row items-center gap-1">
             <Text className="text-[13px] font-medium text-white/70">本月收益</Text>
@@ -2692,7 +2986,35 @@ function HeroCard({
             >
               <Text className="text-[14px] font-bold text-emerald-300">{pnlPercent}</Text>
             </Animated.View>
-            <Text className="text-[14px] font-medium text-white/75">最近 30 天</Text>
+            {/* 时间窗切换 — 30 / 90 / 180 / 360 天（先做 UI 切换，数据后续接 OKX 历史 API） */}
+            <View className="flex-row items-center gap-0.5 rounded-full bg-white/10 px-0.5 py-0.5">
+              {([30, 90, 180, 360] as const).map((d) => {
+                const active = timeWindow === d;
+                return (
+                  <Pressable
+                    key={d}
+                    onPress={() => onChangeTimeWindow(d)}
+                    accessibilityRole="button"
+                    style={{
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      borderRadius: 999,
+                      backgroundColor: active ? "rgba(255,255,255,0.95)" : "transparent",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: "700",
+                        color: active ? "#3D1A78" : "rgba(255,255,255,0.85)",
+                      }}
+                    >
+                      {d}天
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         </View>
 
