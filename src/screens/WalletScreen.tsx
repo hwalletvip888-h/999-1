@@ -27,7 +27,7 @@ import {
 } from "../components/ui/Icons";
 import { TokenIcon } from "../components/ui/TokenIcons";
 import { api } from "../api/gateway";
-import { okxOnchainClient } from "../api/providers/okx/okxOnchainClient";
+import { okxOnchainClient, type ChainId } from "../api/providers/okx/okxOnchainClient";
 import type { AppView } from "../types";
 import { isPositive } from "../utils/format";
 import { useSession, sessionStore } from "../services/sessionStore";
@@ -1064,6 +1064,59 @@ function DepositScreen({
   );
 }
 
+/** 代币在某条 chain 上的分链持仓（用于提现：必须与发币的网络一致） */
+type WithdrawBreakRow = {
+  chain: string;
+  chainLabel: string;
+  qty: number;
+  usdValue: number;
+  contract?: string;
+};
+
+/** portfolio 返回的 chain key → UI 文案 + 后端 `wallet send` / transfer 参数 */
+const WITHDRAW_CHAIN_META: Record<string, { ui: string; api: string }> = {
+  xlayer: { ui: "X Layer", api: "xlayer" },
+  ethereum: { ui: "Ethereum", api: "ethereum" },
+  solana: { ui: "Solana", api: "solana" },
+  bsc: { ui: "BNB Chain", api: "bsc" },
+  polygon: { ui: "Polygon", api: "polygon" },
+  arbitrum: { ui: "Arbitrum", api: "arbitrum" },
+  base: { ui: "Base", api: "base" },
+};
+
+function aggregateWithdrawChains(
+  breakdown: Record<string, WithdrawBreakRow[]> | undefined,
+  symbol: string
+): Array<{ chain: string; ui: string; api: string; qty: number; usdValue: number }> {
+  const rows = breakdown?.[symbol] ?? [];
+  const m = new Map<string, { qty: number; usdValue: number }>();
+  for (const r of rows) {
+    const ck = String(r.chain || "").toLowerCase();
+    if (!ck) continue;
+    const p = m.get(ck) ?? { qty: 0, usdValue: 0 };
+    m.set(ck, { qty: p.qty + Number(r.qty || 0), usdValue: p.usdValue + Number(r.usdValue || 0) });
+  }
+  const list = [...m.entries()].map(([chain, v]) => ({
+    chain,
+    ui:
+      WITHDRAW_CHAIN_META[chain]?.ui ??
+      (rows.find((x) => String(x.chain).toLowerCase() === chain)?.chainLabel ?? chain),
+    api: WITHDRAW_CHAIN_META[chain]?.api ?? chain,
+    qty: v.qty,
+    usdValue: v.usdValue,
+  }));
+  list.sort((a, b) => b.usdValue - a.usdValue);
+  return list;
+}
+
+/** 提现网络列表里的小图标占位（与 Asset 币种图标不同维） */
+function withdrawNetworkGlyph(chainKey: string): string {
+  if (chainKey === "solana") return "SOL";
+  if (chainKey === "bsc") return "BNB";
+  if (chainKey === "xlayer") return "OKB";
+  return "ETH";
+}
+
 function WithdrawScreen({
   onClose,
   assets,
@@ -1072,10 +1125,7 @@ function WithdrawScreen({
 }: {
   onClose: () => void;
   assets: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
-  tokenBreakdown?: Record<
-    string,
-    Array<{ chain: string; chainLabel: string; qty: number; usdValue: number; contract?: string }>
-  >;
+  tokenBreakdown?: Record<string, WithdrawBreakRow[]>;
   session: ReturnType<typeof useSession>;
 }) {
   type WithdrawPage = "token" | "network" | "address" | "amount" | "confirm";
@@ -1083,7 +1133,8 @@ function WithdrawScreen({
   const [page, setPage] = useState<WithdrawPage>("token");
   const [addressTab, setAddressTab] = useState<AddressTab>("recent");
   const [symbol, setSymbol] = useState<string>("USDT");
-  const [network, setNetwork] = useState<"X Layer" | "Ethereum" | "Solana">("X Layer");
+  /** 选中的提现网络（必须与 OKX portfolio 里的 chain 一致；如 USDT-on-BSC ⇒ bsc） */
+  const [withdrawChainKey, setWithdrawChainKey] = useState<string>("");
   const [tokenSearch, setTokenSearch] = useState("");
   const [networkSearch, setNetworkSearch] = useState("");
   const [address, setAddress] = useState("");
@@ -1099,27 +1150,46 @@ function WithdrawScreen({
     t.symbol.toLowerCase().includes(tokenSearch.trim().toLowerCase())
   );
 
-  const networkCandidates: Array<{ name: "X Layer" | "Ethereum" | "Solana"; feeLabel: string; tag?: string }> = [
-    { name: "X Layer", feeLabel: "待估算", tag: "免Gas" },
-    { name: "Solana", feeLabel: "待估算" },
-    { name: "Ethereum", feeLabel: "待估算" }
-  ];
-  const visibleNetworks = networkCandidates.filter((n) =>
-    n.name.toLowerCase().includes(networkSearch.trim().toLowerCase())
+  const aggregatedChains = useMemo(
+    () => aggregateWithdrawChains(tokenBreakdown, symbol),
+    [tokenBreakdown, symbol]
   );
-  const networkChainKey =
-    network === "X Layer" ? "xlayer" : network === "Solana" ? "solana" : "ethereum";
+  /** 有余额的链——提现只能从这些网络出金 */
+  const chainsWithBalance = useMemo(
+    () => aggregatedChains.filter((c) => c.qty > 0 || c.usdValue > 0.001),
+    [aggregatedChains]
+  );
+  /** 若没有正余额明细（少见），仍可展示聚合行避免死路 */
+  const networkPickerRows = chainsWithBalance.length > 0 ? chainsWithBalance : aggregatedChains;
 
-  const onThisChain = (tokenBreakdown?.[symbol] ?? []).filter((r) => r.chain === networkChainKey);
-  const chainQty = onThisChain.reduce((s, r) => s + r.qty, 0);
-  /** 与该网络/USDT-USDC 头寸一致的合约地址（OKX portfolio 下发的 contract） */
+  const networkRowsFiltered = networkPickerRows.filter(
+    (n) =>
+      n.ui.toLowerCase().includes(networkSearch.trim().toLowerCase()) ||
+      n.chain.toLowerCase().includes(networkSearch.trim().toLowerCase())
+  );
+
+  const withdrawUiLabel =
+    WITHDRAW_CHAIN_META[withdrawChainKey]?.ui ??
+    aggregatedChains.find((c) => c.chain === withdrawChainKey)?.ui ??
+    (withdrawChainKey ? withdrawChainKey : "—");
+
+  const onThisChain = (tokenBreakdown?.[symbol] ?? []).filter(
+    (r) => String(r.chain).toLowerCase() === withdrawChainKey.toLowerCase()
+  );
   const tokenContractForSend =
     onThisChain.find((r) => String(r.contract || "").trim())?.contract?.trim() ?? "";
 
   const aggregatedQty = assets.find((a) => a.symbol === symbol)?.qty ?? 0;
-  const balance = chainQty > 0 ? chainQty : aggregatedQty;
+  /** 已选定网络时用该链分项之和；不要用「总资产」顶替，否则会把 BNB 上的币当成别的链余额 */
+  const balance = withdrawChainKey
+    ? onThisChain.reduce((s, r) => s + Number(r.qty || 0), 0)
+    : aggregatedQty;
   const unitPrice = assets.find((a) => a.symbol === symbol)?.price ?? 0;
-  const canSubmit = !!address.trim() && Number(amount) > 0 && Number(amount) <= balance;
+  const canSubmit =
+    !!withdrawChainKey.trim() &&
+    !!address.trim() &&
+    Number(amount) > 0 &&
+    Number(amount) <= balance;
 
   const myWalletAddresses = (() => {
     const all = [
@@ -1224,12 +1294,39 @@ function WithdrawScreen({
           </View>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10, paddingBottom: 24 }}>
-          {visibleTokens.map((t) => (
+          {visibleTokens.map((t) => {
+            const agg = aggregateWithdrawChains(tokenBreakdown, t.symbol);
+            const positive = agg.filter((c) => c.qty > 0 || c.usdValue > 0.001);
+            const subtitle =
+              positive.length === 0
+                ? agg.length === 0
+                  ? "下拉刷新资产后可按链提现"
+                  : agg.map((c) => c.ui).join(" · ")
+                : positive.map((c) => c.ui).join(" · ");
+            return (
             <Pressable
               key={t.symbol}
               onPress={() => {
+                const rowsAgg = aggregateWithdrawChains(tokenBreakdown, t.symbol);
+                const rowsPos = rowsAgg.filter((c) => c.qty > 0 || c.usdValue > 0.001);
+                const pickerBase = rowsPos.length > 0 ? rowsPos : rowsAgg;
+                if (pickerBase.length === 0) {
+                  Alert.alert(
+                    "暂无链上明细",
+                    `${t.symbol} 的分链余额未加载。请返回钱包下拉刷新资产后再试。`
+                  );
+                  return;
+                }
                 setSymbol(t.symbol);
-                setPage("network");
+                setAddress("");
+                setAmount("");
+                if (pickerBase.length === 1) {
+                  setWithdrawChainKey(pickerBase[0].chain);
+                  setPage("address");
+                } else {
+                  setWithdrawChainKey("");
+                  setPage("network");
+                }
               }}
               className="flex-row items-center justify-between border-b border-line py-4 active:opacity-70"
             >
@@ -1237,7 +1334,7 @@ function WithdrawScreen({
                 <TokenIcon symbol={t.symbol} size={28} />
                 <View>
                   <Text className="text-[22px] font-semibold text-ink">{t.symbol}</Text>
-                  <Text className="text-[13px] text-muted">X Layer</Text>
+                  <Text className="text-[13px] text-muted" numberOfLines={2}>{subtitle}</Text>
                 </View>
               </View>
               <View className="items-end">
@@ -1245,7 +1342,8 @@ function WithdrawScreen({
                 <Text className="text-[12px] text-muted">${t.valueUsd.toFixed(2)}</Text>
               </View>
             </Pressable>
-          ))}
+            );
+          })}
         </ScrollView>
       </View>
     );
@@ -1260,7 +1358,9 @@ function WithdrawScreen({
           </Pressable>
           <View className="ml-1">
             <Text className="text-[30px] font-bold text-ink">选择网络</Text>
-            <Text className="text-[12px] text-muted">根据目标地址选择最优费用网络</Text>
+            <Text className="text-[12px] text-muted">
+              USDT 等在每条链上是不同合约；仅能选择你在这颗币上**实际有余额**的网络出金
+            </Text>
           </View>
         </View>
         <View style={{ paddingHorizontal: uiSpace.pageX }}>
@@ -1270,35 +1370,39 @@ function WithdrawScreen({
           </View>
         </View>
         <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
-          <View className="rounded-2xl border border-line bg-white px-4 py-3">
-            <Text className="text-[21px] font-bold text-ink">可用网络</Text>
-            <Text className="mt-1 text-[13px] text-muted">系统将优先推荐低手续费网络</Text>
+          <View className="rounded-2xl border border-line bg-amber-50 px-4 py-3">
+            <Text className="text-[14px] font-semibold text-ink">当前币种：{symbol}</Text>
+            <Text className="mt-1 text-[12px] leading-5 text-amber-950/80">
+              BNB Chain 上的 USDT 不能从 X Layer 提出；请认准下方网络与可用余额。
+            </Text>
           </View>
         </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10, paddingBottom: 24 }}>
-          {visibleNetworks.map((n) => (
+          {networkRowsFiltered.length === 0 ? (
+            <View className="items-center py-12">
+              <Text className="text-[14px] text-muted">没有匹配的网络</Text>
+            </View>
+          ) : null}
+          {networkRowsFiltered.map((n) => (
             <Pressable
-              key={n.name}
+              key={n.chain}
               onPress={() => {
-                setNetwork(n.name);
+                setWithdrawChainKey(n.chain);
                 setPage("address");
               }}
               className="flex-row items-center justify-between border-b border-line py-4 active:opacity-70"
             >
               <View className="flex-row items-center" style={{ gap: 10 }}>
-                <TokenIcon symbol={n.name === "X Layer" ? "OKB" : n.name === "Solana" ? "SOL" : "ETH"} size={28} />
-                <View className="flex-row items-center" style={{ gap: 6 }}>
-                  <Text className="text-[22px] font-semibold text-ink">{n.name}</Text>
-                  {n.tag ? (
-                    <View className="rounded-md bg-lime-200 px-1.5 py-0.5">
-                      <Text className="text-[10px] font-bold" style={{ color: "#365314" }}>{n.tag}</Text>
-                    </View>
-                  ) : null}
+                <TokenIcon symbol={withdrawNetworkGlyph(n.chain)} size={28} />
+                <View className="flex-row items-center flex-wrap" style={{ gap: 6 }}>
+                  <Text className="text-[22px] font-semibold text-ink">{n.ui}</Text>
                 </View>
               </View>
               <View className="items-end">
-                <Text className="text-[16px] font-semibold text-ink">{n.feeLabel}</Text>
-                <Text className="text-[12px] text-muted">网络费</Text>
+                <Text className="text-[16px] font-semibold text-ink">
+                  {n.qty.toFixed(symbol === "USDT" || symbol === "USDC" ? 4 : 6)} {symbol}
+                </Text>
+                <Text className="text-[12px] text-muted">${n.usdValue.toFixed(2)}</Text>
               </View>
             </Pressable>
           ))}
@@ -1308,7 +1412,8 @@ function WithdrawScreen({
   }
 
   if (page === "address") {
-    const isEvmLike = network === "X Layer" || network === "Ethereum";
+    const isEvmLike = withdrawChainKey !== "solana";
+    const pickerCount = networkPickerRows.length;
     const looksValid =
       isEvmLike
         ? /^0x[a-fA-F0-9]{40}$/.test(address.trim())
@@ -1316,11 +1421,18 @@ function WithdrawScreen({
     return (
       <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
         <View className="flex-row items-center px-3 pb-1 pt-1">
-          <Pressable onPress={() => setPage("network")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+          <Pressable onPress={() => setPage(pickerCount <= 1 ? "token" : "network")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
             <ArrowLeftIcon size={22} />
           </Pressable>
           <Text className="ml-1 text-[30px] font-bold text-ink">收款地址</Text>
         </View>
+        {withdrawChainKey ? (
+          <View style={{ paddingHorizontal: uiSpace.pageX }}>
+            <Text className="text-[13px] font-semibold text-violet-700">
+              当前提现网络：{withdrawUiLabel}（必须与地址所在链一致）
+            </Text>
+          </View>
+        ) : null}
         <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 2 }}>
           <View
             style={{
@@ -1537,8 +1649,11 @@ function WithdrawScreen({
           <View className="border-t border-line px-4 py-3">
             <View className="flex-row items-center justify-between py-1.5">
               <Text className="text-[14px] text-ink2">网络</Text>
-              <Text className="text-[14px] font-semibold text-ink">{network}</Text>
+              <Text className="text-[14px] font-semibold text-ink">{withdrawUiLabel}</Text>
             </View>
+            <Text className="pb-1.5 text-[11px] text-muted">
+              必须与收款地址所在网络一致（如 BNB Chain 的币不能填 X Layer 地址）
+            </Text>
             <View className="flex-row items-center justify-between py-1.5">
               <Text className="text-[14px] text-ink2">网络费用</Text>
               <View className="rounded-md border border-line bg-surface px-1.5 py-0.5">
@@ -1567,13 +1682,16 @@ function WithdrawScreen({
             setSendError("");
             setSending(true);
             try {
-              const chain =
-                network === "X Layer" ? "xlayer" :
-                network === "Solana" ? "solana" :
-                "ethereum";
+              if (!withdrawChainKey.trim()) {
+                Alert.alert("未选择网络", "请退回上一步重新选择提现网络。");
+                return;
+              }
+              const apiChain = (aggregatedChains.find((c) => c.chain === withdrawChainKey)?.api ??
+                WITHDRAW_CHAIN_META[withdrawChainKey]?.api ??
+                withdrawChainKey) as ChainId;
               const res = await okxOnchainClient.sendWalletTransfer(
                 {
-                  chain,
+                  chain: apiChain,
                   symbol,
                   toAddress: address.trim(),
                   amount: amount.trim(),
@@ -1585,6 +1703,7 @@ function WithdrawScreen({
               Alert.alert("发送已提交", txHash ? `交易哈希：${txHash}` : "已广播到链上，等待确认");
               setAmount("");
               setAddress("");
+              setWithdrawChainKey("");
               setPage("token");
             } catch (err) {
               const msg = err instanceof Error ? err.message : "发送失败，请稍后重试";
