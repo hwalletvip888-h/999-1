@@ -465,7 +465,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
             <Surface padded={false} elevation={1}>
               {realAssets.map((asset, idx) => {
                 const positive = isPositive(asset.change24h);
-                const spark = assetSparks[asset.symbol] ?? assetSparks.USDT;
+                const spark = assetSparks[asset.symbol] ?? assetSparks.USDT ?? defaultSpark;
                 return (
                   <Pressable
                     key={asset.id}
@@ -2085,12 +2085,19 @@ function SparkChart({
 }) {
   const W = 100; // viewBox 宽,使用 preserveAspectRatio="none" 拉伸
   const H = 100;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  // 防御：上游可能传 undefined / 空数组 / 单点 → 用零线兜底，不再让 Math.min(...undefined) 把 App 整崩
+  const safeValues: number[] =
+    Array.isArray(values) && values.length >= 2
+      ? values
+      : Array.isArray(values) && values.length === 1
+        ? [values[0], values[0]]
+        : [0, 0];
+  const min = Math.min(...safeValues);
+  const max = Math.max(...safeValues);
   const range = max - min || 1;
-  const stepX = W / (values.length - 1);
+  const stepX = W / (safeValues.length - 1);
 
-  const points = values.map((v, i) => {
+  const points = safeValues.map((v, i) => {
     const x = i * stepX;
     const y = H - ((v - min) / range) * (H - 6) - 3;
     return [x, y] as const;
