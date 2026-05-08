@@ -610,30 +610,62 @@ async function handleGetBalanceViaProvider_legacy(token: string) {
 }
 
 /**
+ * 从 `onchainos wallet addresses` 选取当前链上要签名的地址（与 CLI 的 `--from` / `--wallet` 一致）。
+ * 注意：CLI 返回的是 { evm[], solana[], xlayer[] }，**没有**顶层 addressList；旧逻辑把 data 当数组会永远选不到地址。
+ */
+function pickSignerAddressForChain(home: string, clientChain: string): string {
+  let data: any;
+  try {
+    data = runOnchainosJson(["wallet", "addresses"], home, 15_000);
+  } catch {
+    return "";
+  }
+  if (data?.ok === false) return "";
+  const d = data?.data ?? {};
+  const cli = mapClientChainToCli(clientChain);
+
+  if (cli === "solana") {
+    const arr = Array.isArray(d.solana) ? d.solana : [];
+    const a = arr.find((x: any) => x?.address && x.address !== "N/A") ?? arr[0];
+    return a?.address ? String(a.address) : "";
+  }
+
+  const evmArr: any[] = Array.isArray(d.evm) ? d.evm : [];
+
+  if (cli === "xlayer") {
+    const xl = Array.isArray(d.xlayer) ? d.xlayer : [];
+    const xa = xl.find((x: any) => x?.address && x.address !== "N/A") ?? xl[0];
+    if (xa?.address) return String(xa.address);
+    const hit196 = evmArr.find((e: any) => String(e?.chainIndex ?? "") === "196");
+    if (hit196?.address) return String(hit196.address);
+    return evmArr[0]?.address ? String(evmArr[0].address) : "";
+  }
+
+  const chainIndexFor: Record<string, string> = {
+    ethereum: "1",
+    polygon: "137",
+    arbitrum: "42161",
+    base: "8453",
+    bsc: "56",
+    xlayer: "196",
+  };
+  const want = chainIndexFor[cli];
+  if (want) {
+    const hit = evmArr.find((e: any) => String(e?.chainIndex ?? "") === want);
+    if (hit?.address) return String(hit.address);
+  }
+
+  const eth = evmArr.find((e: any) => String(e?.chainName ?? "").toLowerCase() === "eth");
+  if (eth?.address) return String(eth.address);
+  return evmArr[0]?.address ? String(evmArr[0].address) : "";
+}
+
+/**
  * 从 wallet status 拿到当前 selectedAccount 在指定链上的地址（用于 swap execute --wallet）。
+ * @deprecated 内部已改为 pickSignerAddressForChain，与 CLI addresses 形状一致。
  */
 function getCurrentWalletAddress(home: string, chain: string): string {
-  try {
-    const status = runOnchainosJson(["wallet", "status"], home, 10_000);
-    const addrs = runOnchainosJson(["wallet", "addresses"], home, 10_000);
-    const list = addrs?.data?.addressList || addrs?.data || [];
-    const accountId = status?.data?.currentAccountId || "";
-    const cliChain = mapClientChainToCli(chain);
-    const isSolana = cliChain === "solana";
-    for (const a of Array.isArray(list) ? list : []) {
-      if (accountId && a?.accountId !== accountId) continue;
-      const cName = String(a?.chainName || "").toLowerCase();
-      if (isSolana && (cName === "sol" || cName === "solana")) return String(a.address);
-      if (!isSolana && (cName === "eth" || cName === "ethereum" || cName === "evm" || a?.addressType === "eoa")) return String(a.address);
-    }
-    // fallback：取第一个非 N/A 地址
-    for (const a of Array.isArray(list) ? list : []) {
-      if (a?.address && a.address !== "N/A") return String(a.address);
-    }
-  } catch {
-    // ignore
-  }
-  return "";
+  return pickSignerAddressForChain(home, chain);
 }
 
 async function handleSwapQuoteViaCli(
@@ -770,8 +802,26 @@ async function handleWalletSendViaCli(
     }
     args.push("--contract-token", contract);
   }
+  const fromAddr = pickSignerAddressForChain(home, body.chain);
+  if (!fromAddr) {
+    return { ok: false, error: "无法获取发送地址：钱包地址列表异常，请在 App 中刷新后再试或重新登录" };
+  }
+  args.push("--from", fromAddr);
+
   const data = runOnchainosJson(args, home, 90_000);
-  if (data?.ok === false) return { ok: false, error: data?.error || "转账失败" };
+  if (data?.ok === false) {
+    const msg = String(data?.error || data?.message || data?.msg || "").trim() || "转账失败";
+    console.error("[wallet/send] CLI error", {
+      chain: body.chain,
+      symbol: body.symbol,
+      amount: body.amount,
+      recipient: String(body.toAddress || "").slice(0, 10) + "…",
+      tokenAddress: body.tokenAddress,
+      fromPreview: `${fromAddr.slice(0, 8)}…`,
+      detail: msg,
+    });
+    return { ok: false, error: msg };
+  }
   const d = data?.data ?? data ?? {};
   const txHash = String(d?.txHash || "");
   if (!txHash) return { ok: false, error: d?.error || "未返回交易哈希" };
