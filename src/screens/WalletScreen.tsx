@@ -141,21 +141,43 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           const tokens = portfolio.data.tokens ?? [];
           const totalUsd = Number(portfolio.data.totalUsd || 0);
           setTotalBalance(totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-          const assets = tokens
-            .filter((t) => Number(t.usdValue || 0) > 0.001 || Number(t.amount || 0) > 0)
-            .map((t) => {
-              const symbol = String(t.symbol || "").toUpperCase();
-              return {
-                id: `asset_${symbol.toLowerCase()}_${t.chain}`,
+          // 上方 Agent Wallet 面板已合计展示 SOL / USDT / BNB / OKB，
+          // 这里的「全部资产」列表过滤掉这 4 个币种，避免同一个 USDT 在面板里看一次、又在下方列表里再看一次（用户觉得「多了 2 个 USDT」）
+          const fixedSymbols = new Set(["SOL", "USDT", "BNB", "OKB"]);
+          // 同一币种在不同链上拆开展示时，按 (symbol, chain) 聚合，避免跨账户重复行
+          type AssetRow = { id: string; symbol: string; name: string; icon: string; chain: string; balance: string; valueUsd: string; change24h: string; _amt: number; _usd: number };
+          const acc = new Map<string, AssetRow>();
+          for (const t of tokens) {
+            const symbol = String(t.symbol || "").toUpperCase();
+            if (!symbol) continue;
+            if (fixedSymbols.has(symbol)) continue;
+            const usd = Number(t.usdValue || 0);
+            const amt = Number(t.amount || 0);
+            if (!(usd > 0.001 || amt > 0)) continue;
+            const chain = String(t.chain || "Onchain");
+            const key = `${symbol}__${chain}`;
+            const prev = acc.get(key);
+            if (prev) {
+              prev._amt += amt;
+              prev._usd += usd;
+              prev.balance = `${prev._amt.toFixed(6)} ${symbol}`;
+              prev.valueUsd = `$${prev._usd.toFixed(2)}`;
+            } else {
+              acc.set(key, {
+                id: `asset_${symbol.toLowerCase()}_${chain}`,
                 symbol,
                 name: symbol,
                 icon: symbol === "BTC" ? "₿" : symbol === "ETH" ? "◆" : symbol === "USDT" ? "₮" : symbol.slice(0, 1),
-                chain: String(t.chain || "Onchain"),
-                balance: `${Number(t.amount || 0).toFixed(6)} ${symbol}`,
-                valueUsd: `$${Number(t.usdValue || 0).toFixed(2)}`,
+                chain,
+                balance: `${amt.toFixed(6)} ${symbol}`,
+                valueUsd: `$${usd.toFixed(2)}`,
                 change24h: "+0.0%",
-              };
-            });
+                _amt: amt,
+                _usd: usd,
+              });
+            }
+          }
+          const assets = Array.from(acc.values()).map(({ _amt: _a, _usd: _u, ...row }) => row);
           setRealAssets(assets);
           setAssetSparks({});
           setPortfolioSpark(defaultSpark);
