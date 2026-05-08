@@ -1,0 +1,60 @@
+# EAS Android APK build
+#
+# 触发：手动 (workflow_dispatch) 选择 profile=preview/production
+# 必备 Secret：EXPO_TOKEN  (https://expo.dev/settings/access-tokens)
+#
+# 流程：
+#   1. checkout + node 20 + npm ci
+#   2. expo/expo-github-action 装 eas-cli + 注入 EXPO_TOKEN
+#   3. eas build --platform android --profile <profile> --non-interactive
+#   4. 把构建产物 URL 打到 step summary（在 EAS dashboard 也能下载 APK）
+
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS profile"
+        type: choice
+        options: [preview, production]
+        default: preview
+      apiBase:
+        description: "EXPO_PUBLIC_HWALLET_API_BASE override (留空 = 用 eas.json 默认)"
+        type: string
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.profile }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: EAS build (Android APK)
+        env:
+          EXPO_PUBLIC_HWALLET_API_BASE: ${{ inputs.apiBase }}
+        run: |
+          if [ -n "${EXPO_PUBLIC_HWALLET_API_BASE}" ]; then
+            echo "Overriding apiBase=${EXPO_PUBLIC_HWALLET_API_BASE}"
+          fi
+          eas build \
+            --platform android \
+            --profile "${{ inputs.profile }}" \
+            --non-interactive \
+            --no-wait

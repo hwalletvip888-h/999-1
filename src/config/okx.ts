@@ -7,6 +7,11 @@
 
 import { isOkxConfigured, type OkxCredentials } from "./okxTypes";
 
+/**
+ * 加载 OKX 凭证：优先 named export `OKX_CONFIG`（与 gateway.ts / okxClient.ts 一致），
+ * 退化到 `okxCredentials`（向后兼容旧模板）。两种命名都支持 secretKey 字段。
+ * 文件缺失时返回 null，App 自动走 mock。
+ */
 export function loadOkxCredentials(): OkxCredentials | null {
   try {
     // 关键：require 在 Metro 打包时如果文件不存在会抛错，
@@ -14,7 +19,7 @@ export function loadOkxCredentials(): OkxCredentials | null {
     // 注意：路径必须是字面量，Metro 才能静态分析。
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require("./okx.local");
-    const c: OkxCredentials | undefined = mod?.okxCredentials;
+    const c: OkxCredentials | undefined = mod?.OKX_CONFIG ?? mod?.okxCredentials;
     return isOkxConfigured(c ?? null) ? c! : null;
   } catch {
     return null;

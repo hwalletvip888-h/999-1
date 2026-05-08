@@ -1,15 +1,28 @@
 /**
- * WalletBackend — H Wallet 后端服务
- * 
+ * WalletBackend — H Wallet 后端服务（仅 Node 运行）
+ *
  * 实现方式：
  * 1. 邮箱 OTP 登录：使用 OKX WaaS API 直接 HTTP 调用
  * 2. 钱包创建：通过 ethers.js 本地生成密钥对 + OKX WaaS 注册
  * 3. 地址查询：OKX WaaS account/get-addresses
- * 
- * 不依赖 onchainos CLI，纯 HTTP 实现
+ *
+ * 不依赖 onchainos CLI，纯 HTTP 实现。
+ * 用 eval('require') 绕开 Metro 静态分析 — 即便 RN 端误引也不会让 bundle 失败。
  */
-import http from 'http';
-import crypto from 'crypto';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _req: ((m: string) => any) | null = (() => {
+  try {
+    // eslint-disable-next-line no-eval
+    return eval('require');
+  } catch {
+    return null;
+  }
+})();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const http: any = _req ? _req('http') : null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const crypto: any = _req ? _req('crypto') : null;
 
 const PORT = parseInt(process.env.WALLET_PORT || '3100');
 const OKX_API_KEY = process.env.OKX_API_KEY || '';
@@ -218,7 +231,8 @@ async function handleGetAddresses(token: string): Promise<{ ok: boolean; address
 }
 
 // ─── HTTP 服务器 ─────────────────────────────────────────────
-function parseBody(req: http.IncomingMessage): Promise<any> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseBody(req: any): Promise<any> {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', (chunk: any) => body += chunk);
@@ -230,7 +244,8 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const server = http?.createServer(async (req: any, res: any) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -273,7 +288,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (require.main === module || process.argv[1]?.includes('walletBackend')) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _isNodeMain = !!_req && (
+  ((_req as any) && (require as any)?.main === module) ||
+  (typeof process !== 'undefined' && process.argv[1]?.includes('walletBackend'))
+);
+if (_isNodeMain && server) {
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[WalletBackend] 服务已启动: http://0.0.0.0:${PORT}`);
     console.log(`[WalletBackend] 模式: HTTP Direct (无 onchainos 依赖)`);

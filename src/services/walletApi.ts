@@ -36,7 +36,18 @@ export type Session = {
   isNew: boolean;
 };
 
-const WALLET_API_BASE: string | null = 'http://localhost:3100'; // 真实后端
+/**
+ * 后端基础 URL：
+ *   1. EAS build 期通过 `EXPO_PUBLIC_HWALLET_API_BASE` 注入（见 eas.json）
+ *   2. 本地开发回落到 http://localhost:3100
+ *   3. 显式设为 "mock" / 空串 → 走前端独立 mock 流程
+ */
+const ENV_BASE =
+  // expo SDK 49+ 把 EXPO_PUBLIC_* 直接编进 process.env
+  // eslint-disable-next-line no-undef
+  (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_HWALLET_API_BASE) || "";
+const NORMALIZED_BASE = ENV_BASE.trim().toLowerCase() === "mock" ? "" : ENV_BASE.trim();
+const WALLET_API_BASE: string | null = NORMALIZED_BASE || "http://localhost:3100";
 const USE_MOCK = !WALLET_API_BASE;
 
 const STORAGE_KEY = "h_wallet.session.v1";

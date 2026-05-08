@@ -1,6 +1,7 @@
 export type OkxCredentials = {
   apiKey: string;
-  apiSecret: string;
+  /** 与 src/api/providers/okx/okxClient.ts 对齐：HMAC-SHA256 签名密钥 */
+  secretKey: string;
   passphrase: string;
   /** true → 走 OKX Demo Trading（带 x-simulated-trading: 1 头部） */
   simulated?: boolean;
@@ -19,5 +20,5 @@ export type OkxCredentials = {
  * 应用自动回落到 MockMarketFeed，永远不会因为缺 key 崩溃。
  */
 export function isOkxConfigured(c: OkxCredentials | null): c is OkxCredentials {
-  return !!c && !!c.apiKey && !!c.apiSecret && !!c.passphrase;
+  return !!c && !!c.apiKey && !!c.secretKey && !!c.passphrase;
 }

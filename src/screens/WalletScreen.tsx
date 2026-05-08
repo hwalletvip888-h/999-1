@@ -29,6 +29,7 @@ import {
 import { TokenIcon } from "../components/ui/TokenIcons";
 import { CardLibraryScreen } from "./CardLibraryScreen";
 import { useCardLibrary } from "../services/cardLibrary";
+import { useSession } from "../services/sessionStore";
 import { walletAssets } from "../data/mockData";
 import type { AppView } from "../types";
 import { isPositive } from "../utils/format";
@@ -109,6 +110,12 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryMounted, setLibraryMounted] = useState(false);
   const library = useCardLibrary();
+  const session = useSession();
+  const primaryAddress =
+    session?.addresses?.evm?.[0]?.address ?? session?.accountId ?? "";
+  const addressLabel = primaryAddress
+    ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}`
+    : "未登录";
 
   // 卡库从右滑入；关闭时延迟卸载以保留动画
   const libraryX = useSharedValue(SCREEN_W);
@@ -138,11 +145,11 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           <ArrowLeftIcon size={22} />
         </Pressable>
 
-        {/* 中间钱包地址胶囊 */}
+        {/* 中间钱包地址胶囊 — Agent Wallet 主账户 */}
         <Pressable className="flex-row items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 active:opacity-70">
           <View className="h-2 w-2 rounded-full bg-emerald-500" />
-          <Text className="text-[13px] font-semibold text-ink">主账户</Text>
-          <Text className="text-[12px] text-muted">0x9a…3F2c</Text>
+          <Text className="text-[13px] font-semibold text-ink">Agent Wallet</Text>
+          <Text className="text-[12px] text-muted">{addressLabel}</Text>
         </Pressable>
 
         <Pressable

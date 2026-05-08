@@ -6,11 +6,28 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "hwallet",
+    "android": {
+      "package": "com.hwallet.mvp",
+      "versionCode": 1,
+      "permissions": [
+        "INTERNET"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.hwallet.mvp",
+      "supportsTablet": true
+    },
     "web": {
       "bundler": "metro"
     },
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fce2e5cc-b9c0-446b-ae18-446ce1c74199"
+      }
+    },
+    "owner": "hwalletvip"
   }
 }

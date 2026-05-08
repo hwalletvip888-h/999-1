@@ -4,11 +4,39 @@
  * 基于 okx-contract-monitor 技能模板改写，
  * 适配 React Native (Expo) 环境：使用 fetch 替代 Node https 模块。
  *
- * 签名方式：HMAC-SHA256 → Base64
+ * 签名方式：HMAC-SHA256 → Base64（纯 JS 实现，避免 Node 'crypto' 依赖）
  * 签名内容 = timestamp + method + requestPath + body
  */
 
-import { createHmac } from 'crypto';
+import { sha256 } from 'js-sha256';
+
+const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let out = '';
+  let i = 0;
+  for (; i + 2 < bytes.length; i += 3) {
+    const a = bytes[i], b = bytes[i + 1], c = bytes[i + 2];
+    out += B64_ALPHABET[a >> 2];
+    out += B64_ALPHABET[((a & 3) << 4) | (b >> 4)];
+    out += B64_ALPHABET[((b & 15) << 2) | (c >> 6)];
+    out += B64_ALPHABET[c & 63];
+  }
+  if (i < bytes.length) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    out += B64_ALPHABET[a >> 2];
+    out += B64_ALPHABET[((a & 3) << 4) | (b >> 4)];
+    out += i + 1 < bytes.length ? B64_ALPHABET[(b & 15) << 2] : '=';
+    out += '=';
+  }
+  return out;
+}
+
+function hmacSha256Base64(secret: string, msg: string): string {
+  const bytes = sha256.hmac.array(secret, msg);
+  return bytesToBase64(new Uint8Array(bytes));
+}
 
 // ─── 类型定义 ──────────────────────────────────────────────────
 
@@ -39,7 +67,7 @@ function sign(
   secretKey: string
 ): string {
   const msg = timestamp + method + path + body;
-  return createHmac('sha256', secretKey).update(msg).digest('base64');
+  return hmacSha256Base64(secretKey, msg);
 }
 
 // ─── 请求封装 ──────────────────────────────────────────────────

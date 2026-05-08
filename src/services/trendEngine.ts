@@ -1,13 +1,38 @@
 /**
  * Trend Engine 集成服务
- * 
+ *
  * 读取 ~/trend_engine/output/ 目录下最新的分析报告
  * 提供给 AI 对话和策略推荐使用
+ *
+ * RN 端不打包 Node fs/path：用 eval('require') 绕过 Metro 静态分析；
+ * 缺失时所有 getter 安全返回 null/空，App 仍可启动。
  */
-import * as fs from 'fs';
-import * as path from 'path';
 
-const TREND_OUTPUT_DIR = path.join(process.env.HOME || '/root', 'trend_engine/output');
+type FsLike = {
+  existsSync: (p: string) => boolean;
+  readdirSync: (p: string) => string[];
+  readFileSync: (p: string, enc: string) => string;
+};
+type PathLike = { join: (...parts: string[]) => string };
+
+function safeRequire<T>(name: string): T | null {
+  try {
+    // eslint-disable-next-line no-eval
+    const req = eval('require') as ((m: string) => unknown) | undefined;
+    return req ? (req(name) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+const fs = safeRequire<FsLike>('fs');
+const path = safeRequire<PathLike>('path');
+
+// process 在 RN 里是 polyfill，env 通常为空对象 — 安全访问
+const HOME =
+  (typeof process !== 'undefined' && process.env && (process.env.HOME as string | undefined)) ||
+  '/root';
+const TREND_OUTPUT_DIR = path ? path.join(HOME, 'trend_engine/output') : '';
 
 export interface TrendReport {
   timestamp: string;
@@ -44,10 +69,11 @@ export interface TrendReport {
  */
 export function getLatestTrendReport(): TrendReport | null {
   try {
+    if (!fs || !path || !TREND_OUTPUT_DIR) return null;
     if (!fs.existsSync(TREND_OUTPUT_DIR)) return null;
 
     const files = fs.readdirSync(TREND_OUTPUT_DIR)
-      .filter(f => f.startsWith('report_') && f.endsWith('.json'))
+      .filter((f: string) => f.startsWith('report_') && f.endsWith('.json'))
       .sort()
       .reverse();
 
@@ -73,15 +99,16 @@ export function getLatestTrendReport(): TrendReport | null {
  */
 export function getRecentReports(count = 5): TrendReport[] {
   try {
+    if (!fs || !path || !TREND_OUTPUT_DIR) return [];
     if (!fs.existsSync(TREND_OUTPUT_DIR)) return [];
 
     const files = fs.readdirSync(TREND_OUTPUT_DIR)
-      .filter(f => f.startsWith('report_') && f.endsWith('.json'))
+      .filter((f: string) => f.startsWith('report_') && f.endsWith('.json'))
       .sort()
       .reverse()
       .slice(0, count);
 
-    return files.map(f => {
+    return files.map((f: string) => {
       const content = fs.readFileSync(path.join(TREND_OUTPUT_DIR, f), 'utf-8');
       const raw = JSON.parse(content);
       const btcData = raw.BTC || raw.btc || Object.values(raw)[0];
