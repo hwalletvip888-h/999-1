@@ -300,6 +300,41 @@ async function rpcCall(url: string, method: string, params: any[]): Promise<any>
   return json?.result;
 }
 
+function pad32(hexNo0x: string): string {
+  return hexNo0x.padStart(64, "0");
+}
+
+function toLower0x(addr: string): string {
+  const a = String(addr || "").trim();
+  if (!a) return a;
+  return a.startsWith("0x") ? `0x${a.slice(2).toLowerCase()}` : `0x${a.toLowerCase()}`;
+}
+
+function encodeBalanceOf(owner: string): string {
+  // balanceOf(address) selector: 0x70a08231
+  const o = toLower0x(owner).replace(/^0x/, "");
+  return `0x70a08231${pad32(o)}`;
+}
+
+async function rpcErc20Balance(url: string, token: string, owner: string): Promise<bigint | null> {
+  const data = encodeBalanceOf(owner);
+  const callRes = await rpcCall(url, "eth_call", [{ to: toLower0x(token), data }, "latest"]);
+  if (typeof callRes !== "string" || !callRes.startsWith("0x")) return null;
+  try {
+    return BigInt(callRes);
+  } catch {
+    return null;
+  }
+}
+
+function formatUnits(raw: bigint, decimals: number): number {
+  const d = BigInt(10) ** BigInt(decimals);
+  const whole = raw / d;
+  const frac = raw % d;
+  const frac6 = (frac * BigInt(1_000_000)) / d;
+  return Number(whole) + Number(frac6) / 1_000_000;
+}
+
 function normalizeAddressRows(input: any): RpcAddressRow[] {
   if (!input) return [];
   const source: any[] = Array.isArray(input)
@@ -358,7 +393,25 @@ async function tryRpcPortfolioByToken(token: string): Promise<WalletPortfolio | 
     "137": { chain: "polygon", symbol: "MATIC", rpc: "https://polygon-rpc.com" },
     "42161": { chain: "arbitrum", symbol: "ETH", rpc: "https://arb1.arbitrum.io/rpc" },
     "8453": { chain: "base", symbol: "ETH", rpc: "https://mainnet.base.org" },
+    "10": { chain: "base", symbol: "ETH", rpc: "https://mainnet.optimism.io" },
     "196": { chain: "xlayer", symbol: "OKB", rpc: "https://rpc.xlayer.tech" }
+  };
+
+  // ERC20 兜底：按链补齐 stablecoins（全按 6 decimals；多合约时求和）
+  const erc20ByChainIndex: Record<string, Array<{ symbol: string; decimals: number; addresses: string[] }>> = {
+    // Ethereum
+    "1": [{ symbol: "USDT", decimals: 6, addresses: ["0xdac17f958d2ee523a2206206994597c13d831ec7"] }],
+    // BSC
+    "56": [{ symbol: "USDT", decimals: 18, addresses: ["0x55d398326f99059ff775485246999027b3197955"] }],
+    // Polygon
+    "137": [{ symbol: "USDT", decimals: 6, addresses: ["0xc2132d05d31c914a87c6611c10748aeb04b58e8f"] }],
+    // Arbitrum / Base / Optimism / X Layer（来自你提供的常用地址列表）
+    "42161": [{ symbol: "USDT", decimals: 6, addresses: ["0xfde4c96c8593536e31f229ea8f37b2ada2699bb2"] }],
+    "8453": [
+      { symbol: "USDT", decimals: 6, addresses: ["0xf55bec9cafdbe8730f096aa55dad6d22d44099df", "0xfe97e85d13abd9c1c33384e796f10b73905637ce", "0x493257fd37edb34451f62edf8d2a0c418852ba4c"] }
+    ],
+    "10": [{ symbol: "USDT", decimals: 6, addresses: ["0x94b008aa00579c1307b0ef2c499ad98a8ce58e58"] }],
+    "196": [{ symbol: "USDT", decimals: 6, addresses: ["0x779ded0c9e1022225f8e0630b35a9b54be713736"] }]
   };
 
   const tokens: WalletPortfolioToken[] = [];
@@ -374,21 +427,43 @@ async function tryRpcPortfolioByToken(token: string): Promise<WalletPortfolio | 
     const chain = evmRpcByChain[row.chainIndex];
     if (chain) {
       const balHex = await rpcCall(chain.rpc, "eth_getBalance", [row.address, "latest"]);
-      if (typeof balHex !== "string") continue;
+      if (typeof balHex !== "string") {
+        // 即便原生余额取不到，也尝试 ERC20
+      }
       let amount = 0;
       try {
-        amount = Number(BigInt(balHex) / BigInt(10 ** 10)) / 1e8;
+        if (typeof balHex === "string") amount = Number(BigInt(balHex) / BigInt(10 ** 10)) / 1e8;
       } catch {
         amount = 0;
       }
-      if (amount <= 0) continue;
-      const px = await getPrice(chain.symbol);
-      tokens.push({
-        chain: chain.chain,
-        symbol: chain.symbol,
-        amount: amount.toFixed(8),
-        usdValue: (amount * px).toFixed(2)
-      });
+      if (amount > 0) {
+        const px = await getPrice(chain.symbol);
+        tokens.push({
+          chain: chain.chain,
+          symbol: chain.symbol,
+          amount: amount.toFixed(8),
+          usdValue: (amount * px).toFixed(2)
+        });
+      }
+
+      const erc20s = erc20ByChainIndex[row.chainIndex] ?? [];
+      for (const t of erc20s) {
+        let rawSum = 0n;
+        for (const addr of t.addresses) {
+          const raw = await rpcErc20Balance(chain.rpc, addr, row.address);
+          if (raw && raw > 0n) rawSum += raw;
+        }
+        if (rawSum <= 0n) continue;
+        const amt = formatUnits(rawSum, t.decimals);
+        if (amt <= 0) continue;
+        const p = await getPrice(t.symbol);
+        tokens.push({
+          chain: chain.chain,
+          symbol: t.symbol,
+          amount: amt.toFixed(6),
+          usdValue: (amt * p).toFixed(2)
+        });
+      }
       continue;
     }
 
@@ -404,6 +479,33 @@ async function tryRpcPortfolioByToken(token: string): Promise<WalletPortfolio | 
         amount: amount.toFixed(8),
         usdValue: (amount * px).toFixed(2)
       });
+
+      // Solana USDT (mint)
+      try {
+        const mint = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+        const resp = await rpcCall("https://api.mainnet-beta.solana.com", "getTokenAccountsByOwner", [
+          row.address,
+          { mint },
+          { encoding: "jsonParsed" }
+        ]);
+        const accounts: any[] = Array.isArray(resp?.value) ? resp.value : [];
+        const sum = accounts.reduce((s, it) => {
+          const ui = Number(it?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ?? 0);
+          return s + (Number.isFinite(ui) ? ui : 0);
+        }, 0);
+        if (sum > 0) {
+          const p = await getPrice("USDT");
+          tokens.push({
+            chain: "solana",
+            symbol: "USDT",
+            amount: sum.toFixed(6),
+            usdValue: (sum * p).toFixed(2),
+            contract: mint
+          });
+        }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
