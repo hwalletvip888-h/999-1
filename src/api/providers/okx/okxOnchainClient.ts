@@ -1,6 +1,6 @@
 import { loadOkxCredentials } from "../../../config/okx";
 import { Platform } from "react-native";
-import { getHwalletApiBase } from "../../../services/walletApi";
+import { getHwalletApiBase, loadSession } from "../../../services/walletApi";
 import { Buffer } from "buffer";
 /**
  * okxOnchainClient — V6 链上赚币线的客户端
@@ -376,6 +376,31 @@ async function fetchAddressesViaBackend(token: string): Promise<RpcAddressRow[]>
   }
 }
 
+async function fetchAddressesViaSession(): Promise<RpcAddressRow[]> {
+  try {
+    const s = await loadSession();
+    if (!s?.addresses) return [];
+    const rows: RpcAddressRow[] = [];
+    const add = (arr: any[]) => {
+      for (const a of arr ?? []) {
+        const address = String(a?.address ?? "").trim();
+        if (!address || address === "N/A") continue;
+        rows.push({
+          chainIndex: String(a?.chainIndex ?? ""),
+          chainName: String(a?.chainName ?? "Unknown"),
+          address
+        });
+      }
+    };
+    add(s.addresses.evm as any[]);
+    add(s.addresses.solana as any[]);
+    add(s.addresses.xlayer as any[]);
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
 async function fetchPriceUsd(symbol: string): Promise<number> {
   if (symbol === "USDT" || symbol === "USDC") return 1;
   try {
@@ -390,7 +415,15 @@ async function fetchPriceUsd(symbol: string): Promise<number> {
 }
 
 async function tryRpcPortfolioByToken(token: string): Promise<WalletPortfolio | null> {
-  const rows = await fetchAddressesViaBackend(token);
+  const sessionRows = await fetchAddressesViaSession();
+  const backendRows = await fetchAddressesViaBackend(token);
+  const seen = new Set<string>();
+  const rows = [...sessionRows, ...backendRows].filter((r) => {
+    const k = `${r.chainIndex}:${r.address.toLowerCase()}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
   if (!rows.length) return null;
 
   const evmRpcByChain: Record<string, { chain: ChainId; symbol: string; rpc: string }> = {
