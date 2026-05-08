@@ -19,8 +19,10 @@ echo "[remote-deploy] fetch origin/$REF ..."
 git fetch origin "$REF"
 git reset --hard "origin/$REF"
 
-echo "[remote-deploy] npm ci ..."
-npm ci
+echo "[remote-deploy] npm install (ci 与 lock 不一致时自动回退 npm install)"
+if ! npm ci 2>/dev/null; then
+  npm install
+fi
 
 echo "[remote-deploy] db hooks ..."
 bash deploy/hooks/db-migrate.sh
