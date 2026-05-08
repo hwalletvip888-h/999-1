@@ -2796,6 +2796,11 @@ function HeroCard({
   const numPulse = useSharedValue(0);
   const greenPulse = useSharedValue(0);
 
+  const [chainOpen, setChainOpen] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const chainLabel =
+    chainFilter === "all" ? "全部网络" : chainFilter === "evm" ? "EVM" : "SOL";
+
   useEffect(() => {
     driftA.value = withRepeat(
       withSequence(
@@ -2857,17 +2862,18 @@ function HeroCard({
   }));
 
   return (
-    <View
-      style={{
-        borderRadius: 28,
-        overflow: "hidden",
-        shadowColor: "#2A0D4D",
-        shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.28,
-        shadowRadius: 28,
-        elevation: 10
-      }}
-    >
+    <View style={{ position: "relative" }}>
+      <View
+        style={{
+          borderRadius: 28,
+          overflow: "hidden",
+          shadowColor: "#2A0D4D",
+          shadowOffset: { width: 0, height: 16 },
+          shadowOpacity: 0.28,
+          shadowRadius: 28,
+          elevation: 10
+        }}
+      >
       <LinearGradient
         colors={["#0F0427", "#2A0D4D", "#5B21B6"]}
         start={{ x: 0, y: 0 }}
@@ -2907,40 +2913,17 @@ function HeroCard({
           ]}
         />
 
-        {/* 顶部：网络过滤分段 */}
+        {/* 顶部：网络下拉（点 ▾ 弹列表） */}
         <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-1 rounded-full bg-white/10 p-0.5">
-            {([
-              { key: "all", label: "全部" },
-              { key: "evm", label: "EVM" },
-              { key: "solana", label: "SOL" },
-            ] as const).map((opt) => {
-              const active = chainFilter === opt.key;
-              return (
-                <Pressable
-                  key={opt.key}
-                  onPress={() => onChangeChainFilter(opt.key)}
-                  accessibilityRole="button"
-                  style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                    backgroundColor: active ? "rgba(255,255,255,0.95)" : "transparent",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 12,
-                      fontWeight: "700",
-                      color: active ? "#3D1A78" : "rgba(255,255,255,0.85)",
-                    }}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setChainOpen((v) => !v)}
+            className="flex-row items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 active:opacity-70"
+          >
+            <View className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+            <Text className="text-[13px] font-semibold text-white">{chainLabel}</Text>
+            <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", marginLeft: 1 }}>▾</Text>
+          </Pressable>
           <View className="flex-row items-center gap-1">
             <Text className="text-[13px] font-medium text-white/70">本月收益</Text>
             <Text className="text-[14px] font-bold text-emerald-300">{monthPnl}</Text>
@@ -2986,35 +2969,15 @@ function HeroCard({
             >
               <Text className="text-[14px] font-bold text-emerald-300">{pnlPercent}</Text>
             </Animated.View>
-            {/* 时间窗切换 — 30 / 90 / 180 / 360 天（先做 UI 切换，数据后续接 OKX 历史 API） */}
-            <View className="flex-row items-center gap-0.5 rounded-full bg-white/10 px-0.5 py-0.5">
-              {([30, 90, 180, 360] as const).map((d) => {
-                const active = timeWindow === d;
-                return (
-                  <Pressable
-                    key={d}
-                    onPress={() => onChangeTimeWindow(d)}
-                    accessibilityRole="button"
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 2,
-                      borderRadius: 999,
-                      backgroundColor: active ? "rgba(255,255,255,0.95)" : "transparent",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: "700",
-                        color: active ? "#3D1A78" : "rgba(255,255,255,0.85)",
-                      }}
-                    >
-                      {d}天
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {/* 时间窗下拉 — 点 ▾ 弹 30/90/180/360 列表（先 UI 切换，数据待接 OKX 历史 API） */}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setTimeOpen((v) => !v)}
+              className="flex-row items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 active:opacity-70"
+            >
+              <Text className="text-[13px] font-medium text-white/85">最近 {timeWindow} 天</Text>
+              <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.7)" }}>▾</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -3028,6 +2991,123 @@ function HeroCard({
           />
         </View>
       </LinearGradient>
+      </View>
+
+      {/* 网络下拉浮层 — 贴在「全部网络 ▾」胶囊正下方 */}
+      {chainOpen ? (
+        <>
+          <Pressable
+            onPress={() => setChainOpen(false)}
+            style={{
+              position: "absolute", top: -1000, left: -1000, right: -1000, bottom: -1000,
+              zIndex: 50,
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              top: 52, left: 16, width: 168,
+              backgroundColor: "#FFFFFF",
+              borderRadius: 14,
+              paddingVertical: 6,
+              shadowColor: "#0F172A",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.18,
+              shadowRadius: 16,
+              elevation: 16,
+              zIndex: 100,
+            }}
+          >
+            {([
+              { key: "all", label: "全部网络", sub: "EVM + Solana" },
+              { key: "evm", label: "EVM", sub: "ETH/BSC/Polygon/Arb…" },
+              { key: "solana", label: "SOL", sub: "Solana" },
+            ] as const).map((opt) => {
+              const active = chainFilter === opt.key;
+              return (
+                <Pressable
+                  key={opt.key}
+                  onPress={() => {
+                    onChangeChainFilter(opt.key);
+                    setChainOpen(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 12,
+                    paddingVertical: 9,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F0F0F" }}>
+                      {opt.label}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 1 }}>{opt.sub}</Text>
+                  </View>
+                  {active ? (
+                    <Text style={{ fontSize: 14, color: "#7C3AED", fontWeight: "700" }}>✓</Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      {/* 时间窗下拉浮层 — 贴在「最近 N 天 ▾」胶囊正下方 */}
+      {timeOpen ? (
+        <>
+          <Pressable
+            onPress={() => setTimeOpen(false)}
+            style={{
+              position: "absolute", top: -1000, left: -1000, right: -1000, bottom: -1000,
+              zIndex: 50,
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              top: 152, right: 16, width: 132,
+              backgroundColor: "#FFFFFF",
+              borderRadius: 14,
+              paddingVertical: 6,
+              shadowColor: "#0F172A",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.18,
+              shadowRadius: 16,
+              elevation: 16,
+              zIndex: 100,
+            }}
+          >
+            {([30, 90, 180, 360] as const).map((d) => {
+              const active = timeWindow === d;
+              return (
+                <Pressable
+                  key={d}
+                  onPress={() => {
+                    onChangeTimeWindow(d);
+                    setTimeOpen(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingHorizontal: 14,
+                    paddingVertical: 9,
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F0F0F" }}>
+                    最近 {d} 天
+                  </Text>
+                  {active ? (
+                    <Text style={{ fontSize: 14, color: "#7C3AED", fontWeight: "700" }}>✓</Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
