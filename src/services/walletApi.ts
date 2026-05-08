@@ -5,15 +5,19 @@
  * POST /api/auth/verify-otp   { email, code }
  * GET  /api/wallet/addresses  Authorization: Bearer <token>
  *
- * **实测交付：** 必须由构建注入 `EXPO_PUBLIC_HWALLET_API_BASE`（或 `HWALLET_API_BASE`），不设默认域名。
+ * 基础地址优先级：构建注入 `EXPO_PUBLIC_HWALLET_API_BASE` / `HWALLET_API_BASE`，缺省回退到内置地址。
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+
+const DEFAULT_HWALLET_API_BASE = "http://64.90.1.102:3100";
 
 /** H Wallet 后端根 URL，去掉末尾 `/` */
 export function getHwalletApiBase(): string {
   const a = String(process.env.EXPO_PUBLIC_HWALLET_API_BASE ?? "").trim();
   const b = String(process.env.HWALLET_API_BASE ?? "").trim();
-  return (a || b).replace(/\/+$/, "");
+  const c = String((Constants.expoConfig?.extra as { hwalletApiBase?: string } | undefined)?.hwalletApiBase ?? "").trim();
+  return (a || b || c || DEFAULT_HWALLET_API_BASE).replace(/\/+$/, "");
 }
 
 function hwalletAbsoluteUrl(path: string): string | null {
