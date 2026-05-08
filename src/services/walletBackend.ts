@@ -353,9 +353,13 @@ async function handleGetBalance(token: string): Promise<any> {
       .map((t: any) => {
         const usd = Number(t?.usdValue ?? t?.value ?? 0);
         if (Number.isFinite(usd)) computedUsd += usd;
+        // 优先用 customSymbol（OKX 已清洗的「USDT」），symbol 字段经常带 ₮ 等品牌字符（"USD₮0"）
+        // 客户端老版本对 SVG textAnchor 的多字节字符渲染不稳，统一在后端 strip 成纯 ASCII
+        const rawSym = String(t?.customSymbol || t?.symbol || t?.tokenSymbol || "").trim();
+        const cleanSym = rawSym.replace(/[^\x20-\x7E]/g, "").toUpperCase() || rawSym.toUpperCase();
         return {
           chainIndex: String(t?.chainIndex ?? t?.chainId ?? ""),
-          symbol: String(t?.symbol ?? t?.tokenSymbol ?? "").toUpperCase(),
+          symbol: cleanSym,
           amount: String(t?.balance ?? t?.amount ?? t?.coinAmount ?? "0"),
           usdValue: String(t?.usdValue ?? t?.value ?? t?.assetValue ?? "0"),
           contract: t?.tokenAddress ?? t?.tokenContractAddress ?? undefined,
@@ -635,6 +639,15 @@ const server = http.createServer(async (req, res) => {
   const rawUrl = req.url || "";
   const url = rawUrl.split("?")[0] || rawUrl;
   res.setHeader('Content-Type', 'application/json');
+
+  // 请求日志（method + path + 客户端 IP），便于线上排查 App 实际调用
+  const clientIp =
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+    req.socket.remoteAddress ||
+    'unknown';
+  if (req.method !== 'OPTIONS' && url.startsWith('/api/')) {
+    console.log(`[req] ${req.method} ${url} from ${clientIp}`);
+  }
 
   try {
     // 旧端点：/api/auth/* | 新端点（onchainos-skills 推荐）：/api/agent-wallet/*
