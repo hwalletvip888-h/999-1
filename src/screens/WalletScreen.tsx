@@ -114,6 +114,8 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const [walletDataError, setWalletDataError] = useState("");
   const [agentAssets, setAgentAssets] = useState<Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>>([]);
   const [agentAssetLoading, setAgentAssetLoading] = useState(true);
+  // 同 symbol 跨链分布：{ USDT: [{chain:'xlayer',qty:1.04,usdValue:1.04}, ...] }
+  const [tokenBreakdown, setTokenBreakdown] = useState<Record<string, Array<{chain: string; chainLabel: string; qty: number; usdValue: number; contract?: string}>>>({});
 
   const accountIdMasked = session?.accountId
     ? `${session.accountId.slice(0, 6)}…${session.accountId.slice(-4)}`
@@ -238,8 +240,20 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           return;
         }
 
-        // 跨链同 symbol 聚合
+        // 跨链同 symbol 聚合 + 同时保留每条链的明细
+        const chainLabel = (c: string): string => {
+          const v = String(c || "").toLowerCase();
+          if (v === "xlayer") return "X Layer";
+          if (v === "bsc") return "BNB Chain";
+          if (v === "polygon") return "Polygon";
+          if (v === "arbitrum") return "Arbitrum";
+          if (v === "base") return "Base";
+          if (v === "solana") return "Solana";
+          if (v === "ethereum") return "Ethereum";
+          return v ? v.charAt(0).toUpperCase() + v.slice(1) : "Onchain";
+        };
         const map = new Map<string, { qty: number; valueUsd: number }>();
+        const breakdown: Record<string, Array<{ chain: string; chainLabel: string; qty: number; usdValue: number; contract?: string }>> = {};
         for (const t of tokens) {
           const symbol = String(t.symbol || "").toUpperCase();
           if (!symbol) continue;
@@ -248,7 +262,20 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           if (!(qty > 0 || usd > 0.001)) continue;
           const prev = map.get(symbol) ?? { qty: 0, valueUsd: 0 };
           map.set(symbol, { qty: prev.qty + qty, valueUsd: prev.valueUsd + usd });
+          const chainKey = String(t.chain || "");
+          (breakdown[symbol] ||= []).push({
+            chain: chainKey,
+            chainLabel: chainLabel(chainKey),
+            qty,
+            usdValue: usd,
+            contract: t.contract,
+          });
         }
+        // 每个 symbol 的明细按 USD 价值降序
+        for (const sym of Object.keys(breakdown)) {
+          breakdown[sym].sort((a, b) => b.usdValue - a.usdValue);
+        }
+        if (!cancelled) setTokenBreakdown(breakdown);
 
         // 只展示真有余额的币种；按 USD 价值降序
         const sortedSymbols = Array.from(map.entries())
@@ -482,6 +509,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
             <AgentWalletPanel
               rows={agentAssets}
+              breakdown={tokenBreakdown}
               loading={agentAssetLoading}
               onDeposit={() => setDepositOpen(true)}
             />
@@ -2347,13 +2375,17 @@ function AgentBanner({
  */
 function AgentWalletPanel({
   rows,
+  breakdown,
   loading,
   onDeposit
 }: {
   rows: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
+  breakdown?: Record<string, Array<{ chain: string; chainLabel: string; qty: number; usdValue: number; contract?: string }>>;
   loading: boolean;
   onDeposit?: () => void;
 }) {
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+
   return (
     <Surface elevation={1} padded={false}>
       <View>
@@ -2399,30 +2431,78 @@ function AgentWalletPanel({
         ) : (
           rows.map((row, idx) => {
             const up = row.change24h >= 0;
+            const chains = breakdown?.[row.symbol] ?? [];
+            const hasMulti = chains.length > 1;
+            const isExpanded = expandedSymbol === row.symbol;
             return (
-              <View key={`${row.symbol}_${idx}`} className={`flex-row items-center px-4 py-4 ${idx > 0 ? "border-t border-line" : ""}`}>
-                <TokenIcon symbol={row.symbol} size={32} />
-                <View className="ml-3 flex-1">
-                  <View className="flex-row items-start justify-between">
-                    <View>
-                      <Text className="text-[16px] font-semibold text-ink">{row.symbol}</Text>
-                      <Text className="mt-1 text-[13px]" style={{ color: "#94A3B8" }}>
-                        数量 {row.qty.toFixed(row.qty >= 1 ? 4 : 6)}
-                      </Text>
-                    </View>
-                    <View style={{ minWidth: 98, alignItems: "flex-end" }}>
-                      <Text className="text-[16px] font-semibold text-ink">${row.valueUsd.toFixed(2)}</Text>
-                      <Text className="mt-1 text-[13px]" style={{ color: "#94A3B8" }}>
-                        ${row.price.toFixed(row.price >= 1 ? 2 : 6)}
-                      </Text>
+              <View key={`${row.symbol}_${idx}`}>
+                <Pressable
+                  onPress={() => {
+                    if (chains.length > 0) {
+                      setExpandedSymbol(isExpanded ? null : row.symbol);
+                    }
+                  }}
+                  accessibilityRole="button"
+                  className={`flex-row items-center px-4 py-4 active:bg-surface ${idx > 0 ? "border-t border-line" : ""}`}
+                >
+                  <TokenIcon symbol={row.symbol} size={32} />
+                  <View className="ml-3 flex-1">
+                    <View className="flex-row items-start justify-between">
+                      <View>
+                        <View className="flex-row items-center" style={{ gap: 6 }}>
+                          <Text className="text-[16px] font-semibold text-ink">{row.symbol}</Text>
+                          {hasMulti ? (
+                            <View className="rounded-md bg-surface px-1.5 py-0.5">
+                              <Text className="text-[10px] font-semibold text-muted">{chains.length} 条链</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <Text className="mt-1 text-[13px]" style={{ color: "#94A3B8" }}>
+                          数量 {row.qty.toFixed(row.qty >= 1 ? 4 : 6)}
+                        </Text>
+                      </View>
+                      <View style={{ minWidth: 98, alignItems: "flex-end" }}>
+                        <Text className="text-[16px] font-semibold text-ink">${row.valueUsd.toFixed(2)}</Text>
+                        <Text className="mt-1 text-[13px]" style={{ color: "#94A3B8" }}>
+                          ${row.price.toFixed(row.price >= 1 ? 2 : 6)}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-                <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: up ? "#DCFCE7" : "#FEE2E2" }}>
-                  <Text className="text-[11px] font-semibold" style={{ color: up ? "#15803D" : "#DC2626" }}>
-                    {up ? "+" : ""}{row.change24h.toFixed(2)}%
-                  </Text>
-                </View>
+                  <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: up ? "#DCFCE7" : "#FEE2E2" }}>
+                    <Text className="text-[11px] font-semibold" style={{ color: up ? "#15803D" : "#DC2626" }}>
+                      {up ? "+" : ""}{row.change24h.toFixed(2)}%
+                    </Text>
+                  </View>
+                </Pressable>
+                {isExpanded && chains.length > 0 ? (
+                  <View style={{ backgroundColor: "#FAFAFB", borderTopWidth: 1, borderTopColor: "#EEF0F4" }}>
+                    {chains.map((c, ci) => (
+                      <View
+                        key={`${row.symbol}_${c.chain}_${ci}`}
+                        className="flex-row items-center px-5 py-3"
+                        style={{ borderTopWidth: ci === 0 ? 0 : 1, borderTopColor: "#EEF0F4" }}
+                      >
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: "#A78BFA",
+                            marginRight: 10,
+                          }}
+                        />
+                        <View className="flex-1">
+                          <Text className="text-[14px] font-medium text-ink">{c.chainLabel}</Text>
+                          <Text className="mt-0.5 text-[12px] text-muted">
+                            {c.qty.toFixed(c.qty >= 1 ? 4 : 6)} {row.symbol}
+                          </Text>
+                        </View>
+                        <Text className="text-[14px] font-semibold text-ink">${c.usdValue.toFixed(2)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
             );
           })
