@@ -857,7 +857,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         </Animated.View>
       ) : null}
 
-      {/* 账号选择器 — 点中间胶囊弹出 */}
+      {/* 账号下拉 — 点 ▾ 在顶部胶囊正下方弹出小卡，OKX 风格 */}
       {accountPickerOpen ? (
         <Pressable
           onPress={() => !accountSwitching && setAccountPickerOpen(false)}
@@ -867,38 +867,34 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "rgba(15,15,15,0.45)",
-            justifyContent: "flex-end",
+            backgroundColor: "rgba(15,15,15,0.18)",
           }}
         >
+          {/* 胶囊在顶部居中，本卡贴着它向下展开 */}
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={{
+              position: "absolute",
+              top: 56,
+              alignSelf: "center",
+              width: 280,
               backgroundColor: "#FFFFFF",
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              paddingTop: 12,
-              paddingBottom: 28,
-              paddingHorizontal: 16,
+              borderRadius: 16,
+              paddingVertical: 6,
+              shadowColor: "#0F172A",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.18,
+              shadowRadius: 24,
+              elevation: 16,
             }}
           >
-            <View style={{ alignItems: "center", marginBottom: 12 }}>
-              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "#E5E7EB" }} />
-            </View>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F0F0F", marginBottom: 4 }}>
-              切换账号
-            </Text>
-            <Text style={{ fontSize: 12, color: "#94A3B8", marginBottom: 14 }}>
-              同邮箱下可建多个独立子账户，地址各自隔离
-            </Text>
-
             {accountListLoading ? (
-              <View style={{ paddingVertical: 24, alignItems: "center" }}>
-                <Text style={{ fontSize: 13, color: "#94A3B8" }}>加载中…</Text>
+              <View style={{ paddingVertical: 18, alignItems: "center" }}>
+                <Text style={{ fontSize: 12, color: "#94A3B8" }}>加载中…</Text>
               </View>
             ) : (
-              <View>
-                {accountList.map((acc) => {
+              <>
+                {accountList.map((acc, idx) => {
                   const active = acc.accountId === session?.accountId;
                   const masked = `${acc.accountId.slice(0, 6)}…${acc.accountId.slice(-4)}`;
                   return (
@@ -909,54 +905,42 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        paddingVertical: 14,
-                        paddingHorizontal: 12,
-                        borderRadius: 14,
-                        borderWidth: active ? 2 : 1,
-                        borderColor: active ? "#7C3AED" : "#E5E7EB",
-                        backgroundColor: active ? "#F5F3FF" : "#FFFFFF",
-                        marginBottom: 8,
+                        paddingHorizontal: 14,
+                        paddingVertical: 11,
+                        borderTopWidth: idx === 0 ? 0 : 1,
+                        borderTopColor: "#F1F5F9",
                       }}
                     >
                       <View
                         style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 18,
-                          backgroundColor: active ? "#7C3AED" : "#E5E7EB",
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          backgroundColor: active ? "#7C3AED" : "#F1F5F9",
                           alignItems: "center",
                           justifyContent: "center",
-                          marginRight: 12,
+                          marginRight: 10,
                         }}
                       >
-                        <Text style={{ color: active ? "#FFFFFF" : "#6B7280", fontWeight: "700", fontSize: 14 }}>
-                          {acc.accountName?.match(/\d+/)?.[0] || "•"}
+                        <Text style={{ color: active ? "#FFFFFF" : "#6B7280", fontWeight: "700", fontSize: 12 }}>
+                          {acc.accountName?.match(/\d+|[a-f0-9]{2}/i)?.[0]?.slice(0, 2).toUpperCase() || "•"}
                         </Text>
                       </View>
                       <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F0F0F" }}>{acc.accountName}</Text>
-                          {active ? (
-                            <View style={{ backgroundColor: "#7C3AED", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
-                              <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "700" }}>当前</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                        <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }} numberOfLines={1}>
-                          ID {masked}
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#0F0F0F" }} numberOfLines={1}>
+                          {acc.accountName}
                         </Text>
-                        {acc.evmAddress ? (
-                          <Text style={{ fontSize: 11, color: "#64748B", marginTop: 1 }} numberOfLines={1}>
-                            EVM {acc.evmAddress.slice(0, 8)}…{acc.evmAddress.slice(-6)}
-                          </Text>
-                        ) : null}
+                        <Text style={{ fontSize: 11, color: "#94A3B8", marginTop: 1 }} numberOfLines={1}>
+                          {masked}
+                        </Text>
                       </View>
-                      {!active ? (
-                        <Text style={{ fontSize: 12, color: "#7C3AED", fontWeight: "600" }}>切换</Text>
+                      {active ? (
+                        <Text style={{ fontSize: 14, color: "#7C3AED", fontWeight: "700" }}>✓</Text>
                       ) : null}
                     </Pressable>
                   );
                 })}
+                <View style={{ height: 1, backgroundColor: "#F1F5F9", marginVertical: 4 }} />
                 <Pressable
                   onPress={handleAddAccount}
                   disabled={accountSwitching}
@@ -964,20 +948,14 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
-                    paddingVertical: 14,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderStyle: "dashed",
-                    borderColor: "#A78BFA",
-                    backgroundColor: "#FAF5FF",
-                    marginTop: 4,
+                    paddingVertical: 11,
                   }}
                 >
-                  <Text style={{ color: "#7C3AED", fontWeight: "700", fontSize: 14 }}>
+                  <Text style={{ color: "#7C3AED", fontWeight: "600", fontSize: 13 }}>
                     {accountSwitching ? "处理中…" : "+ 新建子账户"}
                   </Text>
                 </Pressable>
-              </View>
+              </>
             )}
           </Pressable>
         </Pressable>
