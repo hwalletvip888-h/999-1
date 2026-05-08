@@ -5,10 +5,20 @@
   "main": "expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
+    "dev:wallet-backend": "AGENT_WALLET_PROVIDER=http npx tsx src/services/walletBackend.ts",
+    "dev:wallet-backend-cli": "npx tsx src/services/walletBackend.ts",
+    "dev:expo-lan": "bash scripts/start-expo-lan.sh",
+    "dev:expo-remote": "bash scripts/start-expo-remote-backend.sh",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eas:update:production": "eas update --channel production --non-interactive",
+    "build:apk:preview": "eas build --platform android --profile preview --non-interactive",
+    "deploy:remote": "bash deploy/remote-deploy.sh",
+    "github:bootstrap": "bash deploy/gh-actions-bootstrap.sh",
+    "deploy:init": "bash deploy/init-local-env.sh",
+    "deploy:readme": "node -e \"require('fs').createReadStream('deploy/START_HERE.md').pipe(process.stdout)\""
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -26,6 +36,7 @@
     "expo-media-library": "~18.2.1",
     "expo-sharing": "~14.0.8",
     "expo-status-bar": "~3.0.8",
+    "expo-updates": "~29.0.17",
     "js-sha256": "^0.11.1",
     "nativewind": "^4.1.23",
     "react": "19.1.0",
@@ -43,8 +54,10 @@
     "@babel/core": "latest",
     "@types/react": "latest",
     "babel-preset-expo": "latest",
+    "eas-cli": "^18.11.0",
     "prettier-plugin-tailwindcss": "^0.5.11",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }
