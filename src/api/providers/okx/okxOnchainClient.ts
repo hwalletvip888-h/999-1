@@ -286,6 +286,12 @@ function normalizePortfolioPayload(payload: any): WalletPortfolio | null {
   return null;
 }
 
+function hasVisibleBalance(p: WalletPortfolio | null): boolean {
+  if (!p) return false;
+  if (Number(p.totalUsd || 0) > 0) return true;
+  return (p.tokens ?? []).some((t) => Number(t.amount || 0) > 0 || Number(t.usdValue || 0) > 0);
+}
+
 type RpcAddressRow = { chainIndex: string; chainName: string; address: string };
 
 async function rpcCall(url: string, method: string, params: any[]): Promise<any> {
@@ -566,7 +572,11 @@ export const okxOnchainClient = {
     // 移动端优先直连 OKX Agentic，避免后端未开放资产路由时首页报错
     if (Platform.OS !== "web") {
       const earlyDirect = await tryDirectAgenticPortfolioByToken(token);
+      const earlyRpc = await tryRpcPortfolioByToken(token);
+      if (earlyDirect && hasVisibleBalance(earlyDirect)) return { data: earlyDirect, simulationMode: false };
+      if (earlyRpc && hasVisibleBalance(earlyRpc)) return { data: earlyRpc, simulationMode: false };
       if (earlyDirect) return { data: earlyDirect, simulationMode: false };
+      if (earlyRpc) return { data: earlyRpc, simulationMode: false };
     }
 
     if (!backendBase) {
@@ -598,9 +608,10 @@ export const okxOnchainClient = {
     }
 
     const direct = Platform.OS === "web" ? null : await tryDirectAgenticPortfolioByToken(token);
-    if (direct) return { data: direct, simulationMode: false };
-
     const rpcFallback = Platform.OS === "web" ? null : await tryRpcPortfolioByToken(token);
+    if (direct && hasVisibleBalance(direct)) return { data: direct, simulationMode: false };
+    if (rpcFallback && hasVisibleBalance(rpcFallback)) return { data: rpcFallback, simulationMode: false };
+    if (direct) return { data: direct, simulationMode: false };
     if (rpcFallback) return { data: rpcFallback, simulationMode: false };
 
     // 最终兜底：对新钱包/零资产用户，资产接口短时不可用时仍展示空资产而非错误横幅
