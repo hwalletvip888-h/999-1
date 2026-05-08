@@ -1,20 +1,27 @@
 /**
- * walletApi — 封装我们后端的 3 个鉴权 / 钱包接口
+ * walletApi — Agent Wallet / 后端鉴权与地址
  *
- * 后端职责（暂未实现，先用 mock 跑通前端流程）：
- *   POST /api/auth/send-otp     { email }                        → { ok }
- *   POST /api/auth/verify-otp   { email, code }                  → { ok, token, accountId, isNew, addresses }
- *   GET  /api/wallet/addresses  Authorization: Bearer <token>    → { ok, accountId, addresses }
+ * POST /api/auth/send-otp     { email }
+ * POST /api/auth/verify-otp   { email, code }
+ * GET  /api/wallet/addresses  Authorization: Bearer <token>
  *
- * 后端实际是把 OKX 的 onchainos CLI（`pip install onchainos`）包成 REST：
- *   wallet login <email>   → 触发邮件 OTP
- *   wallet verify <code>   → 完成登录 / 自动建钱包
- *   wallet addresses       → 拿 EVM/Solana/X Layer 地址
- *
- * 设置 WALLET_API_BASE 环境变量（或 app.json extra）即可切到真实后端。
- * 没设置时自动走 USE_MOCK 流程，方便前端独立联调。
+ * **实测交付：** 必须由构建注入 `EXPO_PUBLIC_HWALLET_API_BASE`（或 `HWALLET_API_BASE`），不设默认域名。
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+/** H Wallet 后端根 URL，去掉末尾 `/` */
+export function getHwalletApiBase(): string {
+  const a = String(process.env.EXPO_PUBLIC_HWALLET_API_BASE ?? "").trim();
+  const b = String(process.env.HWALLET_API_BASE ?? "").trim();
+  return (a || b).replace(/\/+$/, "");
+}
+
+function hwalletAbsoluteUrl(path: string): string | null {
+  const base = getHwalletApiBase();
+  if (!base) return null;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
 
 export type ChainAddress = {
   chainIndex: string;
@@ -36,16 +43,11 @@ export type Session = {
   isNew: boolean;
 };
 
-const WALLET_API_BASE: string | null = 'https://api.hvip.io'; // 真实后端
-const USE_MOCK = !WALLET_API_BASE;
-
 const STORAGE_KEY = "h_wallet.session.v1";
-const PENDING_OTP_KEY = "h_wallet.mock.pending_otp"; // mock-only
 
 function normalizeAddresses(input: any): WalletAddresses | null {
   if (!input) return null;
 
-  // 已是标准结构
   if (input.evm && input.solana && input.xlayer) {
     return {
       evm: Array.isArray(input.evm) ? input.evm : [],
@@ -54,7 +56,6 @@ function normalizeAddresses(input: any): WalletAddresses | null {
     };
   }
 
-  // 后端偶尔会直接返回 addressList 数组
   const list: any[] = Array.isArray(input)
     ? input
     : Array.isArray(input.addressList)
@@ -91,8 +92,6 @@ function hasRealAddress(addrs: WalletAddresses | null | undefined): boolean {
   return all.some((a) => !!a.address && a.address !== "N/A");
 }
 
-/* ==================== 持久化 session ==================== */
-
 let cachedSession: Session | null = null;
 
 export async function loadSession(): Promise<Session | null> {
@@ -115,20 +114,18 @@ export async function saveSession(s: Session): Promise<void> {
 export async function clearSession(): Promise<void> {
   cachedSession = null;
   await AsyncStorage.removeItem(STORAGE_KEY);
+  await AsyncStorage.removeItem("h_wallet.mock.pending_otp");
 }
 
 export function getCachedSession(): Session | null {
   return cachedSession;
 }
 
-/* ==================== 公开 API ==================== */
-
 export async function sendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const trimmed = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     return { ok: false, error: "邮箱格式不正确" };
   }
-  if (USE_MOCK) return mockSendOtp(trimmed);
   return postJson("/api/auth/send-otp", { email: trimmed });
 }
 
@@ -141,35 +138,41 @@ export async function verifyOtp(
   if (!/^\d{6}$/.test(codeTrim)) {
     return { ok: false, error: "验证码应为 6 位数字" };
   }
-  const result = USE_MOCK
-    ? await mockVerifyOtp(trimmed, codeTrim)
-    : await postJson<{
-        ok: boolean;
-        token?: string;
-        accountId?: string;
-        isNew?: boolean;
-        addresses?: any;
-        error?: string;
-      }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim });
+  const result = await postJson<{
+    ok: boolean;
+    token?: string;
+    accountId?: string;
+    isNew?: boolean;
+    addresses?: any;
+    error?: string;
+  }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim });
 
   if (!result.ok || !result.token || !result.accountId) {
     return { ok: false, error: result.error ?? "验证失败" };
   }
 
-  // verify 返回的地址结构不稳定：先归一化，若为空则立即补拉一次
   let addresses = normalizeAddresses(result.addresses);
-  if (!hasRealAddress(addresses) && !USE_MOCK) {
-    try {
-      const res = await fetch(`${WALLET_API_BASE}/api/wallet/addresses`, {
-        headers: { Authorization: `Bearer ${result.token}` }
-      });
-      const data = await res.json();
-      if (data?.ok) {
-        const normalized = normalizeAddresses(data.addresses);
-        if (normalized) addresses = normalized;
+  if (!hasRealAddress(addresses)) {
+    const addrUrl = hwalletAbsoluteUrl("/api/wallet/addresses");
+    if (addrUrl) {
+      try {
+        const res = await fetchWithTimeout(addrUrl, {
+          headers: { Authorization: `Bearer ${result.token}` }
+        });
+        const raw = await res.text();
+        let data: Record<string, unknown> = {};
+        try {
+          data = (raw ? JSON.parse(raw) : {}) as Record<string, unknown>;
+        } catch {
+          data = {};
+        }
+        if (data?.ok) {
+          const normalized = normalizeAddresses(data.addresses);
+          if (normalized) addresses = normalized;
+        }
+      } catch {
+        /* 保持下方兜底 */
       }
-    } catch {
-      // 忽略，走下方兜底
     }
   }
   if (!addresses) {
@@ -190,13 +193,20 @@ export async function verifyOtp(
 export async function refreshAddresses(): Promise<WalletAddresses | null> {
   const s = await loadSession();
   if (!s) return null;
-  if (USE_MOCK) return s.addresses;
+  const addrUrl = hwalletAbsoluteUrl("/api/wallet/addresses");
+  if (!addrUrl) return s.addresses;
   try {
-    const res = await fetch(`${WALLET_API_BASE}/api/wallet/addresses`, {
+    const res = await fetchWithTimeout(addrUrl, {
       headers: { Authorization: `Bearer ${s.token}` }
     });
-    const data = await res.json();
-    const normalized = normalizeAddresses(data?.addresses);
+    const raw = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = (raw ? JSON.parse(raw) : {}) as Record<string, unknown>;
+    } catch {
+      return s.addresses;
+    }
+    const normalized = normalizeAddresses(data.addresses);
     if (data?.ok && normalized) {
       const next: Session = { ...s, addresses: normalized };
       await saveSession(next);
@@ -212,83 +222,61 @@ export async function logout(): Promise<void> {
   await clearSession();
 }
 
-/* ==================== HTTP 助手 ==================== */
+/** 移动端弱网 / 服务端不可达时，无超时会导致界面一直卡在「发送中」 */
+const FETCH_TIMEOUT_MS = 28_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 async function postJson<T = any>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${WALLET_API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  return (await res.json()) as T;
-}
-
-/* ==================== Mock 实现（前端独立跑） ==================== */
-/* 真实接通后端后，下列函数不再被调用。 */
-
-async function mockSendOtp(email: string): Promise<{ ok: boolean }> {
-  const code = "123456"; // 演示固定验证码
-  await AsyncStorage.setItem(
-    PENDING_OTP_KEY,
-    JSON.stringify({ email, code, ts: Date.now() })
-  );
-  // 控制台打印，方便开发期肉眼看到
-  if (__DEV__) console.log(`[mock OTP] ${email} → ${code}`);
-  await delay(600);
-  return { ok: true };
-}
-
-async function mockVerifyOtp(email: string, code: string) {
-  await delay(800);
-  const raw = await AsyncStorage.getItem(PENDING_OTP_KEY);
-  if (!raw) return { ok: false, error: "请先发送验证码" };
-  const pending = JSON.parse(raw) as { email: string; code: string; ts: number };
-  if (pending.email !== email) return { ok: false, error: "邮箱与验证码不匹配" };
-  if (Date.now() - pending.ts > 5 * 60 * 1000) return { ok: false, error: "验证码已过期" };
-  if (pending.code !== code) return { ok: false, error: "验证码错误" };
-  await AsyncStorage.removeItem(PENDING_OTP_KEY);
-
-  const accountId = "0x" + hashEmail(email).slice(0, 40);
-  const addresses: WalletAddresses = {
-    evm: [
-      { chainIndex: "1", chainName: "Ethereum", address: accountId },
-      { chainIndex: "56", chainName: "BNB Chain", address: accountId },
-      { chainIndex: "196", chainName: "X Layer", address: accountId }
-    ],
-    solana: [
-      { chainIndex: "501", chainName: "Solana", address: solanaLike(email) }
-    ],
-    xlayer: [{ chainIndex: "196", chainName: "X Layer", address: accountId }]
-  };
-  return {
-    ok: true,
-    token: "mock_" + hashEmail(email).slice(0, 24),
-    accountId,
-    isNew: true,
-    addresses
-  };
-}
-
-function hashEmail(s: string): string {
-  // 不是密码学，仅用于在演示数据里造一个稳定的伪地址
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  let hex = "";
-  for (let i = 0; i < 10; i++) {
-    h = Math.imul(h ^ (h >>> 13), 16777619);
-    hex += ((h >>> 0).toString(16) + "00000000").slice(0, 8);
+  const url = hwalletAbsoluteUrl(path);
+  if (!url) {
+    return { ok: false, error: "未配置 EXPO_PUBLIC_HWALLET_API_BASE" } as T;
   }
-  return hex;
+  try {
+    const res = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const raw = await res.text();
+    let data: unknown;
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      return {
+        ok: false,
+        error: res.ok ? "服务器响应格式异常" : `HTTP ${res.status}`
+      } as T;
+    }
+    return data as T;
+  } catch (e: unknown) {
+    const name = e && typeof e === "object" && "name" in e ? String((e as { name?: string }).name) : "";
+    if (name === "AbortError") {
+      return { ok: false, error: "连接超时，请检查网络或服务是否可达" } as T;
+    }
+    return { ok: false, error: "网络异常，请稍后重试" } as T;
+  }
 }
 
-function solanaLike(email: string): string {
-  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  const h = hashEmail(email);
-  let out = "";
-  for (let i = 0; i < 44; i++) out += alphabet[parseInt(h[i % h.length], 16) * 3 + (i % 3)];
-  return out;
-}
-
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+export async function pingHwalletBackend(): Promise<{ ok: boolean; ms?: number; error?: string }> {
+  const url = hwalletAbsoluteUrl("/health");
+  if (!url) return { ok: false, error: "未配置 EXPO_PUBLIC_HWALLET_API_BASE" };
+  const started = Date.now();
+  try {
+    const res = await fetchWithTimeout(url, { method: "GET" });
+    const ok = res.ok;
+    return { ok, ms: Date.now() - started, error: ok ? undefined : `HTTP ${res.status}` };
+  } catch (e: unknown) {
+    const name = e && typeof e === "object" && "name" in e ? String((e as { name?: string }).name) : "";
+    if (name === "AbortError") return { ok: false, error: "连接超时", ms: Date.now() - started };
+    return { ok: false, error: "网络异常", ms: Date.now() - started };
+  }
 }

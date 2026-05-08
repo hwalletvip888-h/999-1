@@ -21,7 +21,17 @@
 import * as http from "http";
 import { chatWithAI, recognizeIntent } from "./aiChat";
 import * as crypto from 'crypto';
-import { getAgentWalletProvider } from "./agentWalletProviders";
+import { OkxHttpAgentWalletProvider, getAgentWalletProvider } from "./agentWalletProviders";
+
+/** 邮箱 OTP 会话 token 内含 accessToken 时：必须用 Agentic HTTP，不能用本机 CLI（与用户无关） */
+function sessionTokenHasAccessToken(token: string): boolean {
+  try {
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString()) as { accessToken?: string };
+    return !!decoded?.accessToken;
+  } catch {
+    return false;
+  }
+}
 
 const PORT = parseInt(process.env.WALLET_PORT || '3100');
 const OKX_API_KEY = process.env.OKX_API_KEY || '';
@@ -118,8 +128,19 @@ async function handleVerifyOtpViaProvider(email: string, code: string) {
 }
 
 async function handleGetAddressesViaProvider(token: string) {
+  if (sessionTokenHasAccessToken(token)) {
+    return new OkxHttpAgentWalletProvider().getAddresses(token);
+  }
   const provider = await getAgentWalletProvider();
   return provider.getAddresses(token);
+}
+
+async function handleGetBalanceViaProvider(token: string) {
+  if (sessionTokenHasAccessToken(token)) {
+    return new OkxHttpAgentWalletProvider().getBalance(token);
+  }
+  const provider = await getAgentWalletProvider();
+  return provider.getBalance(token);
 }
 
 // ─── 旧实现（已被 provider 替代，保留作为 HTTP 实现的 in-line 参考） ──
@@ -307,7 +328,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const url = req.url || '';
+  const rawUrl = req.url || "";
+  const url = rawUrl.split("?")[0] || rawUrl;
   res.setHeader('Content-Type', 'application/json');
 
   try {
@@ -318,6 +340,8 @@ const server = http.createServer(async (req, res) => {
       (url === '/api/auth/verify-otp' || url === '/api/agent-wallet/verify') && req.method === 'POST';
     const isGetAddrs =
       (url === '/api/wallet/addresses' || url === '/api/agent-wallet/addresses') && req.method === 'GET';
+    const isGetBalance =
+      (url === '/api/v6/wallet/portfolio' || url === '/api/agent-wallet/balance' || url === '/api/wallet/balance') && req.method === 'GET';
 
     if (isSendOtp) {
       const body = await parseBody(req);
@@ -334,6 +358,12 @@ const server = http.createServer(async (req, res) => {
     } else if (isGetAddrs) {
       const token = (req.headers.authorization || '').replace('Bearer ', '');
       const result = await handleGetAddressesViaProvider(token);
+      res.writeHead(200);
+      res.end(JSON.stringify(result));
+
+    } else if (isGetBalance) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const result = await handleGetBalanceViaProvider(token);
       res.writeHead(200);
       res.end(JSON.stringify(result));
 

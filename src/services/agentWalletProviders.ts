@@ -48,11 +48,26 @@ export type GetAddressesResult = {
   error?: string;
 };
 
+export type WalletBalanceToken = {
+  symbol: string;
+  chain: string;
+  balance: string;
+  usdValue: string;
+};
+
+export type GetBalanceResult = {
+  ok: boolean;
+  totalUsd?: string;
+  tokens?: WalletBalanceToken[];
+  error?: string;
+};
+
 export interface IAgentWalletProvider {
   readonly id: "cli" | "http";
   sendOtp(email: string): Promise<SendOtpResult>;
   verifyOtp(email: string, code: string): Promise<VerifyOtpResult>;
   getAddresses(token: string): Promise<GetAddressesResult>;
+  getBalance(token: string): Promise<GetBalanceResult>;
 }
 
 // ─── 工具：把 OKX 返回的 addressList 拆为 evm/solana/xlayer ───────────
@@ -125,6 +140,19 @@ function generateTempKeyPair(): { privateKey: string; publicKey: string } {
   return { privateKey: priv.toString("base64"), publicKey: pub.toString("base64") };
 }
 
+/** OKX Agentic 公网请求超时：无超时会导致钱包后端一直挂起 → App 发送验证码无限转圈 */
+const OKX_AGENTIC_FETCH_MS = 25_000;
+
+async function okxFetch(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), OKX_AGENTIC_FETCH_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 async function okxAgenticPublic(path: string, body: any): Promise<any> {
   const url = `${OKX_BASE_URL}${path}`;
   const headers: Record<string, string> = {
@@ -132,7 +160,7 @@ async function okxAgenticPublic(path: string, body: any): Promise<any> {
     "ok-client-version": CLIENT_VERSION,
     "Ok-Access-Client-type": "agent-cli"
   };
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  const response = await okxFetch(url, { method: "POST", headers, body: JSON.stringify(body) });
   return response.json();
 }
 
@@ -157,6 +185,8 @@ export class OkxHttpAgentWalletProvider implements IAgentWalletProvider {
       }
       return { ok: false, error: result.msg || result.error || "发送验证码失败" };
     } catch (err: any) {
+      const name = err?.name || "";
+      if (name === "AbortError") return { ok: false, error: "OKX 接口超时，请稍后重试或检查服务器出网" };
       return { ok: false, error: err.message || "网络请求失败" };
     }
   }
@@ -202,6 +232,8 @@ export class OkxHttpAgentWalletProvider implements IAgentWalletProvider {
 
       return { ok: true, token, accountId, isNew: verifyData.isNew !== false, addresses };
     } catch (err: any) {
+      const name = err?.name || "";
+      if (name === "AbortError") return { ok: false, error: "OKX 接口超时" };
       return { ok: false, error: err.message || "验证请求失败" };
     }
   }
@@ -220,10 +252,36 @@ export class OkxHttpAgentWalletProvider implements IAgentWalletProvider {
     }
   }
 
+  async getBalance(token: string): Promise<GetBalanceResult> {
+    if (!token) return { ok: false, error: "缺少 token" };
+    try {
+      const decoded = JSON.parse(Buffer.from(token, "base64").toString());
+      const accessToken = decoded?.accessToken;
+      if (!accessToken) return { ok: false, error: "token 失效" };
+
+      const candidatePaths = [
+        "/priapi/v5/wallet/agentic/account/portfolio",
+        "/priapi/v5/wallet/agentic/account/assets",
+        "/priapi/v5/wallet/agentic/account/balances",
+        "/priapi/v5/wallet/agentic/account/token-balances",
+        "/priapi/v5/wallet/agentic/account/asset-balance",
+        "/priapi/v5/wallet/agentic/account/asset-list"
+      ];
+      for (const p of candidatePaths) {
+        const resp = await this.fetchAgenticByToken(accessToken, p);
+        const normalized = normalizeBalancePayload(resp);
+        if (normalized) return { ok: true, ...normalized };
+      }
+      return { ok: false, error: "未找到可用的余额接口" };
+    } catch (err: any) {
+      return { ok: false, error: err.message || "余额查询失败" };
+    }
+  }
+
   private async fetchAddressesByToken(accessToken: string): Promise<any[] | null> {
     try {
       const url = `${OKX_BASE_URL}/priapi/v5/wallet/agentic/account/addresses`;
-      const response = await fetch(url, {
+      const response = await okxFetch(url, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -235,6 +293,25 @@ export class OkxHttpAgentWalletProvider implements IAgentWalletProvider {
       const result = await response.json();
       if (result.code === "0" && Array.isArray(result.data)) return result.data;
       return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchAgenticByToken(accessToken: string, path: string): Promise<any | null> {
+    try {
+      const url = `${OKX_BASE_URL}${path}`;
+      const response = await okxFetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "ok-client-version": CLIENT_VERSION,
+          "Ok-Access-Client-type": "agent-cli",
+          "Authorization": `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) return null;
+      return await response.json();
     } catch {
       return null;
     }
@@ -346,6 +423,68 @@ export class OnchainosCliAgentWalletProvider implements IAgentWalletProvider {
       return { ok: false, error: err.message };
     }
   }
+
+  async getBalance(token: string): Promise<GetBalanceResult> {
+    if (!token) return { ok: false, error: "缺少 token" };
+    try {
+      const result = this.runJson(["wallet", "balance", "--json"]);
+      const normalized = normalizeBalancePayload(result);
+      if (!normalized) return { ok: false, error: "余额返回为空" };
+      return { ok: true, ...normalized };
+    } catch (err: any) {
+      return { ok: false, error: err.message };
+    }
+  }
+}
+
+function normalizeBalancePayload(payload: any): { totalUsd: string; tokens: WalletBalanceToken[] } | null {
+  if (!payload) return null;
+
+  const codeFail = payload.code !== undefined && String(payload.code) !== "0";
+
+  let listSource: unknown = payload?.data ?? payload;
+
+  const tryExtractList = (x: unknown): any[] => {
+    if (!x) return [];
+    if (Array.isArray(x)) return x;
+    if (typeof x === "object") {
+      const o = x as Record<string, unknown>;
+      if (Array.isArray(o.tokens)) return o.tokens as any[];
+      if (Array.isArray(o.balances)) return o.balances as any[];
+      if (Array.isArray(o.assets)) return o.assets as any[];
+      if (Array.isArray(o.tokenList)) return o.tokenList as any[];
+      if (Array.isArray(o.records)) return o.records as any[];
+      if (Array.isArray(o.list)) return o.list as any[];
+    }
+    return [];
+  };
+
+  const list = tryExtractList(listSource);
+  if (!list.length && codeFail) return null;
+
+  const tokens: WalletBalanceToken[] = list
+    .map((t: any) => ({
+      symbol: String(t.symbol ?? t.tokenSymbol ?? t.currency ?? t.symbolName ?? "").toUpperCase(),
+      chain: String(t.chain ?? t.chainName ?? t.chainIndex ?? "unknown"),
+      balance: String(t.balance ?? t.amount ?? t.total ?? t.holding ?? "0"),
+      usdValue: String(t.usdValue ?? t.valueUsd ?? t.usdtValue ?? t.usdAmount ?? "0")
+    }))
+    .filter((t: WalletBalanceToken) => !!t.symbol);
+
+  const inner = typeof listSource === "object" && listSource !== null && !Array.isArray(listSource)
+    ? (listSource as Record<string, unknown>)
+    : {};
+
+  const totalUsd =
+    inner.totalUsd !== undefined || inner.totalValueUsd !== undefined
+      ? String(inner.totalUsd ?? inner.totalValueUsd ?? "0")
+      : tokens.reduce((sum, t) => sum + Number(t.usdValue || 0), 0).toFixed(2);
+
+  if (!tokens.length && inner.totalUsd === undefined && payload.totalUsd === undefined) {
+    return codeFail ? null : { totalUsd: "0.00", tokens: [] };
+  }
+
+  return { totalUsd: String(inner.totalUsd ?? payload.totalUsd ?? totalUsd ?? "0.00"), tokens };
 }
 
 // ─── 工厂：根据环境自动选 ─────────────────────────────────────────
