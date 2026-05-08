@@ -286,6 +286,135 @@ function normalizePortfolioPayload(payload: any): WalletPortfolio | null {
   return null;
 }
 
+type RpcAddressRow = { chainIndex: string; chainName: string; address: string };
+
+async function rpcCall(url: string, method: string, params: any[]): Promise<any> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
+  });
+  if (!res.ok) return null;
+  const json = await res.json();
+  if (json?.error) return null;
+  return json?.result;
+}
+
+function normalizeAddressRows(input: any): RpcAddressRow[] {
+  if (!input) return [];
+  const source: any[] = Array.isArray(input)
+    ? input
+    : Array.isArray(input?.addressList)
+      ? input.addressList
+      : Array.isArray(input?.data)
+        ? input.data
+        : [];
+  return source
+    .map((x) => ({
+      chainIndex: String(x?.chainIndex ?? x?.chain_index ?? ""),
+      chainName: String(x?.chainName ?? x?.chain_name ?? "Unknown"),
+      address: String(x?.address ?? "")
+    }))
+    .filter((x) => !!x.address);
+}
+
+async function fetchAddressesViaBackend(token: string): Promise<RpcAddressRow[]> {
+  const base = getHwalletApiBase();
+  if (!base) return [];
+  try {
+    const res = await fetch(`${base}/api/wallet/addresses`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return [];
+    const payload = await res.json();
+    if (payload?.ok === false) return [];
+    return normalizeAddressRows(payload?.addresses ?? payload?.data ?? payload);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchPriceUsd(symbol: string): Promise<number> {
+  if (symbol === "USDT" || symbol === "USDC") return 1;
+  try {
+    const res = await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${symbol}-USDT`);
+    if (!res.ok) return 0;
+    const json = await res.json();
+    const px = Number(json?.data?.[0]?.last ?? 0);
+    return Number.isFinite(px) && px > 0 ? px : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function tryRpcPortfolioByToken(token: string): Promise<WalletPortfolio | null> {
+  const rows = await fetchAddressesViaBackend(token);
+  if (!rows.length) return null;
+
+  const evmRpcByChain: Record<string, { chain: ChainId; symbol: string; rpc: string }> = {
+    "1": { chain: "ethereum", symbol: "ETH", rpc: "https://cloudflare-eth.com" },
+    "56": { chain: "bsc", symbol: "BNB", rpc: "https://bsc-dataseed.binance.org" },
+    "137": { chain: "polygon", symbol: "MATIC", rpc: "https://polygon-rpc.com" },
+    "42161": { chain: "arbitrum", symbol: "ETH", rpc: "https://arb1.arbitrum.io/rpc" },
+    "8453": { chain: "base", symbol: "ETH", rpc: "https://mainnet.base.org" },
+    "196": { chain: "xlayer", symbol: "OKB", rpc: "https://rpc.xlayer.tech" }
+  };
+
+  const tokens: WalletPortfolioToken[] = [];
+  const priceCache = new Map<string, number>();
+  const getPrice = async (symbol: string) => {
+    if (priceCache.has(symbol)) return priceCache.get(symbol) as number;
+    const p = await fetchPriceUsd(symbol);
+    priceCache.set(symbol, p);
+    return p;
+  };
+
+  for (const row of rows) {
+    const chain = evmRpcByChain[row.chainIndex];
+    if (chain) {
+      const balHex = await rpcCall(chain.rpc, "eth_getBalance", [row.address, "latest"]);
+      if (typeof balHex !== "string") continue;
+      let amount = 0;
+      try {
+        amount = Number(BigInt(balHex) / BigInt(10 ** 10)) / 1e8;
+      } catch {
+        amount = 0;
+      }
+      if (amount <= 0) continue;
+      const px = await getPrice(chain.symbol);
+      tokens.push({
+        chain: chain.chain,
+        symbol: chain.symbol,
+        amount: amount.toFixed(8),
+        usdValue: (amount * px).toFixed(2)
+      });
+      continue;
+    }
+
+    if (row.chainIndex === "501") {
+      const lamports = await rpcCall("https://api.mainnet-beta.solana.com", "getBalance", [row.address]);
+      const val = Number(lamports?.value ?? 0);
+      if (!Number.isFinite(val) || val <= 0) continue;
+      const amount = val / 1e9;
+      const px = await getPrice("SOL");
+      tokens.push({
+        chain: "solana",
+        symbol: "SOL",
+        amount: amount.toFixed(8),
+        usdValue: (amount * px).toFixed(2)
+      });
+    }
+  }
+
+  const totalUsd = tokens.reduce((s, t) => s + Number(t.usdValue || 0), 0);
+  return {
+    totalUsd: totalUsd.toFixed(2),
+    tokens,
+    lastUpdatedAt: new Date().toISOString()
+  };
+}
+
 async function tryDirectAgenticPortfolioByToken(token: string): Promise<WalletPortfolio | null> {
   try {
     const accessToken = extractAccessTokenFromAgentSession(token);
@@ -368,6 +497,9 @@ export const okxOnchainClient = {
 
     const direct = Platform.OS === "web" ? null : await tryDirectAgenticPortfolioByToken(token);
     if (direct) return { data: direct, simulationMode: false };
+
+    const rpcFallback = Platform.OS === "web" ? null : await tryRpcPortfolioByToken(token);
+    if (rpcFallback) return { data: rpcFallback, simulationMode: false };
 
     // 最终兜底：对新钱包/零资产用户，资产接口短时不可用时仍展示空资产而非错误横幅
     return {
