@@ -302,29 +302,71 @@ async function handleGetAddresses(token: string): Promise<{ ok: boolean; address
   }
 }
 
-/** 该用户的资产汇总 — 调 `onchainos wallet balance`，CLI 内部走签名 WaaS 接口 */
+/** 把 CLI 返回的任意 balance shape 拍平为 tokenAssets 数组 */
+function flattenCliBalance(d: any): any[] {
+  if (!d) return [];
+  // shape A — `wallet balance --all`: details 是按 accountId 索引的对象
+  //   { details: { "<accId>": { data: [{ tokenAssets: [...] }] } } }
+  if (d.details && typeof d.details === "object" && !Array.isArray(d.details)) {
+    const out: any[] = [];
+    for (const accId of Object.keys(d.details)) {
+      const sub = d.details[accId];
+      const subData = Array.isArray(sub?.data) ? sub.data : Array.isArray(sub) ? sub : [];
+      for (const entry of subData) {
+        const list = Array.isArray(entry?.tokenAssets) ? entry.tokenAssets : [];
+        out.push(...list);
+      }
+    }
+    return out;
+  }
+  // shape B — 单账户 `wallet balance`: details 是数组
+  //   { details: [{ tokenAssets: [...] }] }
+  if (Array.isArray(d.details)) {
+    const out: any[] = [];
+    for (const entry of d.details) {
+      const list = Array.isArray(entry?.tokenAssets) ? entry.tokenAssets : [];
+      out.push(...list);
+    }
+    return out;
+  }
+  // shape C — 直接有 tokenAssets
+  if (Array.isArray(d.tokenAssets)) return d.tokenAssets;
+  // shape D — 旧字段名兜底
+  for (const k of ["tokens", "tokenList", "assetsList"]) {
+    if (Array.isArray((d as any)[k])) return (d as any)[k] as any[];
+  }
+  return [];
+}
+
+/** 该用户的资产汇总 — 调 `onchainos wallet balance --all`，CLI 内部走签名 WaaS 接口 */
 async function handleGetBalance(token: string): Promise<any> {
   try {
     const { home } = homeFromToken(token);
-    const data = runOnchainosJson(["wallet", "balance"], home, 30_000);
+    // --all 拍平所有子账户，避免「active account 是空账户」时漏报有钱的账户
+    const data = runOnchainosJson(["wallet", "balance", "--all"], home, 30_000);
     if (data?.ok === false) return { ok: false, error: data?.error || "获取资产失败" };
     const d = data?.data ?? {};
-    const totalUsd = String(d?.totalUsd ?? d?.totalAssetValue ?? d?.totalAssets ?? "0");
-    const rawTokens: any[] =
-      Array.isArray(d?.tokens) ? d.tokens
-        : Array.isArray(d?.tokenList) ? d.tokenList
-          : Array.isArray(d?.assetsList) ? d.assetsList
-            : Array.isArray(d?.tokenAssets) ? d.tokenAssets
-              : [];
+
+    const rawTokens = flattenCliBalance(d);
+    let computedUsd = 0;
     const tokens = rawTokens
-      .map((t: any) => ({
-        chainIndex: String(t?.chainIndex ?? t?.chainId ?? ""),
-        symbol: String(t?.symbol ?? t?.tokenSymbol ?? "").toUpperCase(),
-        amount: String(t?.balance ?? t?.amount ?? t?.coinAmount ?? "0"),
-        usdValue: String(t?.usdValue ?? t?.value ?? t?.assetValue ?? "0"),
-        contract: t?.tokenAddress ?? t?.tokenContractAddress ?? undefined,
-      }))
+      .map((t: any) => {
+        const usd = Number(t?.usdValue ?? t?.value ?? 0);
+        if (Number.isFinite(usd)) computedUsd += usd;
+        return {
+          chainIndex: String(t?.chainIndex ?? t?.chainId ?? ""),
+          symbol: String(t?.symbol ?? t?.tokenSymbol ?? "").toUpperCase(),
+          amount: String(t?.balance ?? t?.amount ?? t?.coinAmount ?? "0"),
+          usdValue: String(t?.usdValue ?? t?.value ?? t?.assetValue ?? "0"),
+          contract: t?.tokenAddress ?? t?.tokenContractAddress ?? undefined,
+        };
+      })
       .filter((t: any) => Number(t.amount) > 0 || Number(t.usdValue) > 0);
+
+    // CLI 偶尔自带 totalValueUsd；没有时用我们累加结果
+    const cliTotal = d?.totalValueUsd ?? d?.totalUsd ?? d?.totalAssets ?? "";
+    const totalUsd = String(cliTotal !== "" && cliTotal != null ? cliTotal : computedUsd.toFixed(2));
+
     return { ok: true, totalUsd, tokens, lastUpdatedAt: new Date().toISOString() };
   } catch (err: any) {
     console.error(`[WalletBackend] getBalance 异常:`, err?.message || err);

@@ -111,13 +111,15 @@ async function callBackend<T>(path: string, options: { method?: "GET" | "POST"; 
 }
 
 function toChainId(input: any): ChainId {
-  const v = String(input ?? "").toLowerCase();
+  const v = String(input ?? "").toLowerCase().trim();
   if (v === "501" || v.includes("sol")) return "solana";
   if (v === "196" || v.includes("xlayer") || v.includes("x layer")) return "xlayer";
-  if (v.includes("polygon")) return "polygon";
-  if (v.includes("arbitrum")) return "arbitrum";
-  if (v.includes("base")) return "base";
-  if (v.includes("bsc") || v.includes("bnb")) return "bsc";
+  if (v === "137" || v.includes("polygon") || v.includes("matic")) return "polygon";
+  if (v === "42161" || v.includes("arbitrum") || v.includes("arb")) return "arbitrum";
+  if (v === "8453" || v.includes("base")) return "base";
+  if (v === "56" || v.includes("bsc") || v.includes("bnb") || v.includes("binance")) return "bsc";
+  if (v === "10" || v.includes("optimism") || v === "op") return "ethereum";
+  if (v === "1" || v.includes("ethereum") || v.includes("eth") || v.includes("mainnet")) return "ethereum";
   return "ethereum";
 }
 
