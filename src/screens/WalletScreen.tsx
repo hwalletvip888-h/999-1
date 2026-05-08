@@ -212,14 +212,12 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
     refreshAddresses().catch(() => {});
   }, []);
 
-  // Agent Wallet 常驻币种行（数量与价值仅来自接口 + 交易所行情）
+  // 资产面板行 — 来源是真实持仓：按 symbol 跨链聚合，只保留余额 > 0 的币种，
+  // 再用 OKX 行情拉单价 + 24h 涨跌（拉不到就用持仓 USD 估值反推）
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const fixedSymbols = ["SOL", "USDT", "BNB", "OKB"] as const;
-        const map = new Map<string, { qty: number; valueUsd: number }>();
-
         if (!session?.token) {
           if (!cancelled) {
             setAgentAssets([]);
@@ -239,21 +237,28 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           }
           return;
         }
+
+        // 跨链同 symbol 聚合
+        const map = new Map<string, { qty: number; valueUsd: number }>();
         for (const t of tokens) {
           const symbol = String(t.symbol || "").toUpperCase();
           if (!symbol) continue;
+          const qty = Number(t.amount || 0);
+          const usd = Number(t.usdValue || 0);
+          if (!(qty > 0 || usd > 0.001)) continue;
           const prev = map.get(symbol) ?? { qty: 0, valueUsd: 0 };
-          map.set(symbol, {
-            qty: prev.qty + Number(t.amount || 0),
-            valueUsd: prev.valueUsd + Number(t.usdValue || 0)
-          });
+          map.set(symbol, { qty: prev.qty + qty, valueUsd: prev.valueUsd + usd });
         }
 
+        // 只展示真有余额的币种；按 USD 价值降序
+        const sortedSymbols = Array.from(map.entries())
+          .sort((a, b) => b[1].valueUsd - a[1].valueUsd)
+          .map(([s]) => s);
+
         const rows = await Promise.all(
-          fixedSymbols.map(async (symbol) => {
-            const bal = map.get(symbol);
-            const qty = bal?.qty ?? 0;
-            let price = symbol === "USDT" ? 1 : 0;
+          sortedSymbols.map(async (symbol) => {
+            const bal = map.get(symbol)!;
+            let price = symbol === "USDT" || symbol === "USDC" || symbol === "DAI" ? 1 : 0;
             let change24h = 0;
             try {
               const ticker = await api.market.getTicker(`${symbol}-USDT`);
@@ -261,13 +266,14 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
               if (Number.isFinite(p) && p > 0) price = p;
               change24h = Number(ticker.changePercent24h || 0);
             } catch {
-              /* 无行情则不填价 */
+              /* 无行情就用 持仓USD/数量 反推单价 */
+              if (price === 0 && bal.qty > 0) price = bal.valueUsd / bal.qty;
             }
             return {
               symbol,
-              qty,
+              qty: bal.qty,
               price,
-              valueUsd: bal?.valueUsd ?? qty * price,
+              valueUsd: bal.valueUsd > 0 ? bal.valueUsd : bal.qty * price,
               change24h
             };
           })
@@ -471,63 +477,22 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           </Surface>
         </View>
 
-        {/* 资产列表 */}
+        {/* 资产列表 — 单一来源：链上真实持仓，按 symbol 跨链聚合 */}
         {tab === "assets" && (
           <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
             <AgentWalletPanel
               rows={agentAssets}
               loading={agentAssetLoading}
+              onDeposit={() => setDepositOpen(true)}
             />
-          </View>
-        )}
-
-        {/* 资产列表 */}
-        {tab === "assets" && (
-          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
-            <Surface padded={false} elevation={1}>
-              {realAssets.map((asset, idx) => {
-                const positive = isPositive(asset.change24h);
-                const spark = assetSparks[asset.symbol] ?? assetSparks.USDT ?? defaultSpark;
-                return (
-                  <Pressable
-                    key={asset.id}
-                    accessibilityRole="button"
-                    className={`flex-row items-center px-4 py-4 active:bg-surface ${
-                      idx < realAssets.length - 1 ? "border-b border-line" : ""
-                    }`}
-                  >
-                    <TokenIcon symbol={asset.symbol} size={40} />
-                    <View className="ml-3 flex-1">
-                      <Text className="text-[16px] font-semibold text-ink">{asset.symbol}</Text>
-                      <Text className="text-[13px] text-muted">{asset.balance}</Text>
-                    </View>
-
-                    {/* 迷你走势 */}
-                    <View className="mr-3 h-8 w-16">
-                      <SparkChart
-                        values={spark}
-                        stroke={positive ? "#10B981" : "#EF4444"}
-                        fill={positive ? "#10B981" : "#EF4444"}
-                        height={32}
-                        thin
-                      />
-                    </View>
-
-                    <View className="items-end">
-                      <Text style={{ fontSize: 15, fontWeight: "600", color: "#0F0F0F", fontFamily: "Inter_600SemiBold" }}>{asset.valueUsd}</Text>
-                      <Text className={`text-[13px] font-medium ${positive ? "text-emerald-600" : "text-red-500"}`}>
-                        {asset.change24h}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </Surface>
-            <Pressable
-              className="mt-2 flex-row items-center justify-center rounded-xl border border-line bg-surface py-2.5 active:opacity-70"
-            >
-              <Text className="text-[13px] font-semibold text-ink2">+ 添加代币</Text>
-            </Pressable>
+            {agentAssets.length > 0 && !agentAssetLoading && (
+              <Pressable
+                className="mt-2 flex-row items-center justify-center rounded-xl border border-line bg-surface py-2.5 active:opacity-70"
+                onPress={() => setDepositOpen(true)}
+              >
+                <Text className="text-[13px] font-semibold text-ink2">+ 充入更多代币</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -2382,21 +2347,54 @@ function AgentBanner({
  */
 function AgentWalletPanel({
   rows,
-  loading
+  loading,
+  onDeposit
 }: {
   rows: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
   loading: boolean;
+  onDeposit?: () => void;
 }) {
   return (
     <Surface elevation={1} padded={false}>
       <View>
         {loading ? (
-          <View className="px-4 py-4">
-                  <Text className="text-[13px] text-muted">链上资产加载中...</Text>
+          <View className="px-4 py-6 items-center">
+            <Text className="text-[13px] text-muted">链上资产加载中…</Text>
           </View>
         ) : rows.length === 0 ? (
-          <View className="px-4 py-4">
-            <Text className="text-[13px] text-muted">暂无代币行可展示（需成功拉取资产汇总后显示持仓与计价）。</Text>
+          <View className="px-6 py-8 items-center">
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: "#F5F3FF",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 14,
+              }}
+            >
+              <Text style={{ fontSize: 30 }}>👋</Text>
+            </View>
+            <Text className="text-[18px] font-bold text-ink mb-2">钱包还是空的</Text>
+            <Text className="text-[13px] text-muted text-center mb-5" style={{ lineHeight: 20 }}>
+              充入你的第一笔代币，开启 AI 自动交易、跨链兑换与转账
+            </Text>
+            <Pressable
+              onPress={onDeposit}
+              accessibilityRole="button"
+              style={{
+                backgroundColor: "#7C3AED",
+                paddingHorizontal: 22,
+                paddingVertical: 12,
+                borderRadius: 999,
+              }}
+              className="active:opacity-80"
+            >
+              <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 14 }}>
+                充入第一笔代币
+              </Text>
+            </Pressable>
           </View>
         ) : (
           rows.map((row, idx) => {
