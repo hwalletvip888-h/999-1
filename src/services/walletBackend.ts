@@ -753,32 +753,22 @@ async function handleWalletSendViaCli(
     "--force",
   ];
   const symbol = String(body.symbol || "").toUpperCase();
-  const tokenAddress = String(body.tokenAddress || "").trim();
+  const tokenAddrIn = String(body.tokenAddress || "").trim();
   const isNative = ["ETH", "OKB", "BNB", "MATIC", "SOL"].includes(symbol);
+  // ERC-20 / SPL：必须与 swap 使用同一套 TOKEN_BY_CHAIN（X Layer USDT 曾有 0x779… 旧地址与 OKX 口径不一致，会转错币导致 400）
   if (!isNative) {
-    if (tokenAddress) {
-      args.push("--contract-token", tokenAddress);
-    } else if (symbol === "USDT") {
-      const usdtByChain: Record<string, string> = {
-        ethereum: "0xdac17f958d2ee523a2206206994597c13d831ec7",
-        bsc: "0x55d398326f99059ff775485246999027b3197955",
-        polygon: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
-        arbitrum: "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
-        base: "0xf55bec9cafdbe8730f096aa55dad6d22d44099df",
-        xlayer: "0x779ded0c9e1022225f8e0630b35a9b54be713736"
+    const fromBody = tokenAddrIn && tokenAddrIn !== NATIVE_EVM ? tokenAddrIn : "";
+    const fromMap = symbolToContract(symbol, body.chain);
+    const contract =
+      fromBody ||
+      (fromMap && fromMap !== NATIVE_EVM ? fromMap : "");
+    if (!contract) {
+      return {
+        ok: false,
+        error: `无法在 ${chain} 上解析 ${symbol} 的合约地址（请先从 App 选择该币再转，或在请求里带上 tokenAddress）`,
       };
-      if (usdtByChain[chain]) args.push("--contract-token", usdtByChain[chain]);
-    } else if (symbol === "USDC") {
-      const usdcByChain: Record<string, string> = {
-        ethereum: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-        bsc: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
-        polygon: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
-        arbitrum: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
-        base: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-        xlayer: "0x74b7f16337b8972027f6196a17a631ac6de26d22"
-      };
-      if (usdcByChain[chain]) args.push("--contract-token", usdcByChain[chain]);
     }
+    args.push("--contract-token", contract);
   }
   const data = runOnchainosJson(args, home, 90_000);
   if (data?.ok === false) return { ok: false, error: data?.error || "转账失败" };

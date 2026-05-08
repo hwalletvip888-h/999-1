@@ -614,7 +614,12 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
             withdrawStyle
           ]}
         >
-          <WithdrawScreen onClose={() => setWithdrawOpen(false)} assets={agentAssets} session={session} />
+          <WithdrawScreen
+            onClose={() => setWithdrawOpen(false)}
+            assets={agentAssets}
+            tokenBreakdown={tokenBreakdown}
+            session={session}
+          />
         </Animated.View>
       ) : null}
 
@@ -1062,10 +1067,15 @@ function DepositScreen({
 function WithdrawScreen({
   onClose,
   assets,
+  tokenBreakdown,
   session
 }: {
   onClose: () => void;
   assets: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
+  tokenBreakdown?: Record<
+    string,
+    Array<{ chain: string; chainLabel: string; qty: number; usdValue: number; contract?: string }>
+  >;
   session: ReturnType<typeof useSession>;
 }) {
   type WithdrawPage = "token" | "network" | "address" | "amount" | "confirm";
@@ -1097,7 +1107,17 @@ function WithdrawScreen({
   const visibleNetworks = networkCandidates.filter((n) =>
     n.name.toLowerCase().includes(networkSearch.trim().toLowerCase())
   );
-  const balance = assets.find((a) => a.symbol === symbol)?.qty ?? 0;
+  const networkChainKey =
+    network === "X Layer" ? "xlayer" : network === "Solana" ? "solana" : "ethereum";
+
+  const onThisChain = (tokenBreakdown?.[symbol] ?? []).filter((r) => r.chain === networkChainKey);
+  const chainQty = onThisChain.reduce((s, r) => s + r.qty, 0);
+  /** 与该网络/USDT-USDC 头寸一致的合约地址（OKX portfolio 下发的 contract） */
+  const tokenContractForSend =
+    onThisChain.find((r) => String(r.contract || "").trim())?.contract?.trim() ?? "";
+
+  const aggregatedQty = assets.find((a) => a.symbol === symbol)?.qty ?? 0;
+  const balance = chainQty > 0 ? chainQty : aggregatedQty;
   const unitPrice = assets.find((a) => a.symbol === symbol)?.price ?? 0;
   const canSubmit = !!address.trim() && Number(amount) > 0 && Number(amount) <= balance;
 
@@ -1556,7 +1576,8 @@ function WithdrawScreen({
                   chain,
                   symbol,
                   toAddress: address.trim(),
-                  amount: amount.trim()
+                  amount: amount.trim(),
+                  ...(tokenContractForSend ? { tokenAddress: tokenContractForSend } : {}),
                 },
                 session.token
               );

@@ -104,10 +104,27 @@ async function callBackend<T>(path: string, options: { method?: "GET" | "POST"; 
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined
   });
-  if (!res.ok) {
-    throw new Error(`[okxOnchainClient] HTTP ${res.status} on ${path}`);
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = {};
   }
-  return (await res.json()) as T;
+  if (!res.ok) {
+    const backendErr =
+      typeof json === "object" && json !== null && "error" in json
+        ? String((json as { error?: unknown }).error ?? "").trim()
+        : "";
+    const detail =
+      backendErr ||
+      (typeof json === "object" && json !== null && "message" in json
+        ? String((json as { message?: unknown }).message ?? "").trim()
+        : "") ||
+      (text.trim().slice(0, 240) || `HTTP ${res.status}`);
+    throw new Error(`[okxOnchainClient] HTTP ${res.status} on ${path}: ${detail}`);
+  }
+  return json as T;
 }
 
 function toChainId(input: any): ChainId {
