@@ -14,6 +14,7 @@ import { GradientBackground } from "./src/components/GradientBackground";
 import { TopBar } from "./src/components/TopBar";
 import { AppToast } from "./src/components/AppToast";
 import { EmergencyStopButton } from "./src/components/EmergencyStopButton";
+import { ErrorBoundary } from "./src/components/ErrorBoundary";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { ChatScreen } from "./src/screens/ChatScreen";
 import { CommunityScreen } from "./src/screens/CommunityScreen";
@@ -181,13 +182,15 @@ export default function App() {
           <View className="flex-1">
             <TopBar activeView={activeView} onChangeView={setActiveView} />
             <View className="flex-1">
-              {tabView === "community" ? (
-                <CommunityScreen />
-              ) : tabView === "agent" ? (
-                <AgentCenterScreen onChangeView={setActiveView} />
-              ) : (
-                <ChatScreen />
-              )}
+              <ErrorBoundary>
+                {tabView === "community" ? (
+                  <CommunityScreen />
+                ) : tabView === "agent" ? (
+                  <AgentCenterScreen onChangeView={setActiveView} />
+                ) : (
+                  <ChatScreen />
+                )}
+              </ErrorBoundary>
             </View>
           </View>
         </SafeAreaView>
@@ -208,7 +211,9 @@ export default function App() {
           ]}
         >
           <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            <WalletScreen onChangeView={setActiveView} />
+            <ErrorBoundary>
+              <WalletScreen onChangeView={setActiveView} />
+            </ErrorBoundary>
           </SafeAreaView>
         </Animated.View>
 
@@ -228,7 +233,9 @@ export default function App() {
           ]}
         >
           <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            <ProfileScreen onChangeView={setActiveView} />
+            <ErrorBoundary>
+              <ProfileScreen onChangeView={setActiveView} />
+            </ErrorBoundary>
           </SafeAreaView>
         </Animated.View>
 
@@ -248,7 +255,9 @@ export default function App() {
           ]}
         >
           <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            <NotificationScreen onChangeView={setActiveView} />
+            <ErrorBoundary>
+              <NotificationScreen onChangeView={setActiveView} />
+            </ErrorBoundary>
           </SafeAreaView>
         </Animated.View>
 
