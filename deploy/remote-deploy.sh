@@ -32,15 +32,32 @@ if ! command -v pm2 >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[remote-deploy] pm2 reload wallet-backend ..."
+echo "[remote-deploy] pm2 (re)start wallet-backend ..."
+# 用 restart 而非 reload：tsx 启动较慢，reload 的 0-downtime 切换会在新进程就绪前结束，
+# 导致新代码的端点 404 / 端口 connection refused，旧进程还在监听。
 if pm2 describe wallet-backend >/dev/null 2>&1; then
-  pm2 reload ecosystem.config.cjs --update-env
+  pm2 restart ecosystem.config.cjs --update-env
 else
   pm2 start ecosystem.config.cjs
 fi
 pm2 save
 
-echo "[remote-deploy] 健康检查 ..."
-curl -sS "http://127.0.0.1:${WALLET_PORT:-3100}/health" | head -c 500 || true
-echo ""
+echo "[remote-deploy] 等待新进程就绪 ..."
+HEALTH_URL="http://127.0.0.1:${WALLET_PORT:-3100}/health"
+HEALTH_OK=""
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  sleep 2
+  if curl -sS -m 3 "$HEALTH_URL" 2>/dev/null | grep -q '"ok":true'; then
+    HEALTH_OK="1"
+    echo "[remote-deploy] health OK on try #$i"
+    curl -sS "$HEALTH_URL" | head -c 500 || true
+    echo ""
+    break
+  fi
+done
+if [[ -z "$HEALTH_OK" ]]; then
+  echo "[remote-deploy] !! health check timed out after 20s — dump pm2 logs:"
+  pm2 logs wallet-backend --lines 40 --nostream || true
+  exit 3
+fi
 echo "[remote-deploy] 完成"
