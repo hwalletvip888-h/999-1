@@ -23,6 +23,7 @@ import { cardLibrary } from "../services/cardLibrary";
 import { makeId } from "../utils/id";
 import { nowLabel } from "../utils/format";
 import type { AIStep, CardStatus, ChatMessage, TradeCard } from "../types";
+import { uiColors, uiSpace } from "../theme/uiSystem";
 
 const TOP_BAR_HEIGHT = 80; // matches TopBar pt-2 + h-14 + pb-4
 
@@ -359,6 +360,7 @@ export function ChatScreen() {
   return (
     <KAVWrapper
       className="flex-1"
+      style={{ backgroundColor: uiColors.appBg }}
       {...(Platform.OS !== 'web' ? {
         behavior: Platform.OS === 'ios' ? 'padding' as const : 'height' as const,
         keyboardVerticalOffset: Platform.OS === 'ios' ? insets.top + TOP_BAR_HEIGHT : 0,
@@ -426,7 +428,7 @@ export function ChatScreen() {
           </View>
 
           {/* 底部引导 + 能力卡 */}
-          <View className="px-4 pb-3">
+          <View style={{ paddingHorizontal: uiSpace.pageX, paddingBottom: 12 }}>
             {/* 今日机会 — 自动轮播 */}
             <OpportunityCarousel onPick={(prompt) => sendMessage(prompt)} />
             <Text className="mb-2.5 mt-3 px-1 text-[13px] font-medium text-muted">试试这些</Text>

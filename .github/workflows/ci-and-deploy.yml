@@ -27,7 +27,8 @@ jobs:
           node-version: "20"
           cache: npm
 
-      - run: npm ci
+      - name: Install deps (npm ci with fallback)
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
       - run: npm run typecheck
 
@@ -68,7 +69,8 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - run: npm ci
+      - name: Install deps (npm ci with fallback)
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
       - name: EAS Update (production channel)
         run: eas update --channel production --message "${{ github.sha }}" --non-interactive

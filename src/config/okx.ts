@@ -12,6 +12,8 @@ const BUILT_IN_CREDENTIALS: OkxCredentials = {
   apiSecret: "804E87424CAEF1483E0968416108DFB3",
   passphrase: "Haitun888.",
   simulated: false,
+  // OKX Developer Platform > Builder Code（用于 X Layer / DEX 归因统计）
+  builderCode: "yf83qce657mqxsjw",
 };
 
 export function loadOkxCredentials(): OkxCredentials | null {

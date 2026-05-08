@@ -7,6 +7,7 @@
  *
  * 在 Node.js 环境（tsx 运行）中可以直接读取文件。
  */
+import { getHwalletApiBase } from "./walletApi";
 
 // 检测是否在 Node.js 环境
 const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
@@ -104,8 +105,10 @@ export function getRecentReports(count = 5): TrendReport[] {
 // ─── RN 环境：异步刷新缓存 ─────────────────────────────────────
 async function refreshCacheAsync() {
   if (Date.now() - _cacheTime < CACHE_TTL) return;
+  const base = getHwalletApiBase();
+  if (!base) return;
   try {
-    const resp = await fetch('https://api.hvip.io/api/trend');
+    const resp = await fetch(`${base}/api/trend`);
     if (resp.ok) {
       const data = await resp.json();
       if (data && data.report) {

@@ -22,6 +22,7 @@ import { useMemberProfile } from "../services/memberSystem";
 import { useEmergencyState } from "../services/emergencyStop";
 import { okxOnchainClient, type DefiOpportunity } from "../api/providers/okx/okxOnchainClient";
 import type { AppView } from "../types";
+import { uiColors, uiSpace } from "../theme/uiSystem";
 
 type AgentCenterScreenProps = {
   onChangeView: (view: AppView) => void;
@@ -87,15 +88,15 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
 
   // 今日机会推送（V6 链上发现） — 进入页面时拉一次，缓存到本地 state
   const [opportunities, setOpportunities] = useState<DefiOpportunity[]>([]);
-  const [opportunitiesMock, setOpportunitiesMock] = useState(false);
   useEffect(() => {
     let cancelled = false;
     okxOnchainClient.discoverOpportunities({ minApr: 3 }).then((res) => {
       if (cancelled) return;
       const safe = (res.data || []).filter((o) => o.securityScore >= 70).slice(0, 3);
       setOpportunities(safe);
-      setOpportunitiesMock(res.simulationMode);
-    }).catch(() => { /* 静默失败，UI 走空态 */ });
+    }).catch(() => {
+      if (!cancelled) setOpportunities([]);
+    });
     return () => { cancelled = true; };
   }, []);
 
@@ -104,12 +105,12 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: "#FAFAF7" }}
+      style={{ flex: 1, backgroundColor: uiColors.appBg }}
       contentContainerStyle={{ paddingBottom: 120 }}
       showsVerticalScrollIndicator={false}
     >
       {/* 顶部：会员等级条 + 紧急状态横幅 */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+      <View style={{ paddingHorizontal: uiSpace.pageX, paddingTop: 12 }}>
         {emerg.active && (
           <View style={{ backgroundColor: "#FEE2E2", borderRadius: 12, padding: 12, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: "#DC2626" }}>
             <Text style={{ fontSize: 13, color: "#991B1B", fontFamily: "Inter_700Bold" }}>🛑 紧急停止已触发</Text>
@@ -152,7 +153,7 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
       </View>
 
       {/* 总览：两个产品线的累计盈亏 */}
-      <View style={{ flexDirection: "row", paddingHorizontal: 16, marginTop: 14, gap: 10 }}>
+      <View style={{ flexDirection: "row", paddingHorizontal: uiSpace.pageX, marginTop: uiSpace.sectionGap, gap: 10 }}>
         <SummaryTile
           icon={<SparkIcon size={18} color="#7B5BC7" />}
           label="AI 合约策略"
@@ -174,11 +175,11 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
         <>
           <SectionHeader
             title="今日机会"
-            subtitle={opportunitiesMock ? "演示数据 · 服务端装好 onchainos 后自动转真实" : "聪明钱 · 趋势引擎 · 实时扫描"}
+            subtitle="数据源可用时展示真实扫描结果 · 不可用则为空态"
             rightLabel="问 AI"
             onPressRight={() => onChangeView("chat")}
           />
-          <View style={{ paddingHorizontal: 16 }}>
+          <View style={{ paddingHorizontal: uiSpace.pageX }}>
             {opportunities.map((o, i) => (
               <OpportunityCard key={o.id ?? i} opportunity={o} onPress={() => onChangeView("chat")} />
             ))}
@@ -193,7 +194,7 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
         rightLabel="新建"
         onPressRight={() => onChangeView("chat")}
       />
-      <View style={{ paddingHorizontal: 16 }}>
+      <View style={{ paddingHorizontal: uiSpace.pageX }}>
         {v5Rows.length === 0 ? (
           <EmptyState
             icon={<SparkIcon size={28} color="#7B5BC7" />}
@@ -214,7 +215,7 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
         rightLabel="发现机会"
         onPressRight={() => onChangeView("chat")}
       />
-      <View style={{ paddingHorizontal: 16 }}>
+      <View style={{ paddingHorizontal: uiSpace.pageX }}>
         {v6Rows.length === 0 ? (
           <EmptyState
             icon={<LeafIcon size={28} color="#15803D" />}
@@ -229,7 +230,7 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
       </View>
 
       {/* 底部说明 */}
-      <View style={{ paddingHorizontal: 16, marginTop: 24 }}>
+      <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 24 }}>
         <View style={{ backgroundColor: "#F4F4F5", borderRadius: 12, padding: 12, flexDirection: "row", alignItems: "flex-start" }}>
           <LockIcon size={16} color="#6B7280" />
           <Text style={{ flex: 1, marginLeft: 8, fontSize: 11, lineHeight: 16, color: "#6B7280", fontFamily: "Inter_400Regular" }}>

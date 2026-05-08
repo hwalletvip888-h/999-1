@@ -16,6 +16,7 @@ import { ChevronRightIcon, SparkIcon } from "../components/ui/Icons";
 import { TokenIcon } from "../components/ui/TokenIcons";
 import { makeId } from "../utils/id";
 import type { CommunityMessage } from "../types";
+import { uiColors, uiSpace } from "../theme/uiSystem";
 
 // 社区消息初始为空，用户可以发送消息
 const communityMessages: CommunityMessage[] = [];
@@ -145,9 +146,9 @@ export function CommunityScreen() {
   }
 
   return (
-    <View className="flex-1">
+    <View className="flex-1" style={{ backgroundColor: uiColors.appBg }}>
       {/* 顶部 tab */}
-      <View className="px-4 pb-2 pt-1">
+      <View style={{ paddingHorizontal: uiSpace.pageX, paddingBottom: 8, paddingTop: 4 }}>
         <View className="flex-row items-center gap-1 rounded-full bg-surface p-1">
           <TabPill label="发现" active={tab === "feed"} onPress={() => setTab("feed")} />
           <TabPill label="聊天" active={tab === "chat"} onPress={() => setTab("chat")} />
@@ -162,7 +163,7 @@ export function CommunityScreen() {
         >
           {/* KOL 横滑 */}
           <View className="mt-1">
-            <View className="mb-2 flex-row items-center justify-between px-4">
+            <View style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: uiSpace.pageX }}>
               <Text className="text-[15px] font-bold text-ink">热门交易员</Text>
               <Pressable>
                 <Text className="text-[12px] text-muted">全部 →</Text>
@@ -171,7 +172,7 @@ export function CommunityScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}
+              contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, gap: 10 }}
             >
               {kols.map((k) => (
                 <KolCard key={k.id} kol={k} />
@@ -181,7 +182,7 @@ export function CommunityScreen() {
 
           {/* 热门策略 */}
           <View className="mt-5">
-            <View className="mb-2 flex-row items-center justify-between px-4">
+            <View style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: uiSpace.pageX }}>
               <Text className="text-[15px] font-bold text-ink">热门策略</Text>
               <Pressable>
                 <Text className="text-[12px] text-muted">全部 →</Text>
@@ -190,7 +191,7 @@ export function CommunityScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+              contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, gap: 12 }}
             >
               {strategies.map((s) => (
                 <StrategyCard key={s.id} s={s} />
@@ -199,7 +200,7 @@ export function CommunityScreen() {
           </View>
 
           {/* AI 行情榜 */}
-          <View className="mt-5 px-4">
+          <View style={{ marginTop: 20, paddingHorizontal: uiSpace.pageX }}>
             <View className="mb-2 flex-row items-center justify-between">
               <View className="flex-row items-center gap-1.5">
                 <Text className="text-[15px] font-bold text-ink">AI 行情榜</Text>

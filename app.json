@@ -27,8 +27,23 @@
       },
       "package": "com.hwallet.app"
     },
+    "ios": {
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSAllowsArbitraryLoads": true
+        }
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/738e0a95-9d15-4e1c-9bbd-2a8fc672e156"
+    },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-updates"
     ],
     "extra": {
       "eas": {

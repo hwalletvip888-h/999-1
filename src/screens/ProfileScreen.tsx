@@ -1,30 +1,15 @@
-import React from "react";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
-import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming
-} from "react-native-reanimated";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
 import { Surface } from "../components/ui/Surface";
-import {
-  ArrowLeftIcon,
-  CardStackIcon,
-  ChevronRightIcon,
-  LockIcon,
-  SparkIcon
-} from "../components/ui/Icons";
+import { ArrowLeftIcon, CardStackIcon, ChevronRightIcon, LockIcon, SparkIcon } from "../components/ui/Icons";
 import { sessionStore, useSession } from "../services/sessionStore";
-import { refreshAddresses } from "../services/walletApi";
 import { toastBus } from "../services/toastBus";
 import type { AppView } from "../types";
 import { getProfileStats } from "../services/core/userApi";
+import { uiColors } from "../theme/uiSystem";
 
 type ProfileScreenProps = {
   onChangeView: (view: AppView) => void;
@@ -42,60 +27,14 @@ const menu: {
   color: string;
   badge?: string;
 }[] = [
-  {
-    id: "notification",
-    title: "通知管理",
-    desc: "3 条新消息",
-    Icon: SparkIcon,
-    bg: "#FEE2E2",
-    color: "#DC2626",
-    badge: "3"
-  },
-  {
-    id: "security",
-    title: "安全中心",
-    desc: "已开启双重验证",
-    Icon: LockIcon,
-    bg: "#DCFCE7",
-    color: "#15803D"
-  },
-  {
-    id: "agents",
-    title: "我的 Agent",
-    desc: "2 个策略运行中",
-    Icon: CardStackIcon,
-    bg: "#EEF2FF",
-    color: "#4338CA"
-  },
-  {
-    id: "help",
-    title: "帮助与反馈",
-    desc: "联系客服",
-    Icon: SparkIcon,
-    bg: "#FEF3C7",
-    color: "#B45309"
-  }
+  { id: "notification", title: "通知管理", desc: "功能开发中", Icon: SparkIcon, bg: "#FEE2E2", color: "#DC2626" },
+  { id: "security", title: "安全中心", desc: "验证码登录与设备管理", Icon: LockIcon, bg: "#DCFCE7", color: "#15803D" },
+  { id: "agents", title: "我的 Agent", desc: "策略与链上任务", Icon: CardStackIcon, bg: "#EEF2FF", color: "#4338CA" },
+  { id: "help", title: "帮助与反馈", desc: "联系客服 / 文档", Icon: SparkIcon, bg: "#FEF3C7", color: "#B45309" }
 ];
 
 export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
   const session = useSession();
-
-  // 挂载时主动刷新一次地址（兜底"登录了没地址"场景：verify 时 OKX 没回 addressList）
-  useEffect(() => {
-    if (!session?.token) return;
-    let cancelled = false;
-    refreshAddresses().then((next) => {
-      if (cancelled || !next || !session) return;
-      // 只在地址有更新时写回 session（避免无限触发 useSession）
-      const oldAddr = session.addresses;
-      const sameEvm = (oldAddr?.evm?.[0]?.address ?? "") === (next.evm?.[0]?.address ?? "");
-      const sameSol = (oldAddr?.solana?.[0]?.address ?? "") === (next.solana?.[0]?.address ?? "");
-      if (!sameEvm || !sameSol) {
-        sessionStore.set({ ...session, addresses: next });
-      }
-    }).catch(() => { /* 网络失败静默 */ });
-    return () => { cancelled = true; };
-  }, [session?.token]);
 
   const handleLogout = () => {
     Alert.alert("退出登录", "退出后需重新输入邮箱验证码，确定吗？", [
@@ -117,8 +56,8 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
   };
 
   return (
-    <View className="flex-1 bg-bg">
-      {/* 顶 */}
+    <View className="flex-1" style={{ backgroundColor: uiColors.appBg }}>
+      {/* 顶栏 */}
       <View className="flex-row items-center justify-between px-3 pb-2 pt-1">
         <Pressable
           accessibilityRole="button"
@@ -133,27 +72,23 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
         </Pressable>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
-        {/* 个人 hero */}
-        <ProfileHero email={session?.email ?? ""} accountId={session?.accountId ?? ""} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 36 }}>
+        {/* 个人 Hero */}
+        <ProfileHero email={session?.email ?? ""} />
 
-        {/* 链上钱包地址（Agent Wallet 多链） */}
-        {session?.addresses ? (
-          <View className="mt-5 px-4">
-            <Text className="mb-2.5 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">
-              我的钱包地址
-            </Text>
-            <Surface padded={false} elevation={1}>
-              <AddressRow chain="EVM" address={session.addresses.evm?.[0]?.address ?? ""} />
-              <AddressRow chain="Solana" address={session.addresses.solana?.[0]?.address ?? ""} divider />
-              <AddressRow chain="X Layer" address={session.addresses.xlayer?.[0]?.address ?? ""} divider />
-            </Surface>
-          </View>
-        ) : null}
+        {/* 会员中心 */}
+        <View className="mt-4 px-4">
+          <MemberCenterCard />
+        </View>
+
+        {/* 邀请好友 */}
+        <View className="mt-3 px-4">
+          <InviteFriendsCard />
+        </View>
 
         {/* 数据三联 */}
-        <View className="mt-5 px-4">
-          <Surface elevation={1} padded={false} className="flex-row items-center py-4">
+        <View className="mt-4 px-4">
+          <Surface elevation={2} padded={false} className="flex-row items-center py-4">
             {stats.map((s, i) => (
               <View key={s.id} className="flex-1 flex-row items-center justify-center">
                 <View className="items-center">
@@ -169,16 +104,16 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
         </View>
 
         {/* 安全得分仪表 */}
-        <View className="mt-5 px-4">
+        <View className="mt-4 px-4">
           <SecurityCard />
         </View>
 
         {/* 菜单 */}
-        <View className="mt-5 px-4">
-          <Text className="mb-2.5 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">
+        <View className="mt-4 px-4">
+          <Text className="mb-2 px-1 text-[12px] font-semibold uppercase tracking-wider text-muted">
             管理
           </Text>
-          <Surface padded={false} elevation={1}>
+          <Surface padded={false} elevation={2}>
             {menu.map(({ id, title, desc, Icon, bg, color, badge }, idx) => (
               <Pressable
                 key={id}
@@ -209,7 +144,7 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
         </View>
 
         {/* 退出 */}
-        <View className="mt-5 px-4">
+        <View className="mt-4 px-4">
           <Pressable
             onPress={handleLogout}
             className="rounded-2xl border border-line bg-bg py-3.5 active:bg-surface"
@@ -218,55 +153,60 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
           </Pressable>
         </View>
 
-        <Text className="mt-5 text-center text-[12px] text-muted">v1.0.0 · H Wallet</Text>
+        <Text className="mt-5 text-center text-[11px] text-muted">v1.0.0 · H Wallet</Text>
       </ScrollView>
     </View>
   );
 }
 
-/* ============= 链上地址行 ============= */
+/* ============= 会员 & 邀请 ============= */
 
-function AddressRow({ chain, address, divider }: { chain: string; address: string; divider?: boolean }) {
-  const display = address
-    ? `${address.slice(0, 6)}...${address.slice(-6)}`
-    : "未生成";
-  const isEmpty = !address || address === "N/A";
-
-  async function copy() {
-    if (!address || isEmpty) return;
-    await Clipboard.setStringAsync(address);
-    toastBus.push({ emoji: "📋", title: "地址已复制", subtitle: chain, tone: "success", duration: 1500 });
-  }
-
+function MemberCenterCard() {
   return (
-    <Pressable
-      onPress={copy}
-      disabled={isEmpty}
-      className={`flex-row items-center px-4 py-3 active:bg-surface ${divider ? "border-t border-line" : ""}`}
-    >
-      <View className="mr-3 h-9 w-9 items-center justify-center rounded-2xl" style={{ backgroundColor: "#F4F4F5" }}>
-        <Text className="text-[12px] font-semibold text-ink">
-          {chain === "EVM" ? "Ξ" : chain === "Solana" ? "◎" : "X"}
-        </Text>
-      </View>
-      <View className="flex-1">
-        <Text className="text-[14px] font-semibold text-ink">{chain}</Text>
-        <Text className={`mt-0.5 text-[12px] ${isEmpty ? "text-muted italic" : "text-muted"}`} style={{ fontFamily: isEmpty ? undefined : "JetBrainsMono_400Regular" }}>
-          {display}
-        </Text>
-      </View>
-      {!isEmpty ? (
-        <View className="rounded-full bg-surface px-2.5 py-1">
-          <Text className="text-[11px] font-semibold text-ink">复制</Text>
+    <Surface elevation={2} padded={false}>
+      <View className="px-4 py-4">
+        <View className="flex-row items-center justify-between">
+          <View style={{ flex: 1 }}>
+            <Text className="text-[15px] font-bold text-ink">会员中心</Text>
+            <Text className="mt-0.5 text-[12px] text-muted">
+              会员等级与权益由官方活动统一开通；客户端不展示虚拟等级数据。
+            </Text>
+          </View>
+          <View className="rounded-full bg-surface px-2.5 py-1">
+            <Text className="text-[11px] font-semibold text-muted">待开通</Text>
+          </View>
         </View>
-      ) : null}
-    </Pressable>
+      </View>
+      <View className="border-t border-line px-4 py-3">
+        <Pressable className="flex-row items-center justify-between active:opacity-60">
+          <Text className="text-[13px] font-semibold text-ink">了解会员权益</Text>
+          <ChevronRightIcon size={16} />
+        </Pressable>
+      </View>
+    </Surface>
+  );
+}
+
+function InviteFriendsCard() {
+  return (
+    <Surface elevation={2} padded={false}>
+      <View className="px-4 py-4">
+        <Text className="text-[15px] font-bold text-ink">邀请好友</Text>
+        <Text className="mt-0.5 text-[12px] text-muted">
+          邀请与奖励将在官方服务端就绪后启用；此处不生成虚拟邀请码。
+        </Text>
+        <View className="mt-3 rounded-xl bg-surface px-3 py-2.5">
+          <Text className="text-[10px] uppercase tracking-wider text-muted">状态</Text>
+          <Text className="mt-1 text-[14px] font-semibold text-muted">暂未开放</Text>
+        </View>
+      </View>
+    </Surface>
   );
 }
 
 /* ============= 个人 Hero ============= */
 
-function ProfileHero({ email, accountId }: { email: string; accountId: string }) {
+function ProfileHero({ email }: { email: string }) {
   // 头像光环旋转
   const halo = useSharedValue(0);
   useEffect(() => {
@@ -278,22 +218,6 @@ function ProfileHero({ email, accountId }: { email: string; accountId: string })
 
   const displayName = email ? email.split("@")[0] : "Trader";
   const initial = (displayName[0] ?? "T").toUpperCase();
-  const masked = accountId
-    ? `${accountId.slice(0, 6)}…${accountId.slice(-4)}`
-    : "地址未生成";
-
-  const copyAddress = async () => {
-    if (!accountId) return;
-    await Clipboard.setStringAsync(accountId);
-    toastBus.push({
-      emoji: "📋",
-      title: "地址已复制",
-      subtitle: masked,
-      tone: "success",
-      duration: 1800
-    });
-  };
-
   return (
     <View className="px-4 pt-2">
       <View
@@ -308,22 +232,22 @@ function ProfileHero({ email, accountId }: { email: string; accountId: string })
         }}
       >
         <LinearGradient
-          colors={["#1E1B4B", "#3730A3", "#5B21B6"]}
+          colors={["#2A1B5F", "#3F2E8C", "#5A3FB0"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{ padding: 20, alignItems: "center" }}
+          style={{ paddingHorizontal: 18, paddingTop: 18, paddingBottom: 14, alignItems: "center" }}
         >
           {/* 装饰光圈 */}
           <View
             style={{
               position: "absolute",
-              top: -50,
-              right: -40,
-              width: 180,
-              height: 180,
-              borderRadius: 90,
+              top: -62,
+              right: -52,
+              width: 170,
+              height: 170,
+              borderRadius: 85,
               backgroundColor: "#D9AA43",
-              opacity: 0.18
+              opacity: 0.12
             }}
           />
 
@@ -381,16 +305,10 @@ function ProfileHero({ email, accountId }: { email: string; accountId: string })
           <Text className="mt-3 text-[20px] font-bold text-white">{displayName}</Text>
           <Text className="mt-0.5 text-[12px] text-white/60">{email || "未登录"}</Text>
 
-          {/* 钱包地址 · 点击复制 */}
-          <Pressable
-            onPress={copyAddress}
-            disabled={!accountId}
-            className="mt-3 flex-row items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5"
-          >
-            <Text style={{ fontSize: 12, color: "#FFFFFF" }}>🔗</Text>
-            <Text className="text-[13px] font-semibold text-white">{masked}</Text>
-            {accountId ? <Text className="text-[11px] text-white/70">复制</Text> : null}
-          </Pressable>
+          {/* Agent Wallet ID（账户标识，非转账地址） */}
+          <View className="mt-3 rounded-full bg-white/14 px-3 py-1.5">
+            <Text className="text-[11px] text-white/80">个人设置中心</Text>
+          </View>
 
           {/* 等级进度 */}
           <View className="mt-4 w-full">
@@ -417,21 +335,12 @@ function ProfileHero({ email, accountId }: { email: string; accountId: string })
 
 function SecurityCard() {
   const score = 92; // 0-100
-  const sweep = useSharedValue(0);
-  useEffect(() => {
-    sweep.value = withTiming(score / 100, { duration: 1500, easing: Easing.out(Easing.cubic) });
-  }, [sweep, score]);
-
   // SVG 半圆仪表
   const R = 50;
   const C = Math.PI * R; // 半圆弧长
 
-  const animatedDash = useAnimatedStyle(() => ({
-    // workletless dummy — SVG strokeDashoffset can't be animated via reanimated easily here
-  }));
-
   return (
-    <Surface elevation={1} className="flex-row items-center py-4">
+    <Surface elevation={2} className="flex-row items-center py-4">
       {/* 仪表盘 */}
       <View style={{ width: 110, height: 70, alignItems: "center" }}>
         <Svg width={110} height={70} viewBox="0 0 120 70">

@@ -12,3 +12,9 @@ src/config/*.local.ts
 .env
 .env.local
 ecosystem.config.js
+
+# 部署用本地机密（可复制 local-server.env.example → local-server.env）
+deploy/local-server.env
+
+# 临时 skill 草稿（生成器中间产物，不入库）
+.tmp_skill_agentic/

@@ -22,6 +22,7 @@ import type { HWalletCard, TradeCardCategory } from "../types";
 import type { SavedCard } from "../services/cardLibrary";
 import { toastBus } from "../services/toastBus";
 import * as Clipboard from "expo-clipboard";
+import { uiColors, uiSpace } from "../theme/uiSystem";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -97,7 +98,7 @@ export function CardLibraryScreen({ onClose }: CardLibraryScreenProps) {
   const firstAt = cardLibrary.firstSavedAt();
 
   return (
-    <View className="flex-1 bg-bg">
+    <View className="flex-1" style={{ backgroundColor: uiColors.appBg }}>
       {/* Header */}
       <View
         className="px-3 py-3"
@@ -216,7 +217,7 @@ export function CardLibraryScreen({ onClose }: CardLibraryScreenProps) {
             </Text>
           </View>
         ) : (
-          <View className="px-3">
+          <View style={{ paddingHorizontal: uiSpace.pageX - 4 }}>
             <View className="flex-row flex-wrap" style={{ marginHorizontal: -4 }}>
               {list.map((c) => (
                 <GridTile

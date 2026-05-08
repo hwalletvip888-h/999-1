@@ -21,6 +21,7 @@
 import * as http from "http";
 import { chatWithAI, recognizeIntent } from "./aiChat";
 import * as crypto from 'crypto';
+import { execFileSync } from "child_process";
 import { OkxHttpAgentWalletProvider, getAgentWalletProvider } from "./agentWalletProviders";
 
 /** 邮箱 OTP 会话 token 内含 accessToken 时：必须用 Agentic HTTP，不能用本机 CLI（与用户无关） */
@@ -111,6 +112,66 @@ interface OtpSession {
 
 const otpSessions = new Map<string, OtpSession>();
 
+/** 当前服务器是否安装了 onchainos CLI；缓存结果避免每次重 spawn */
+let _onchainosCliAvailable: boolean | null = null;
+function isOnchainosCliAvailable(): boolean {
+  if (_onchainosCliAvailable !== null) return _onchainosCliAvailable;
+  try {
+    execFileSync("onchainos", ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5_000,
+    });
+    _onchainosCliAvailable = true;
+  } catch {
+    _onchainosCliAvailable = false;
+  }
+  return _onchainosCliAvailable;
+}
+
+function runOnchainosJson(args: string[]): any {
+  const out = execFileSync("onchainos", args, {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 60_000
+  });
+  const trimmed = String(out || "").trim();
+  const first = trimmed.indexOf("{");
+  const json = first >= 0 ? trimmed.slice(first) : trimmed;
+  return JSON.parse(json);
+}
+
+function mapClientChainToCli(chain: string): string {
+  const v = String(chain || "").toLowerCase();
+  if (v === "xlayer") return "xlayer";
+  if (v === "solana") return "solana";
+  if (v === "base") return "base";
+  if (v === "arbitrum") return "arbitrum";
+  if (v === "bsc") return "bsc";
+  if (v === "polygon") return "polygon";
+  return "ethereum";
+}
+
+function mapSymbolToSwapToken(symbol: string): string {
+  const s = String(symbol || "").toLowerCase();
+  if (!s) return s;
+  if (["usdt", "usdc", "eth", "sol", "okb", "bnb", "matic", "avax", "dai", "weth", "wbtc"].includes(s)) return s;
+  return s;
+}
+
+function pickWalletAddressByChain(addresses: any, chain: string): string {
+  const cliChain = mapClientChainToCli(chain);
+  if (cliChain === "solana") {
+    const a = addresses?.solana?.[0]?.address;
+    return a && a !== "N/A" ? String(a) : "";
+  }
+  if (cliChain === "xlayer") {
+    const a = addresses?.xlayer?.[0]?.address || addresses?.evm?.[0]?.address;
+    return a && a !== "N/A" ? String(a) : "";
+  }
+  const a = addresses?.evm?.[0]?.address;
+  return a && a !== "N/A" ? String(a) : "";
+}
+
 // ─── API 处理函数 ─────────────────────────────────────────────
 
 /**
@@ -136,11 +197,227 @@ async function handleGetAddressesViaProvider(token: string) {
 }
 
 async function handleGetBalanceViaProvider(token: string) {
-  if (sessionTokenHasAccessToken(token)) {
-    return new OkxHttpAgentWalletProvider().getBalance(token);
+  if (!token) {
+    return { ok: false, error: "缺少 token" };
   }
-  const provider = await getAgentWalletProvider();
-  return provider.getBalance(token);
+  const addressesResp = await handleGetAddressesViaProvider(token);
+  if (!addressesResp?.ok || !addressesResp.addresses) {
+    return { ok: false, error: "获取钱包地址失败" };
+  }
+
+  const allAddresses = [
+    ...(addressesResp.addresses.evm || []),
+    ...(addressesResp.addresses.solana || []),
+    ...(addressesResp.addresses.xlayer || []),
+  ];
+
+  const seenAddr = new Set<string>();
+  const validRows = allAddresses.filter((it: any) => {
+    const address = String(it?.address || "").trim();
+    const chainIndex = String(it?.chainIndex || "").trim();
+    if (!address || address === "N/A") return false;
+    const key = `${chainIndex}:${address.toLowerCase()}`;
+    if (seenAddr.has(key)) return false;
+    seenAddr.add(key);
+    return true;
+  });
+  if (!validRows.length) {
+    return {
+      ok: true,
+      totalUsd: "0.00",
+      tokens: [],
+      lastUpdatedAt: new Date().toISOString(),
+    };
+  }
+
+  const chains = Array.from(
+    new Set(
+      validRows
+        .map((it: any) => String(it?.chainIndex || "").trim())
+        .filter((x: string) => !!x),
+    ),
+  );
+  if (!chains.length) {
+    return {
+      ok: true,
+      totalUsd: "0.00",
+      tokens: [],
+      lastUpdatedAt: new Date().toISOString(),
+    };
+  }
+
+  const tokens: Array<{
+    chainIndex: string;
+    symbol: string;
+    amount: string;
+    usdValue: string;
+    contract?: string;
+  }> = [];
+
+  for (const row of validRows) {
+    const address = String(row.address).trim();
+    const path =
+      `/api/v5/wallet/asset/all-token-balances-by-address?address=${encodeURIComponent(address)}` +
+      `&chains=${encodeURIComponent(chains.join(","))}&filter=1`;
+    try {
+      const resp = await okxRequest("GET", path);
+      if (String(resp?.code) !== "0" || !Array.isArray(resp?.data)) continue;
+      for (const group of resp.data) {
+        const list = Array.isArray(group?.tokenAssets) ? group.tokenAssets : [];
+        for (const t of list) {
+          const balance = Number(t?.balance || 0);
+          const price = Number(t?.tokenPrice || 0);
+          const usd = balance * price;
+          if (!Number.isFinite(balance) || balance <= 0) continue;
+          tokens.push({
+            chainIndex: String(t?.chainIndex ?? row.chainIndex ?? ""),
+            symbol: String(t?.symbol || "").toUpperCase(),
+            amount: String(t?.balance ?? "0"),
+            usdValue: Number.isFinite(usd) ? usd.toFixed(2) : "0.00",
+            contract: t?.tokenAddress ? String(t.tokenAddress) : undefined,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[WalletBackend] 拉取地址余额失败: ${address}`, err);
+    }
+  }
+
+  const totalUsd = tokens.reduce((sum, t) => sum + Number(t.usdValue || 0), 0);
+  return {
+    ok: true,
+    totalUsd: totalUsd.toFixed(2),
+    tokens,
+    lastUpdatedAt: new Date().toISOString(),
+  };
+}
+
+async function handleSwapQuoteViaCli(
+  token: string,
+  body: { fromChain: string; fromSymbol: string; fromAmount: string; toChain: string; toSymbol: string; slippageBps?: number }
+) {
+  if (!token) return { ok: false, error: "缺少 token" };
+  if (!isOnchainosCliAvailable()) {
+    return { ok: false, error: "服务器尚未启用兑换通道（onchainos CLI 未就绪），请稍后再试" };
+  }
+  const chain = mapClientChainToCli(body.fromChain || body.toChain);
+  const fromToken = mapSymbolToSwapToken(body.fromSymbol);
+  const toToken = mapSymbolToSwapToken(body.toSymbol);
+  const amount = String(body.fromAmount || "").trim();
+  if (!fromToken || !toToken || !amount) return { ok: false, error: "参数不完整" };
+  const data = runOnchainosJson([
+    "swap", "quote",
+    "--from", fromToken,
+    "--to", toToken,
+    "--readable-amount", amount,
+    "--chain", chain
+  ]);
+  const d = data?.data ?? data ?? {};
+  const toAmt = Number(d?.toAmount ?? d?.toTokenAmount ?? 0);
+  const fromAmt = Number(d?.fromAmount ?? d?.fromTokenAmount ?? amount);
+  const impactPct = Number(d?.priceImpact ?? d?.priceImpactPercent ?? d?.priceImpactPercentage ?? 0);
+  return {
+    ok: true,
+    fromChain: body.fromChain,
+    fromSymbol: String(body.fromSymbol || "").toUpperCase(),
+    fromAmount: String(Number.isFinite(fromAmt) && fromAmt > 0 ? fromAmt : Number(amount)),
+    toChain: body.toChain,
+    toSymbol: String(body.toSymbol || "").toUpperCase(),
+    toAmount: String(Number.isFinite(toAmt) && toAmt > 0 ? toAmt : 0),
+    rate: fromAmt > 0 && toAmt > 0 ? String(toAmt / fromAmt) : "0",
+    routerLabel: Array.isArray(d?.dexRouterList) && d.dexRouterList.length
+      ? d.dexRouterList.map((x: any) => x?.dexName).filter(Boolean).join(" / ")
+      : "OKX DEX Aggregator",
+    estimatedGasUsd: String(d?.tradeFee ?? d?.estimateGasFee ?? "0"),
+    slippageBps: Number(body.slippageBps ?? 50),
+    priceImpactBps: Math.round((Number.isFinite(impactPct) ? impactPct : 0) * 100)
+  };
+}
+
+async function handleSwapExecuteViaCli(
+  token: string,
+  body: { fromChain: string; fromSymbol: string; fromAmount: string; toChain: string; toSymbol: string; slippageBps?: number }
+) {
+  if (!isOnchainosCliAvailable()) {
+    return { ok: false, error: "服务器尚未启用兑换通道（onchainos CLI 未就绪），请稍后再试" };
+  }
+  const addressesResp = await handleGetAddressesViaProvider(token);
+  if (!addressesResp?.ok || !addressesResp?.addresses) return { ok: false, error: "获取钱包地址失败" };
+  const chain = mapClientChainToCli(body.fromChain || body.toChain);
+  const wallet = pickWalletAddressByChain(addressesResp.addresses, chain);
+  if (!wallet) return { ok: false, error: "未找到可用钱包地址" };
+  const fromToken = mapSymbolToSwapToken(body.fromSymbol);
+  const toToken = mapSymbolToSwapToken(body.toSymbol);
+  const amount = String(body.fromAmount || "").trim();
+  const args = [
+    "swap", "execute",
+    "--from", fromToken,
+    "--to", toToken,
+    "--readable-amount", amount,
+    "--chain", chain,
+    "--wallet", wallet
+  ];
+  if (typeof body.slippageBps === "number" && body.slippageBps > 0) {
+    args.push("--slippage", String(body.slippageBps / 100));
+  }
+  const data = runOnchainosJson(args);
+  const d = data?.data ?? data ?? {};
+  const txHash = String(d?.swapTxHash ?? d?.txHash ?? "");
+  if (!txHash) return { ok: false, error: "未返回交易哈希" };
+  return { ok: true, txHash, status: "submitted" };
+}
+
+async function handleWalletSendViaCli(
+  token: string,
+  body: { chain: string; symbol: string; toAddress: string; amount: string; tokenAddress?: string }
+) {
+  if (!token) return { ok: false, error: "缺少 token" };
+  if (!isOnchainosCliAvailable()) {
+    return { ok: false, error: "服务器尚未启用转账通道（onchainos CLI 未就绪），请稍后再试" };
+  }
+  const chain = mapClientChainToCli(body.chain);
+  const amount = String(body.amount || "").trim();
+  const toAddress = String(body.toAddress || "").trim();
+  if (!amount || !toAddress) return { ok: false, error: "参数不完整" };
+  const args = [
+    "wallet", "send",
+    "--readable-amount", amount,
+    "--recipient", toAddress,
+    "--chain", chain
+  ];
+  const symbol = String(body.symbol || "").toUpperCase();
+  const tokenAddress = String(body.tokenAddress || "").trim();
+  const isNative = ["ETH", "OKB", "BNB", "MATIC", "SOL"].includes(symbol);
+  if (!isNative) {
+    if (tokenAddress) {
+      args.push("--contract-token", tokenAddress);
+    } else if (symbol === "USDT") {
+      const usdtByChain: Record<string, string> = {
+        ethereum: "0xdac17f958d2ee523a2206206994597c13d831ec7",
+        bsc: "0x55d398326f99059ff775485246999027b3197955",
+        polygon: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+        arbitrum: "0xfde4c96c8593536e31f229ea8f37b2ada2699bb2",
+        base: "0xf55bec9cafdbe8730f096aa55dad6d22d44099df",
+        xlayer: "0x779ded0c9e1022225f8e0630b35a9b54be713736"
+      };
+      if (usdtByChain[chain]) args.push("--contract-token", usdtByChain[chain]);
+    } else if (symbol === "USDC") {
+      const usdcByChain: Record<string, string> = {
+        ethereum: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        bsc: "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        polygon: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+        arbitrum: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+        base: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        xlayer: "0x74b7f16337b8972027f6196a17a631ac6de26d22"
+      };
+      if (usdcByChain[chain]) args.push("--contract-token", usdcByChain[chain]);
+    }
+  }
+  const data = runOnchainosJson(args);
+  const d = data?.data ?? data ?? {};
+  const txHash = String(d?.txHash || "");
+  if (!txHash) return { ok: false, error: d?.error || "未返回交易哈希" };
+  return { ok: true, txHash, status: "submitted" };
 }
 
 // ─── 旧实现（已被 provider 替代，保留作为 HTTP 实现的 in-line 参考） ──
@@ -342,6 +619,9 @@ const server = http.createServer(async (req, res) => {
       (url === '/api/wallet/addresses' || url === '/api/agent-wallet/addresses') && req.method === 'GET';
     const isGetBalance =
       (url === '/api/v6/wallet/portfolio' || url === '/api/agent-wallet/balance' || url === '/api/wallet/balance') && req.method === 'GET';
+    const isSwapQuote = url === '/api/v6/dex/swap-quote' && req.method === 'POST';
+    const isSwapExecute = url === '/api/v6/dex/swap-execute' && req.method === 'POST';
+    const isWalletSend = url === '/api/v6/wallet/send' && req.method === 'POST';
 
     if (isSendOtp) {
       const body = await parseBody(req);
@@ -364,6 +644,42 @@ const server = http.createServer(async (req, res) => {
     } else if (isGetBalance) {
       const token = (req.headers.authorization || '').replace('Bearer ', '');
       const result = await handleGetBalanceViaProvider(token);
+      res.writeHead(200);
+      res.end(JSON.stringify(result));
+
+    } else if (isSwapQuote) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const body = await parseBody(req);
+      const result = await handleSwapQuoteViaCli(token, body);
+      if (!result?.ok) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: result?.error || 'swap quote failed' }));
+        return;
+      }
+      res.writeHead(200);
+      res.end(JSON.stringify(result));
+
+    } else if (isSwapExecute) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const body = await parseBody(req);
+      const result = await handleSwapExecuteViaCli(token, body);
+      if (!result?.ok) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: result?.error || 'swap execute failed' }));
+        return;
+      }
+      res.writeHead(200);
+      res.end(JSON.stringify(result));
+
+    } else if (isWalletSend) {
+      const token = (req.headers.authorization || '').replace('Bearer ', '');
+      const body = await parseBody(req);
+      const result = await handleWalletSendViaCli(token, body);
+      if (!result?.ok) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: result?.error || 'wallet send failed' }));
+        return;
+      }
       res.writeHead(200);
       res.end(JSON.stringify(result));
 

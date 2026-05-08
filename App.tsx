@@ -19,6 +19,7 @@ import { ChatScreen } from "./src/screens/ChatScreen";
 import { CommunityScreen } from "./src/screens/CommunityScreen";
 import { AgentCenterScreen } from "./src/screens/AgentCenterScreen";
 import { ProfileScreen } from "./src/screens/ProfileScreen";
+import { NotificationScreen } from "./src/screens/NotificationScreen";
 import { WalletScreen } from "./src/screens/WalletScreen";
 import { setMarketFeed, OKXMarketFeed } from "./src/services/marketFeed";
 import { setAgentRunner, LiveAgentRunner } from "./src/services/agentRunner";
@@ -111,6 +112,7 @@ export default function App() {
 
   const isWallet = activeView === "wallet";
   const isProfile = activeView === "profile";
+  const isNotifications = activeView === "notifications";
   // 顶部胶囊三段：对话 / 社区 / Agent；其它视图（钱包、我的）通过滑入层覆盖
   const tabView: AppView =
     activeView === "community" ? "community" :
@@ -121,6 +123,7 @@ export default function App() {
   const walletX = useSharedValue(-SCREEN_WIDTH);
   // Profile slides in from right → left (translateX: SCREEN_WIDTH → 0)
   const profileX = useSharedValue(SCREEN_WIDTH);
+  const notificationsX = useSharedValue(SCREEN_WIDTH);
 
   useEffect(() => {
     walletX.value = withTiming(isWallet ? 0 : -SCREEN_WIDTH, {
@@ -131,7 +134,11 @@ export default function App() {
       duration: 320,
       easing: Easing.out(Easing.cubic)
     });
-  }, [isWallet, isProfile, walletX, profileX]);
+    notificationsX.value = withTiming(isNotifications ? 0 : SCREEN_WIDTH, {
+      duration: 320,
+      easing: Easing.out(Easing.cubic)
+    });
+  }, [isWallet, isProfile, isNotifications, walletX, profileX, notificationsX]);
 
   const walletStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: walletX.value }]
@@ -139,8 +146,11 @@ export default function App() {
   const profileStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: profileX.value }]
   }));
+  const notificationsStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: notificationsX.value }]
+  }));
 
-  // 未还原完成 / 未登录 → 显示鉴权门户（保持渐变背景）
+  // 未就绪或用户尚未完成邮箱注册登录：仅此全屏模块
   if (!hydrated || !fontsLoaded || !session) {
     return (
       <SafeAreaProvider>
@@ -219,6 +229,26 @@ export default function App() {
         >
           <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
             <ProfileScreen onChangeView={setActiveView} />
+          </SafeAreaView>
+        </Animated.View>
+
+        {/* 通知:整屏从右到左滑入 */}
+        <Animated.View
+          pointerEvents={isNotifications ? "auto" : "none"}
+          style={[
+            {
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#FFFFFF"
+            },
+            notificationsStyle
+          ]}
+        >
+          <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
+            <NotificationScreen onChangeView={setActiveView} />
           </SafeAreaView>
         </Animated.View>
 

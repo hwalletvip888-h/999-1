@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from "react";
 import { StyleSheet, View, type ViewProps } from "react-native";
+import { uiColors, uiRadius } from "../../theme/uiSystem";
 
 type Elevation = 0 | 1 | 2 | 3;
 
@@ -49,8 +50,19 @@ export function Surface({
   return (
     <View
       {...rest}
-      style={[eStyle, style]}
-      className={`rounded-2xl border border-line bg-bg ${padded ? "px-4 py-3.5" : ""} ${className}`}
+      className={`${padded ? "px-4 py-3.5" : ""} ${className}`}
+      // 全局 Surface 视觉基线：统一圆角/边框/底色
+      // 让不同页面的卡片质感保持一致
+      style={[
+        eStyle,
+        {
+          borderRadius: uiRadius.card,
+          borderWidth: 1,
+          borderColor: uiColors.cardBorder,
+          backgroundColor: uiColors.cardBg
+        },
+        style
+      ]}
     >
       {children}
     </View>

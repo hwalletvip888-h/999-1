@@ -3,10 +3,9 @@
  * 意图识别: 后端 Claude API
  * 聊天对话: 后端 DeepSeek API
  * 
- * 不再在前端直接调用 AI API，统一走后端
+ * 不再在前端直接调用 AI API，统一走后端（同源 `EXPO_PUBLIC_HWALLET_API_BASE`）。
  */
-
-const API_BASE = 'https://api.hvip.io';
+import { getHwalletApiBase } from "../walletApi";
 
 export interface AIIntent {
   action:
@@ -31,8 +30,14 @@ export interface AIIntent {
  * 意图识别 — 调用后端 /api/ai/intent (Claude)
  */
 export async function askClaude(userMessage: string): Promise<AIIntent> {
+  const base = getHwalletApiBase();
+  if (!base) {
+    console.warn("[AI] EXPO_PUBLIC_HWALLET_API_BASE 未配置，使用本地意图规则");
+    return fallbackIntent(userMessage);
+  }
+
   try {
-    const response = await fetch(`${API_BASE}/api/ai/intent`, {
+    const response = await fetch(`${base}/api/ai/intent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: userMessage }),
@@ -70,8 +75,13 @@ export interface ChatMessage {
  * AI 聊天 — 调用后端 /api/ai/chat (DeepSeek)
  */
 export async function chatWithAI(messages: ChatMessage[], userMessage: string): Promise<string> {
+  const base = getHwalletApiBase();
+  if (!base) {
+    return "⚠️ 未配置服务端地址（EXPO_PUBLIC_HWALLET_API_BASE），无法在客户端连接 AI 网关。";
+  }
+
   try {
-    const response = await fetch(`${API_BASE}/api/ai/chat`, {
+    const response = await fetch(`${base}/api/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, message: userMessage }),

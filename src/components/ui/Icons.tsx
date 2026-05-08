@@ -190,6 +190,20 @@ export function ScanIcon({ size = 22, color = "#0F0F0F" }: IconProps) {
   );
 }
 
+export function BellIcon({ size = 22, color = "#0F0F0F" }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5.5 17h13l-1.35-1.9a3.2 3.2 0 01-.58-1.85V9.9a4.55 4.55 0 10-9.1 0v3.35a3.2 3.2 0 01-.58 1.85L5.5 17z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path d="M9.7 19a2.3 2.3 0 004.6 0" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function CardStackIcon({ size = 18, color = "#0F0F0F" }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">

@@ -1,10 +1,7 @@
 /**
  * H_ API Gateway — 统一调度层
  *
- * 所有前端组件通过 `api.*` 访问后端能力，
- * Gateway 负责将请求路由到当前激活的 Provider（Mock / OKX / Zhipu）。
- *
- * 切换 Provider 只需修改 CURRENT_MODE 或调用 switchProvider()，前端零改动。
+ * 前端通过 `api.*` 访问能力；网关将请求路由到 OKX Provider（及部分直连实现）。
  */
 
 import type { IH_MarketApi } from './contracts/H_MarketApi';
@@ -28,19 +25,6 @@ import type { IH_NotifyApi } from './contracts/H_NotifyApi';
 import type { IH_AlgoApi } from './contracts/H_AlgoApi';
 import type { IH_BotApi } from './contracts/H_BotApi';
 
-// ─── Mock Provider 引入 ────────────────────────────────────────
-import { MockH_MarketApi } from './providers/mock/H_MarketApi.mock';
-import { MockH_PerpetualApi } from './providers/mock/H_PerpetualApi.mock';
-import { MockH_GridApi } from './providers/mock/H_GridApi.mock';
-import { MockH_SignalApi } from './providers/mock/H_SignalApi.mock';
-import { MockH_AccountApi } from './providers/mock/H_AccountApi.mock';
-import { MockH_WalletApi } from './providers/mock/H_WalletApi.mock';
-import { MockH_AuthApi } from './providers/mock/H_AuthApi.mock';
-import { MockH_CardApi } from './providers/mock/H_CardApi.mock';
-import { MockH_AnalyticsApi } from './providers/mock/H_AnalyticsApi.mock';
-import { MockH_RiskApi } from './providers/mock/H_RiskApi.mock';
-
-// ─── OKX Provider 引入 ────────────────────────────────────────
 import { OkxH_MarketApi } from './providers/okx/H_MarketApi.okx';
 import { OkxH_AccountApi } from './providers/okx/H_AccountApi.okx';
 import { OkxH_PerpetualApi } from './providers/okx/H_PerpetualApi.okx';
@@ -63,7 +47,6 @@ import { OkxH_AlgoApi } from './providers/okx/H_AlgoApi.okx';
 import { OkxH_BotApi } from './providers/okx/H_BotApi.okx';
 import type { OkxCredentials } from './providers/okx/okxClient';
 
-// ─── OKX 凭证配置 ─────────────────────────────────────────────
 let okxCreds: OkxCredentials = {
   apiKey: '',
   secretKey: '',
@@ -83,10 +66,7 @@ try {
   console.warn('[H_Gateway] okx.local.ts 未找到，OKX 私有接口将不可用');
 }
 
-// ─── Gateway 接口定义 ──────────────────────────────────────────
-
 export interface H_ApiGateway {
-  /** V5 智能交易 */
   market: IH_MarketApi;
   perpetual: IH_PerpetualApi;
   grid: IH_GridApi;
@@ -94,19 +74,13 @@ export interface H_ApiGateway {
   account: IH_AccountApi;
   algo: IH_AlgoApi;
   bot: IH_BotApi;
-
-  /** V6 智能钱包 */
   wallet: IH_WalletApi;
   swap: IH_SwapApi;
   earn: IH_EarnApi;
   security: IH_SecurityApi;
-
-  /** AI 层 */
   ai: IH_AIEngine;
   router: IH_IntentRouter;
   chat: IH_ChatOrchestrator;
-
-  /** 平台公共层 */
   auth: IH_AuthApi;
   card: IH_CardApi;
   analytics: IH_AnalyticsApi;
@@ -115,44 +89,11 @@ export interface H_ApiGateway {
   notify: IH_NotifyApi;
 }
 
-// ─── Provider 模式 ─────────────────────────────────────────────
-
-export type ProviderMode = 'mock' | 'okx' | 'zhipu';
-
-// ─── 创建 Gateway 实例 ─────────────────────────────────────────
-
-function createMockGateway(): H_ApiGateway {
-  return {
-    // V5
-    market: new MockH_MarketApi(),
-    perpetual: new MockH_PerpetualApi(),
-    grid: new MockH_GridApi(),
-    signal: new MockH_SignalApi(),
-    account: new MockH_AccountApi(),
-    algo: new OkxH_AlgoApi(okxCreds),      // Algo 无 Mock，直接用 OKX
-    bot: new OkxH_BotApi(okxCreds),        // Bot 无 Mock，直接用 OKX
-    // V6
-    wallet: new MockH_WalletApi(),
-    swap: new OkxH_SwapApi(okxCreds),       // DEX 无 Mock，直接用 OKX
-    earn: new OkxH_EarnApi(okxCreds),       // Earn 无 Mock，直接用 OKX
-    security: new OkxH_SecurityApi(okxCreds), // Security 无 Mock，直接用 OKX
-    // AI
-    ai: new OkxH_AIEngine(),
-    router: new OkxH_IntentRouter(),
-    chat: new OkxH_ChatOrchestrator(),
-    // 平台
-    auth: new MockH_AuthApi(),
-    card: new MockH_CardApi(),
-    analytics: new MockH_AnalyticsApi(),
-    risk: new MockH_RiskApi(),
-    community: new OkxH_CommunityApi(),
-    notify: new OkxH_NotifyApi(),
-  };
-}
+/** 预留智谱接入；未完成前一律等价于 OKX */
+export type ProviderMode = 'okx' | 'zhipu';
 
 function createOkxGateway(): H_ApiGateway {
   return {
-    // V5 智能交易 — 全部 OKX 实盘
     market: new OkxH_MarketApi(),
     perpetual: new OkxH_PerpetualApi(okxCreds),
     grid: new OkxH_GridApi(okxCreds),
@@ -160,16 +101,13 @@ function createOkxGateway(): H_ApiGateway {
     account: new OkxH_AccountApi(okxCreds),
     algo: new OkxH_AlgoApi(okxCreds),
     bot: new OkxH_BotApi(okxCreds),
-    // V6 智能钱包 — 全部 OKX 实盘
     wallet: new OkxH_WalletApi(okxCreds),
     swap: new OkxH_SwapApi(okxCreds),
     earn: new OkxH_EarnApi(okxCreds),
     security: new OkxH_SecurityApi(okxCreds),
-    // AI 层
     ai: new OkxH_AIEngine(),
     router: new OkxH_IntentRouter(),
     chat: new OkxH_ChatOrchestrator(),
-    // 平台公共层
     auth: new OkxH_AuthApi(okxCreds),
     card: new OkxH_CardApi(),
     analytics: new OkxH_AnalyticsApi(okxCreds),
@@ -179,8 +117,6 @@ function createOkxGateway(): H_ApiGateway {
   };
 }
 
-// ─── 当前模式 ──────────────────────────────────────────────────
-
 let currentMode: ProviderMode = 'okx';
 let currentGateway: H_ApiGateway = createGateway(currentMode);
 
@@ -188,41 +124,33 @@ function createGateway(mode: ProviderMode): H_ApiGateway {
   switch (mode) {
     case 'okx':
       return createOkxGateway();
-    case 'mock':
-      return createMockGateway();
     case 'zhipu':
-      console.warn('[H_Gateway] Zhipu provider not implemented, falling back to mock');
-      return createMockGateway();
+      console.warn('[H_Gateway] Zhipu 未实现，使用 OKX Gateway');
+      return createOkxGateway();
     default:
-      return createMockGateway();
+      return createOkxGateway();
   }
 }
 
-// ─── 导出 ──────────────────────────────────────────────────────
-
-/** 全局 API 入口 */
 export const api: H_ApiGateway = new Proxy({} as H_ApiGateway, {
   get(_target, prop: string) {
-    return (currentGateway as any)[prop];
+    return (currentGateway as unknown as Record<string, unknown>)[prop];
   },
 });
 
-/** 获取当前 Provider 模式 */
 export function getProviderMode(): ProviderMode {
   return currentMode;
 }
 
-/** 动态切换 Provider */
 export function switchProvider(mode: ProviderMode): void {
   currentMode = mode;
   currentGateway = createGateway(mode);
   console.log(`[H_Gateway] Provider 已切换到: ${mode}`);
 }
 
-/** 更新 OKX 凭证 */
 export function updateOkxCredentials(creds: OkxCredentials): void {
   okxCreds = creds;
-  if (currentMode === 'okx') {
+  if (currentMode === 'okx' || currentMode === 'zhipu') {
     currentGateway = createOkxGateway();
     console.log('[H_Gateway] OKX 凭证已更新，Gateway 已重建');
   }

@@ -95,12 +95,87 @@ export function TokenHWT({ size = 36 }: TokenProps) {
   );
 }
 
+export function TokenSOL({ size = 36 }: TokenProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 40 40">
+      <Defs>
+        <LinearGradient id="sol-bg" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#0B0B15" />
+          <Stop offset="1" stopColor="#1E1B4B" />
+        </LinearGradient>
+        <LinearGradient id="sol-g1" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#22D3EE" />
+          <Stop offset="1" stopColor="#A855F7" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={20} cy={20} r={20} fill="url(#sol-bg)" />
+      <Path d="M10 12.5h18l-3.2 3.6H6.8z" fill="url(#sol-g1)" />
+      <Path d="M13.2 18.2h18l-3.2 3.6H10z" fill="url(#sol-g1)" opacity={0.9} />
+      <Path d="M10 24h18l-3.2 3.6H6.8z" fill="url(#sol-g1)" opacity={0.8} />
+    </Svg>
+  );
+}
+
+export function TokenBNB({ size = 36 }: TokenProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 40 40">
+      <Defs>
+        <LinearGradient id="bnb-bg" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#FCD34D" />
+          <Stop offset="1" stopColor="#F59E0B" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={20} cy={20} r={20} fill="url(#bnb-bg)" />
+      <Path d="M20 10l3.5 3.5-3.5 3.5-3.5-3.5z" fill="#fff" />
+      <Path d="M13.5 16.5l3.5 3.5-3.5 3.5-3.5-3.5zM26.5 16.5l3.5 3.5-3.5 3.5-3.5-3.5z" fill="#fff" />
+      <Path d="M20 23l4.8 4.8-4.8 4.8-4.8-4.8z" fill="#fff" />
+      <Path d="M20 16.8l3.2 3.2-3.2 3.2-3.2-3.2z" fill="#F59E0B" />
+    </Svg>
+  );
+}
+
+export function TokenOKB({ size = 36 }: TokenProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 40 40">
+      <Defs>
+        <LinearGradient id="okb-bg" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#111827" />
+          <Stop offset="1" stopColor="#000000" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={20} cy={20} r={20} fill="url(#okb-bg)" />
+      <Path d="M14 14h5v5h-5zM21 14h5v5h-5zM14 21h5v5h-5zM21 21h5v5h-5z" fill="#fff" />
+    </Svg>
+  );
+}
+
+function TokenFallback({ symbol, size = 36 }: { symbol: string; size?: number }) {
+  const label = symbol.slice(0, 1).toUpperCase() || "?";
+  return (
+    <Svg width={size} height={size} viewBox="0 0 40 40">
+      <Defs>
+        <LinearGradient id="fallback-bg" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#6366F1" />
+          <Stop offset="1" stopColor="#8B5CF6" />
+        </LinearGradient>
+      </Defs>
+      <Circle cx={20} cy={20} r={20} fill="url(#fallback-bg)" />
+      <SvgText x={20} y={26} fontSize={18} fontWeight="800" fill="#FFFFFF" textAnchor="middle">
+        {label}
+      </SvgText>
+    </Svg>
+  );
+}
+
 /** Map a symbol to its branded token icon. */
 export function TokenIcon({ symbol, size = 36 }: { symbol: string; size?: number }) {
   const s = symbol.toUpperCase();
   if (s === "USDT") return <TokenUSDT size={size} />;
   if (s === "ETH") return <TokenETH size={size} />;
   if (s === "BTC") return <TokenBTC size={size} />;
+  if (s === "SOL") return <TokenSOL size={size} />;
+  if (s === "BNB") return <TokenBNB size={size} />;
+  if (s === "OKB") return <TokenOKB size={size} />;
   if (s === "HWT") return <TokenHWT size={size} />;
-  return <TokenETH size={size} />;
+  return <TokenFallback symbol={s} size={size} />;
 }

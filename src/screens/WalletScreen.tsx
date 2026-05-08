@@ -1,7 +1,9 @@
 import React from "react";
 import { useEffect, useState } from "react";
-import { Dimensions, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, Dimensions, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Clipboard from "expo-clipboard";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,14 +13,15 @@ import Animated, {
   withTiming
 } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Stop } from "react-native-svg";
+import QRCode from "react-native-qrcode-svg";
 import { Surface } from "../components/ui/Surface";
 import {
   ArrowDownIcon,
   ArrowLeftIcon,
   ArrowUpIcon,
+  BellIcon,
   CardStackIcon,
   ChevronRightIcon,
-  EyeIcon,
   LeafIcon,
   LockIcon,
   ScanIcon,
@@ -30,8 +33,12 @@ import { TokenIcon } from "../components/ui/TokenIcons";
 import { CardLibraryScreen } from "./CardLibraryScreen";
 import { useCardLibrary } from "../services/cardLibrary";
 import { api } from "../api/gateway";
+import { okxOnchainClient } from "../api/providers/okx/okxOnchainClient";
 import type { AppView } from "../types";
 import { isPositive } from "../utils/format";
+import { useSession } from "../services/sessionStore";
+import { refreshAddresses } from "../services/walletApi";
+import { uiColors, uiSpace } from "../theme/uiSystem";
 
 const SCREEN_W = Dimensions.get("window").width;
 
@@ -42,7 +49,7 @@ type WalletScreenProps = {
 const heroActions = [
   { id: "deposit", label: "充值", Icon: ArrowDownIcon },
   { id: "withdraw", label: "提现", Icon: ArrowUpIcon },
-  { id: "swap", label: "兑换", Icon: SwapIcon },
+  { id: "swap", label: "兑换", Icon: SwapIcon, primary: true },
   { id: "scan", label: "扫码", Icon: ScanIcon }
 ];
 
@@ -64,15 +71,6 @@ const services: {
     color: "#4338CA"
   },
   {
-    id: "staking",
-    title: "质押",
-    subtitle: "敬请期待",
-    Icon: LockIcon,
-    bg: ["#FEF3C7", "#FDE68A"],
-    color: "#B45309",
-    locked: true
-  },
-  {
     id: "earn",
     title: "链上赚币",
     subtitle: "稳健收益",
@@ -81,9 +79,18 @@ const services: {
     color: "#15803D"
   },
   {
+    id: "staking",
+    title: "质押",
+    subtitle: "即将开放",
+    Icon: LockIcon,
+    bg: ["#FEF3C7", "#FDE68A"],
+    color: "#B45309",
+    locked: true
+  },
+  {
     id: "dph",
     title: "DPH",
-    subtitle: "敬请期待",
+    subtitle: "灰度测试中",
     Icon: SwapIcon,
     bg: ["#FCE7F3", "#FBCFE8"],
     color: "#BE185D",
@@ -91,19 +98,10 @@ const services: {
   }
 ];
 
-// 模拟资产组合走势(用于 hero spark line)
-
-
-// 单个币种的迷你走势
-const assetSparks: Record<string, number[]> = {
-  USDT: [20, 21, 20, 21, 20, 22, 21, 22, 23, 22, 23, 22],
-  ETH: [40, 38, 42, 41, 39, 36, 35, 34, 32, 33, 31, 30],
-  BTC: [30, 32, 31, 33, 35, 34, 36, 38, 37, 39, 41, 42]
-};
-
 const defaultSpark = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 export function WalletScreen({ onChangeView }: WalletScreenProps) {
+  const session = useSession();
   const [hideBalance, setHideBalance] = useState(false);
   const [tab, setTab] = useState<"assets" | "nft" | "activity">("assets");
   const [totalBalance, setTotalBalance] = useState("0.00");
@@ -113,62 +111,168 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const [assetSparks, setAssetSparks] = useState<Record<string, number[]>>({});
   const [portfolioSpark, setPortfolioSpark] = useState(defaultSpark);
   const [loading, setLoading] = useState(true);
+  const [walletDataError, setWalletDataError] = useState("");
+  const [agentAssets, setAgentAssets] = useState<Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>>([]);
+  const [agentAssetLoading, setAgentAssetLoading] = useState(true);
 
-  // 加载真实数据
+  const accountIdMasked = session?.accountId
+    ? `${session.accountId.slice(0, 6)}…${session.accountId.slice(-4)}`
+    : "未连接";
+
+  // 加载 Agent Wallet 汇总（仅真实接口，无本地模拟兜底）
   useEffect(() => {
     (async () => {
       try {
-        // api is imported from gateway
-        // 1. 获取账户总览
-        const overview = await api.account.getOverview();
-        setTotalBalance(overview.totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-        // 2. 构建资产列表
-        const assets = overview.balances
-          .filter((b: any) => b.usdtValue > 0.01)
-          .map((b: any, i: number) => ({
-            id: `asset_${b.currency.toLowerCase()}`,
-            symbol: b.currency,
-            name: b.currency,
-            icon: b.currency === "BTC" ? "₿" : b.currency === "ETH" ? "◆" : b.currency === "USDT" ? "₮" : b.currency.slice(0, 1),
-            chain: "Multi-chain",
-            balance: `${b.total.toFixed(4)} ${b.currency}`,
-            valueUsd: `$${b.usdtValue.toFixed(2)}`,
-            change24h: "+0.0%",
-          }));
-        setRealAssets(assets);
-
-        // 3. 获取主要币种的 24h 涨跌和走势
-        const symbols = ["BTC", "ETH", "SOL"];
-        const sparksMap: Record<string, number[]> = {};
-        for (const sym of symbols) {
-          try {
-            const ticker = await api.market.getTicker(`${sym}-USDT`);
-            const candles = await api.market.getCandles(`${sym}-USDT`, "1H", 24);
-            sparksMap[sym] = candles.map((c: any) => c.close ?? 0);
-            // 更新资产的 24h 涨跌
-            setRealAssets(prev => prev.map(a =>
-              a.symbol === sym
-                ? { ...a, change24h: `${ticker.changePercent24h >= 0 ? "+" : ""}${ticker.changePercent24h.toFixed(2)}%` }
-                : a
-            ));
-          } catch { sparksMap[sym] = defaultSpark; }
+        if (!session?.token) {
+          setWalletDataError("请先登录 Agent Wallet 以加载链上真实资产");
+          setTotalBalance("—");
+          setRealAssets([]);
+          setAssetSparks({});
+          setPortfolioSpark(defaultSpark);
+          setAgentAssets([]);
+          setAgentAssetLoading(false);
+          setLoading(false);
+          return;
         }
-        sparksMap["USDT"] = defaultSpark.map(() => 1); // USDT 稳定
-        setAssetSparks(sparksMap);
 
-        // 4. 获取 BTC 走势作为组合走势
-        if (sparksMap["BTC"]?.length > 2) {
-          setPortfolioSpark(sparksMap["BTC"]);
+        try {
+          const portfolio = await okxOnchainClient.getWalletPortfolio(session.token);
+          setWalletDataError("");
+          const tokens = portfolio.data.tokens ?? [];
+          const totalUsd = Number(portfolio.data.totalUsd || 0);
+          setTotalBalance(totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+          const assets = tokens
+            .filter((t) => Number(t.usdValue || 0) > 0.001 || Number(t.amount || 0) > 0)
+            .map((t) => {
+              const symbol = String(t.symbol || "").toUpperCase();
+              return {
+                id: `asset_${symbol.toLowerCase()}_${t.chain}`,
+                symbol,
+                name: symbol,
+                icon: symbol === "BTC" ? "₿" : symbol === "ETH" ? "◆" : symbol === "USDT" ? "₮" : symbol.slice(0, 1),
+                chain: String(t.chain || "Onchain"),
+                balance: `${Number(t.amount || 0).toFixed(6)} ${symbol}`,
+                valueUsd: `$${Number(t.usdValue || 0).toFixed(2)}`,
+                change24h: "+0.0%",
+              };
+            });
+          setRealAssets(assets);
+          setAssetSparks({});
+          setPortfolioSpark(defaultSpark);
+        } catch (portfolioErr: unknown) {
+          const msg =
+            portfolioErr instanceof Error
+              ? portfolioErr.message
+              : "暂时拉不到链上资产汇总，请检查网络或稍后重试。";
+          setWalletDataError(
+            Platform.OS === "web"
+              ? "浏览器环境需经服务端代理调用 OKX 资产接口；请使用 Expo Go 或配置 HTTPS 后端。"
+              : msg
+          );
+          setTotalBalance("—");
+          setRealAssets([]);
+          setAgentAssets([]);
         }
         setLoading(false);
       } catch (err) {
         console.warn("[WalletScreen] 加载真实数据失败:", err);
+        setWalletDataError("Agent Wallet 实时资产拉取失败，请稍后重试");
+        setTotalBalance("—");
+        setRealAssets([]);
+        setAgentAssets([]);
         setLoading(false);
       }
     })();
+  }, [session?.token]);
+
+  // 进入 Wallet 页面后刷新一次 Agent Wallet 地址
+  useEffect(() => {
+    refreshAddresses().catch(() => {});
   }, []);
+
+  // Agent Wallet 常驻币种行（数量与价值仅来自接口 + 交易所行情）
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const fixedSymbols = ["SOL", "USDT", "BNB", "OKB"] as const;
+        const map = new Map<string, { qty: number; valueUsd: number }>();
+
+        if (!session?.token) {
+          if (!cancelled) {
+            setAgentAssets([]);
+            setAgentAssetLoading(false);
+          }
+          return;
+        }
+
+        let tokens: any[] = [];
+        try {
+          const portfolio = await okxOnchainClient.getWalletPortfolio(session.token);
+          tokens = portfolio.data.tokens ?? [];
+        } catch {
+          if (!cancelled) {
+            setAgentAssets([]);
+            setAgentAssetLoading(false);
+          }
+          return;
+        }
+        for (const t of tokens) {
+          const symbol = String(t.symbol || "").toUpperCase();
+          if (!symbol) continue;
+          const prev = map.get(symbol) ?? { qty: 0, valueUsd: 0 };
+          map.set(symbol, {
+            qty: prev.qty + Number(t.amount || 0),
+            valueUsd: prev.valueUsd + Number(t.usdValue || 0)
+          });
+        }
+
+        const rows = await Promise.all(
+          fixedSymbols.map(async (symbol) => {
+            const bal = map.get(symbol);
+            const qty = bal?.qty ?? 0;
+            let price = symbol === "USDT" ? 1 : 0;
+            let change24h = 0;
+            try {
+              const ticker = await api.market.getTicker(`${symbol}-USDT`);
+              const p = Number(ticker.last);
+              if (Number.isFinite(p) && p > 0) price = p;
+              change24h = Number(ticker.changePercent24h || 0);
+            } catch {
+              /* 无行情则不填价 */
+            }
+            return {
+              symbol,
+              qty,
+              price,
+              valueUsd: bal?.valueUsd ?? qty * price,
+              change24h
+            };
+          })
+        );
+        if (!cancelled) {
+          setAgentAssets(rows);
+          setAgentAssetLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setAgentAssets([]);
+          setAgentAssetLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.token]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryMounted, setLibraryMounted] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [swapMounted, setSwapMounted] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [depositMounted, setDepositMounted] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawMounted, setWithdrawMounted] = useState(false);
   const library = useCardLibrary();
 
   // 卡库从右滑入；关闭时延迟卸载以保留动画
@@ -186,9 +290,51 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const libraryStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: libraryX.value }]
   }));
+  const swapX = useSharedValue(SCREEN_W);
+  useEffect(() => {
+    if (swapOpen) {
+      setSwapMounted(true);
+      swapX.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
+    } else if (swapMounted) {
+      swapX.value = withTiming(SCREEN_W, { duration: 280, easing: Easing.out(Easing.cubic) });
+      const t = setTimeout(() => setSwapMounted(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [swapOpen, swapMounted, swapX]);
+  const swapStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: swapX.value }]
+  }));
+  const depositX = useSharedValue(SCREEN_W);
+  useEffect(() => {
+    if (depositOpen) {
+      setDepositMounted(true);
+      depositX.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
+    } else if (depositMounted) {
+      depositX.value = withTiming(SCREEN_W, { duration: 280, easing: Easing.out(Easing.cubic) });
+      const t = setTimeout(() => setDepositMounted(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [depositOpen, depositMounted, depositX]);
+  const depositStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: depositX.value }]
+  }));
+  const withdrawX = useSharedValue(SCREEN_W);
+  useEffect(() => {
+    if (withdrawOpen) {
+      setWithdrawMounted(true);
+      withdrawX.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
+    } else if (withdrawMounted) {
+      withdrawX.value = withTiming(SCREEN_W, { duration: 280, easing: Easing.out(Easing.cubic) });
+      const t = setTimeout(() => setWithdrawMounted(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [withdrawOpen, withdrawMounted, withdrawX]);
+  const withdrawStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: withdrawX.value }]
+  }));
 
   return (
-    <View className="flex-1 bg-bg">
+    <View className="flex-1" style={{ backgroundColor: uiColors.appBg }}>
       {/* 顶部导航 */}
       <View className="flex-row items-center justify-between px-3 pb-2 pt-1">
         <Pressable
@@ -202,55 +348,120 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         {/* 中间钱包地址胶囊 */}
         <Pressable className="flex-row items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 active:opacity-70">
           <View className="h-2 w-2 rounded-full bg-emerald-500" />
-          <Text className="text-[13px] font-semibold text-ink">主账户</Text>
-          <Text className="text-[12px] text-muted">0x9a…3F2c</Text>
+          <Text className="text-[14px] font-semibold text-ink">Agent Wallet</Text>
+          <Text className="text-[13px] text-muted">{accountIdMasked}</Text>
         </Pressable>
 
         <Pressable
           accessibilityRole="button"
-          className="h-10 w-10 items-center justify-center rounded-full active:bg-surface"
+          onPress={() => onChangeView("notifications")}
+          className="h-10 w-10 items-center justify-center rounded-full active:opacity-80"
+          style={{
+            backgroundColor: "#FFFFFF",
+            borderWidth: 1,
+            borderColor: "#E5E7EB",
+            shadowColor: "#0F172A",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.08,
+            shadowRadius: 6,
+            elevation: 2
+          }}
         >
-          <ScanIcon size={20} />
+          <View>
+            <BellIcon size={22} />
+            <View
+              style={{
+                position: "absolute",
+                top: 1,
+                right: 0,
+                width: 7,
+                height: 7,
+                borderRadius: 3.5,
+                backgroundColor: "#10B981",
+                borderWidth: 1,
+                borderColor: "#FFFFFF"
+              }}
+            />
+          </View>
         </Pressable>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 }}>
+        {walletDataError ? (
+          <View style={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10 }}>
+            <View className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+              <Text className="text-[12px] font-medium text-amber-800">{walletDataError}</Text>
+            </View>
+          </View>
+        ) : null}
         {/* Hero 卡 */}
-        <View className="px-4 pt-3">
-          <HeroCard hideBalance={hideBalance} onToggleHide={() => setHideBalance((v) => !v)} totalBalance={totalBalance} pnlPercent={pnlPercent} monthPnl={monthPnl} portfolioSpark={portfolioSpark} />
+        <View style={{ paddingHorizontal: uiSpace.pageX, paddingTop: 12 }}>
+          <HeroCard hideBalance={hideBalance} totalBalance={totalBalance} pnlPercent={pnlPercent} monthPnl={monthPnl} portfolioSpark={portfolioSpark} />
         </View>
 
-        {/* 快捷操作 */}
-        <View className="mt-5 px-4">
-          <Surface elevation={1} padded={false} className="flex-row items-center justify-around py-3">
-            {heroActions.map(({ id, label, Icon }) => (
-              <Pressable key={id} accessibilityRole="button" className="items-center active:opacity-60">
-                <View className="h-11 w-11 items-center justify-center rounded-2xl bg-surface">
-                  <Icon size={20} color="#0F0F0F" />
-                </View>
-                <Text className="mt-1.5 text-[12px] font-medium text-ink2">{label}</Text>
-              </Pressable>
-            ))}
+        {/* 操作区：快捷操作 */}
+        <View style={{ marginTop: uiSpace.sectionGap + 6, paddingHorizontal: uiSpace.pageX }}>
+          <Surface elevation={1} padded={false}>
+            <View className="flex-row items-center justify-around px-2 py-2.5">
+              {heroActions.map(({ id, label, Icon, primary }) => (
+                <Pressable
+                  key={id}
+                  accessibilityRole="button"
+                  className="items-center active:opacity-60"
+                  onPress={() => {
+                    if (id === "swap") setSwapOpen(true);
+                    if (id === "deposit") setDepositOpen(true);
+                    if (id === "withdraw") setWithdrawOpen(true);
+                  }}
+                >
+                  <View
+                    className="h-11 w-11 items-center justify-center rounded-2xl"
+                    style={{
+                      backgroundColor: primary ? "#EDE9FE" : "#F3F4F6",
+                      borderWidth: primary ? 1 : 0,
+                      borderColor: primary ? "#C4B5FD" : "transparent"
+                    }}
+                  >
+                    <Icon size={19} color={primary ? "#5B21B6" : "#0F0F0F"} />
+                  </View>
+                  <Text className="mt-2 text-[13px] font-medium text-ink2">{label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </Surface>
         </View>
 
-        {/* Agent banner */}
-        <View className="mx-4 mt-4">
-          <AgentBanner />
+        {/* Agent 状态条：放在操作后，形成主流程连续性 */}
+        <View style={{ marginTop: 12, paddingHorizontal: uiSpace.pageX }}>
+          <AgentBanner compact onNavigate={onChangeView} />
         </View>
 
-        {/* 分段标签 */}
-        <View className="mt-6 px-4">
-          <View className="flex-row items-center gap-1 rounded-full bg-surface p-1">
-            <SegmentTab label="资产" active={tab === "assets"} onPress={() => setTab("assets")} />
-            <SegmentTab label="NFT" active={tab === "nft"} onPress={() => setTab("nft")} />
-            <SegmentTab label="活动" active={tab === "activity"} onPress={() => setTab("activity")} />
-          </View>
+        {/* 资产列表表头：分段标签 + 添加代币（同一容器） */}
+        <View style={{ marginTop: 14, paddingHorizontal: uiSpace.pageX }}>
+          <Surface padded={false} elevation={1} style={{ overflow: "hidden" }}>
+            <View className="p-1">
+              <View className="flex-row items-center gap-1 rounded-full bg-surface p-1">
+                <SegmentTab label="资产" active={tab === "assets"} onPress={() => setTab("assets")} />
+                <SegmentTab label="NFT" active={tab === "nft"} onPress={() => setTab("nft")} />
+                <SegmentTab label="活动" active={tab === "activity"} onPress={() => setTab("activity")} />
+              </View>
+            </View>
+          </Surface>
         </View>
 
         {/* 资产列表 */}
         {tab === "assets" && (
-          <View className="mt-3 px-4">
+          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
+            <AgentWalletPanel
+              rows={agentAssets}
+              loading={agentAssetLoading}
+            />
+          </View>
+        )}
+
+        {/* 资产列表 */}
+        {tab === "assets" && (
+          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
             <Surface padded={false} elevation={1}>
               {realAssets.map((asset, idx) => {
                 const positive = isPositive(asset.change24h);
@@ -259,14 +470,14 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                   <Pressable
                     key={asset.id}
                     accessibilityRole="button"
-                    className={`flex-row items-center px-4 py-3.5 active:bg-surface ${
+                    className={`flex-row items-center px-4 py-4 active:bg-surface ${
                       idx < realAssets.length - 1 ? "border-b border-line" : ""
                     }`}
                   >
                     <TokenIcon symbol={asset.symbol} size={40} />
                     <View className="ml-3 flex-1">
                       <Text className="text-[16px] font-semibold text-ink">{asset.symbol}</Text>
-                      <Text className="text-[12px] text-muted">{asset.balance}</Text>
+                      <Text className="text-[13px] text-muted">{asset.balance}</Text>
                     </View>
 
                     {/* 迷你走势 */}
@@ -281,24 +492,25 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                     </View>
 
                     <View className="items-end">
-                      <Text style={{ fontSize: 15, fontWeight: "600", color: "#0F0F0F", fontFamily: "JetBrainsMono_500Medium" }}>{asset.valueUsd}</Text>
-                      <Text className={`text-[12px] font-medium ${positive ? "text-emerald-600" : "text-red-500"}`}>
+                      <Text style={{ fontSize: 15, fontWeight: "600", color: "#0F0F0F", fontFamily: "Inter_600SemiBold" }}>{asset.valueUsd}</Text>
+                      <Text className={`text-[13px] font-medium ${positive ? "text-emerald-600" : "text-red-500"}`}>
                         {asset.change24h}
                       </Text>
                     </View>
                   </Pressable>
                 );
               })}
-              {/* 添加代币 */}
-              <Pressable className="flex-row items-center justify-center gap-1 border-t border-line py-3 active:opacity-60">
-                <Text className="text-[13px] font-medium text-muted">+ 添加代币</Text>
-              </Pressable>
             </Surface>
+            <Pressable
+              className="mt-2 flex-row items-center justify-center rounded-xl border border-line bg-surface py-2.5 active:opacity-70"
+            >
+              <Text className="text-[13px] font-semibold text-ink2">+ 添加代币</Text>
+            </Pressable>
           </View>
         )}
 
         {tab === "nft" && (
-          <View className="mt-3 px-4">
+          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
             <Surface elevation={1} className="items-center py-10">
               <Text className="text-[14px] text-muted">暂无 NFT 收藏</Text>
             </Surface>
@@ -306,7 +518,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         )}
 
         {tab === "activity" && (
-          <View className="mt-3 px-4">
+          <View style={{ marginTop: 10, paddingHorizontal: uiSpace.pageX }}>
             <Surface elevation={1} className="items-center py-10">
               <Text className="text-[14px] text-muted">暂无活动记录</Text>
             </Surface>
@@ -314,9 +526,13 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         )}
 
         {/* 服务网格 */}
-        <View className="mt-6 px-4">
-          <Text className="mb-3 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">服务</Text>
-          <View className="flex-row flex-wrap gap-3">
+        <View style={{ marginTop: 18, paddingHorizontal: uiSpace.pageX }}>
+          <Surface elevation={1} padded={false}>
+            <View className="px-4 pt-3">
+              <Text className="mb-2 text-[13px] font-semibold uppercase tracking-wider text-muted">服务</Text>
+            </View>
+            <View className="px-3 pb-3">
+              <View className="flex-row flex-wrap gap-3">
             {services.map(({ id, title, subtitle, Icon, bg, color, locked }) => {
               const display =
                 id === "cards"
@@ -329,7 +545,13 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                   key={id}
                   style={{ width: "47.5%" }}
                   shadowColor={color}
-                  onPress={id === "cards" ? () => setLibraryOpen(true) : undefined}
+                  onPress={
+                    id === "cards"
+                      ? () => setLibraryOpen(true)
+                      : id === "earn"
+                      ? () => onChangeView("chat")
+                      : undefined
+                  }
                 >
                   <View style={{ borderRadius: 18, overflow: "hidden" }}>
                     <LinearGradient
@@ -341,7 +563,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                         height: 100,
                         justifyContent: "space-between",
                         borderRadius: 18,
-                        opacity: locked ? 0.85 : 1
+                        opacity: locked ? 0.55 : 1
                       }}
                     >
                       <View
@@ -351,10 +573,10 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                         <Icon size={18} color={color} />
                       </View>
                       <View>
-                        <Text className="text-[15px] font-bold" style={{ color }}>
+                        <Text className="text-[16px] font-bold" style={{ color }}>
                           {title}
                         </Text>
-                        <Text className="text-[11px]" style={{ color, opacity: 0.7 }}>
+                        <Text className="text-[12px]" style={{ color, opacity: locked ? 0.95 : 0.72 }}>
                           {display}
                         </Text>
                       </View>
@@ -380,7 +602,24 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                         <Text
                           style={{ fontSize: 9, fontWeight: "700", color: "#FDE68A" }}
                         >
-                          锁定
+                          即将开放
+                        </Text>
+                      </View>
+                    ) : null}
+                    {!locked ? (
+                      <View
+                        style={{
+                          position: "absolute",
+                          top: 8,
+                          right: 8,
+                          borderRadius: 999,
+                          paddingHorizontal: 7,
+                          paddingVertical: 3,
+                          backgroundColor: "rgba(255,255,255,0.72)"
+                        }}
+                      >
+                        <Text style={{ fontSize: 9, fontWeight: "700", color }}>
+                          可用
                         </Text>
                       </View>
                     ) : null}
@@ -388,12 +627,14 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
                 </TiltCard>
               );
             })}
-          </View>
+              </View>
+            </View>
+          </Surface>
         </View>
       </ScrollView>
 
       {/* 底部搜索框 · 占位占型，后续接代币/地址/合约搜索 */}
-      <WalletSearchBar />
+      {!swapMounted ? <WalletSearchBar /> : null}
 
       {/* 卡库 · 从右滑入（仅打开时挂载，避免遮挡返回） */}
       {libraryMounted ? (
@@ -412,6 +653,1268 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         >
           <CardLibraryScreen onClose={() => setLibraryOpen(false)} />
         </Animated.View>
+      ) : null}
+
+      {/* 兑换二级页 · 从右滑入 */}
+      {swapMounted ? (
+        <Animated.View
+          style={[
+            {
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#FFFFFF"
+            },
+            swapStyle
+          ]}
+        >
+          <SwapScreen onClose={() => setSwapOpen(false)} token={session?.token} assets={agentAssets} />
+        </Animated.View>
+      ) : null}
+
+      {depositMounted ? (
+        <Animated.View
+          style={[
+            {
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#FFFFFF"
+            },
+            depositStyle
+          ]}
+        >
+          <DepositScreen onClose={() => setDepositOpen(false)} session={session} assets={agentAssets} />
+        </Animated.View>
+      ) : null}
+
+      {withdrawMounted ? (
+        <Animated.View
+          style={[
+            {
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "#FFFFFF"
+            },
+            withdrawStyle
+          ]}
+        >
+          <WithdrawScreen onClose={() => setWithdrawOpen(false)} assets={agentAssets} session={session} />
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+function DepositScreen({
+  onClose,
+  session,
+  assets
+}: {
+  onClose: () => void;
+  session: ReturnType<typeof useSession>;
+  assets: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
+}) {
+  type DepositPage = "main" | "token" | "network";
+  const [page, setPage] = useState<DepositPage>("token");
+  const [symbol, setSymbol] = useState<string>("USDT");
+  const [network, setNetwork] = useState<"X Layer" | "Ethereum" | "Solana">("X Layer");
+  const [tokenSearch, setTokenSearch] = useState("");
+  const [networkSearch, setNetworkSearch] = useState("");
+  const [promoIdx, setPromoIdx] = useState(0);
+
+  const tokenOptions = assets
+    .filter((a) => a.symbol && (a.qty > 0 || ["USDT", "ETH", "SOL", "BNB", "OKB", "USDC"].includes(a.symbol)))
+    .sort((a, b) => b.valueUsd - a.valueUsd);
+  const visibleTokens = tokenOptions.filter((t) =>
+    t.symbol.toLowerCase().includes(tokenSearch.trim().toLowerCase())
+  );
+
+  const networkCandidates: Array<{ name: "X Layer" | "Ethereum" | "Solana"; feeLabel: string; enabled: boolean }> = [
+    { name: "X Layer", feeLabel: "待估算", enabled: !!session?.addresses?.xlayer?.[0]?.address || !!session?.addresses?.evm?.[0]?.address },
+    { name: "Solana", feeLabel: "待估算", enabled: !!session?.addresses?.solana?.[0]?.address },
+    { name: "Ethereum", feeLabel: "待估算", enabled: !!session?.addresses?.evm?.[0]?.address }
+  ];
+  const networkOptions = networkCandidates.filter((n) => n.enabled);
+  const visibleNetworks = networkOptions.filter((n) =>
+    n.name.toLowerCase().includes(networkSearch.trim().toLowerCase())
+  );
+  const promoCards = [
+    { id: "p1", title: "从交易所账户快捷提币", subtitle: "如钱包已关联交易所账户，提币无需验证", tone: "#166534" },
+    { id: "p2", title: "Agent Wallet 安全收款", subtitle: "网络与地址自动匹配，避免错充", tone: "#1D4ED8" },
+    { id: "p3", title: "支持多链网络", subtitle: "X Layer / Solana / Ethereum", tone: "#7C3AED" }
+  ] as const;
+
+  useEffect(() => {
+    if (page !== "token") return;
+    const t = setInterval(() => setPromoIdx((i) => (i + 1) % promoCards.length), 3200);
+    return () => clearInterval(t);
+  }, [page]);
+
+  const currentAddress = (() => {
+    if (network === "Solana") return session?.addresses?.solana?.[0]?.address ?? "";
+    if (network === "Ethereum") return session?.addresses?.evm?.[0]?.address ?? "";
+    return session?.addresses?.xlayer?.[0]?.address ?? session?.addresses?.evm?.[0]?.address ?? "";
+  })();
+
+  const copyCurrentAddress = async () => {
+    const addr = (currentAddress || "").trim();
+    if (!addr) {
+      Alert.alert("暂无地址", "当前网络地址未加载完成，请稍后再试。");
+      return;
+    }
+    await Clipboard.setStringAsync(addr);
+    Alert.alert("已复制", "收款地址已复制到剪贴板");
+  };
+
+  if (page === "token") {
+    return (
+      <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+        <View className="flex-row items-center px-3 pb-2 pt-1">
+          <Pressable onPress={() => setPage("main")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+            <ArrowLeftIcon size={22} />
+          </Pressable>
+          <View className="ml-1">
+            <Text className="text-[30px] font-bold text-ink">选择币种</Text>
+            <Text className="text-[12px] text-muted">选择后自动筛选可充值网络</Text>
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX }}>
+          <View className="flex-row items-center rounded-2xl border border-line bg-surface px-3 py-2.5">
+            <SearchIcon size={18} color="#9CA3AF" />
+            <TextInput
+              value={tokenSearch}
+              onChangeText={setTokenSearch}
+              placeholder="搜索币种"
+              className="ml-2 flex-1 text-[14px] text-ink"
+            />
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
+          <View
+            style={{
+              borderRadius: 18,
+              overflow: "hidden",
+              borderWidth: 1,
+              borderColor: "#DDEBDD",
+              backgroundColor: "#F8FFFA",
+              shadowColor: "#15803D",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.08,
+              shadowRadius: 10,
+              elevation: 2
+            }}
+          >
+            <View className="px-4 py-3">
+              <Text className="text-[21px] font-bold" style={{ color: promoCards[promoIdx].tone }}>{promoCards[promoIdx].title}</Text>
+              <Text className="mt-1 text-[13px]" style={{ color: "#4B5563" }}>{promoCards[promoIdx].subtitle}</Text>
+              <View className="mt-2 flex-row" style={{ gap: 4 }}>
+                {promoCards.map((p, i) => (
+                  <View key={p.id} style={{ width: i === promoIdx ? 12 : 5, height: 5, borderRadius: 3, backgroundColor: i === promoIdx ? promoCards[promoIdx].tone : "#D1D5DB" }} />
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10, paddingBottom: 24 }}>
+          {visibleTokens.map((t) => (
+            <Pressable
+              key={t.symbol}
+              onPress={() => {
+                setSymbol(t.symbol);
+                setPage("network");
+              }}
+              className="flex-row items-center justify-between border-b border-line py-4 active:opacity-70"
+            >
+              <View className="flex-row items-center" style={{ gap: 10 }}>
+                <TokenIcon symbol={t.symbol} size={28} />
+                <View>
+                  <View className="flex-row items-center" style={{ gap: 6 }}>
+                    <Text className="text-[22px] font-semibold text-ink">{t.symbol}</Text>
+                    <View className="rounded-md bg-surface px-1.5 py-0.5">
+                      <Text className="text-[10px] font-semibold text-muted">{network}</Text>
+                    </View>
+                  </View>
+                  <Text className="text-[12px] text-muted">可用余额</Text>
+                </View>
+              </View>
+              <View className="items-end">
+                <Text className="text-[22px] font-semibold text-ink">{t.qty.toFixed(t.qty >= 1 ? 4 : 6)}</Text>
+                <Text className="text-[12px] text-muted">${t.valueUsd.toFixed(2)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (page === "network") {
+    return (
+      <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+        <View className="flex-row items-center px-3 pb-2 pt-1">
+          <Pressable onPress={() => setPage("token")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+            <ArrowLeftIcon size={22} />
+          </Pressable>
+          <View className="ml-1">
+            <Text className="text-[30px] font-bold text-ink">选择网络</Text>
+            <Text className="text-[12px] text-muted">仅展示 Agent Wallet 当前支持网络</Text>
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX }}>
+          <View className="flex-row items-center rounded-2xl border border-line bg-surface px-3 py-2.5">
+            <SearchIcon size={18} color="#9CA3AF" />
+            <TextInput
+              value={networkSearch}
+              onChangeText={setNetworkSearch}
+              placeholder="搜索"
+              className="ml-2 flex-1 text-[14px] text-ink"
+            />
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
+          <View className="rounded-2xl border border-line bg-white px-4 py-3">
+              <Text className="text-[22px] font-bold text-ink">Agent Wallet 支持网络</Text>
+              <Text className="mt-1 text-[13px] text-muted">网络能力来自当前钱包地址</Text>
+          </View>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10, paddingBottom: 24 }}>
+          {visibleNetworks.map((n) => (
+            <Pressable
+              key={n.name}
+              disabled={!n.enabled}
+              onPress={() => {
+                if (!n.enabled) return;
+                setNetwork(n.name);
+                setPage("main");
+              }}
+              className="flex-row items-center justify-between border-b border-line py-4 active:opacity-70"
+              style={{ opacity: n.enabled ? 1 : 0.45 }}
+            >
+              <View className="flex-row items-center" style={{ gap: 10 }}>
+                <TokenIcon symbol={n.name === "X Layer" ? "OKB" : n.name === "Solana" ? "SOL" : "ETH"} size={28} />
+                <View className="flex-row items-center" style={{ gap: 6 }}>
+                  <Text className="text-[22px] font-semibold text-ink">{n.name}</Text>
+                  {n.name === "X Layer" ? (
+                    <View className="rounded-md bg-lime-200 px-1.5 py-0.5">
+                      <Text className="text-[10px] font-bold" style={{ color: "#365314" }}>Fast</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              <View className="items-end">
+                <Text className="text-[16px] font-semibold text-ink">{n.feeLabel}</Text>
+                <Text className="text-[12px] text-muted">网络费</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+      <View className="flex-row items-center justify-between px-3 pb-2 pt-1">
+        <Pressable onPress={onClose} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+          <ArrowLeftIcon size={22} />
+        </Pressable>
+        <Text className="text-[17px] font-semibold text-ink">收款</Text>
+        <Pressable className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+          <Text className="text-[18px] text-ink2">?</Text>
+        </Pressable>
+      </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 12 }}>
+          <Surface elevation={2} padded={false}>
+            <View className="items-center px-4 py-4">
+              <Pressable onPress={() => setPage("network")} className="mb-2 rounded-full bg-surface px-3 py-1.5 active:opacity-70">
+                <Text className="text-[13px] font-semibold text-ink">{network}</Text>
+              </Pressable>
+              <View
+                style={{
+                  width: 260,
+                  height: 260,
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: "#E5E7EB",
+                  backgroundColor: "#FFFFFF",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                {currentAddress ? (
+                  <QRCode value={currentAddress} size={210} />
+                ) : (
+                  <View
+                    style={{
+                      width: 210,
+                      height: 210,
+                      borderRadius: 10,
+                      borderWidth: 8,
+                      borderColor: "#111827",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                  >
+                    <TokenIcon symbol={symbol} size={46} />
+                  </View>
+                )}
+              </View>
+              <Text className="mt-3 text-[12px] text-muted">仅支持接收 {network} 资产</Text>
+            </View>
+            <View className="border-t border-line px-4 py-3.5">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-[36px] font-bold text-ink">{symbol}</Text>
+                  <Text className="mt-1 text-[13px] text-muted">{network}</Text>
+                </View>
+                <Pressable className="rounded-full bg-surface px-2.5 py-1.5 active:opacity-70">
+                  <Text className="text-[12px] font-semibold text-ink2">切换常用地址</Text>
+                </Pressable>
+              </View>
+              <Text className="mt-2 text-[13px] font-semibold text-ink">{currentAddress || "地址加载中..."}</Text>
+            </View>
+            <View className="flex-row border-t border-line px-4 py-3" style={{ gap: 10 }}>
+              <Pressable className="h-11 flex-1 items-center justify-center rounded-xl bg-surface active:opacity-80">
+                <Text className="text-[14px] font-semibold text-ink2">分享</Text>
+              </Pressable>
+              <Pressable onPress={() => setPage("token")} className="h-11 flex-1 items-center justify-center rounded-xl bg-surface active:opacity-80">
+                <Text className="text-[14px] font-semibold text-ink2">选择币种</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={copyCurrentAddress}
+              className="mx-4 mb-4 h-11 items-center justify-center rounded-xl bg-ink active:opacity-80"
+              style={{ shadowColor: "#111827", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.14, shadowRadius: 10, elevation: 4 }}
+            >
+              <Text className="text-[14px] font-semibold text-white">复制地址</Text>
+            </Pressable>
+          </Surface>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function WithdrawScreen({
+  onClose,
+  assets,
+  session
+}: {
+  onClose: () => void;
+  assets: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
+  session: ReturnType<typeof useSession>;
+}) {
+  type WithdrawPage = "token" | "network" | "address" | "amount" | "confirm";
+  type AddressTab = "recent" | "mine" | "book";
+  const [page, setPage] = useState<WithdrawPage>("token");
+  const [addressTab, setAddressTab] = useState<AddressTab>("recent");
+  const [symbol, setSymbol] = useState<string>("USDT");
+  const [network, setNetwork] = useState<"X Layer" | "Ethereum" | "Solana">("X Layer");
+  const [tokenSearch, setTokenSearch] = useState("");
+  const [networkSearch, setNetworkSearch] = useState("");
+  const [address, setAddress] = useState("");
+  const [amount, setAmount] = useState("");
+  const [recentAddresses, setRecentAddresses] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+
+  const tokenOptions = assets
+    .filter((a) => a.symbol && (a.qty > 0 || ["USDT", "ETH", "SOL", "BNB", "OKB", "USDC"].includes(a.symbol)))
+    .sort((a, b) => b.valueUsd - a.valueUsd);
+  const visibleTokens = tokenOptions.filter((t) =>
+    t.symbol.toLowerCase().includes(tokenSearch.trim().toLowerCase())
+  );
+
+  const networkCandidates: Array<{ name: "X Layer" | "Ethereum" | "Solana"; feeLabel: string; tag?: string }> = [
+    { name: "X Layer", feeLabel: "待估算", tag: "免Gas" },
+    { name: "Solana", feeLabel: "待估算" },
+    { name: "Ethereum", feeLabel: "待估算" }
+  ];
+  const visibleNetworks = networkCandidates.filter((n) =>
+    n.name.toLowerCase().includes(networkSearch.trim().toLowerCase())
+  );
+  const balance = assets.find((a) => a.symbol === symbol)?.qty ?? 0;
+  const unitPrice = assets.find((a) => a.symbol === symbol)?.price ?? 0;
+  const canSubmit = !!address.trim() && Number(amount) > 0 && Number(amount) <= balance;
+
+  const myWalletAddresses = (() => {
+    const all = [
+      ...(session?.addresses?.xlayer ?? []),
+      ...(session?.addresses?.evm ?? []),
+      ...(session?.addresses?.solana ?? [])
+    ]
+      .map((a) => String(a.address || ""))
+      .filter((a) => !!a && a !== "N/A");
+    return Array.from(new Set(all));
+  })();
+
+  const addressOptions = addressTab === "mine" ? myWalletAddresses : recentAddresses;
+  const displayedAddresses = addressOptions.length > 0 ? addressOptions : [];
+
+  const RECENT_ADDR_KEY = "h_wallet.withdraw.recent_addresses.v1";
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RECENT_ADDR_KEY);
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          setRecentAddresses(arr.map((x) => String(x)).filter(Boolean));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const rememberAddress = async (addr: string) => {
+    const v = addr.trim();
+    if (!v) return;
+    const next = [v, ...recentAddresses.filter((a) => a !== v)].slice(0, 20);
+    setRecentAddresses(next);
+    try {
+      await AsyncStorage.setItem(RECENT_ADDR_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  };
+
+  const renderAddressIdenticon = (seed: string) => {
+    const palette = ["#1D4ED8", "#7C3AED", "#16A34A", "#CA8A04", "#DC2626", "#0891B2"];
+    const color = palette[Math.abs(seed.charCodeAt(2) || 0) % palette.length];
+    const bg = "#E5E7EB";
+    const cells = Array.from({ length: 25 }, (_, i) => {
+      const ch = seed.charCodeAt((i % Math.max(seed.length, 1)) + 2) || 0;
+      return ch % 3 === 0;
+    });
+    return (
+      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#F3F4F6", padding: 3 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 1 }}>
+          {cells.map((on, idx) => (
+            <View
+              key={`${seed}-${idx}`}
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: 1,
+                backgroundColor: on ? color : bg
+              }}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const appendAmount = (ch: string) => {
+    setAmount((prev) => {
+      if (ch === "." && prev.includes(".")) return prev;
+      if (prev === "0" && ch !== ".") return ch;
+      return `${prev}${ch}`;
+    });
+  };
+
+  if (page === "token") {
+    return (
+      <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+        <View className="flex-row items-center px-3 pb-2 pt-1">
+          <Pressable onPress={onClose} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+            <ArrowLeftIcon size={22} />
+          </Pressable>
+          <View className="ml-1">
+            <Text className="text-[30px] font-bold text-ink">选择币种</Text>
+            <Text className="text-[12px] text-muted">先选资产，再匹配提现网络</Text>
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX }}>
+          <View className="flex-row items-center rounded-2xl border border-line bg-surface px-3 py-2.5">
+            <SearchIcon size={18} color="#9CA3AF" />
+            <TextInput value={tokenSearch} onChangeText={setTokenSearch} placeholder="搜索币种" className="ml-2 flex-1 text-[14px] text-ink" />
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
+          <View className="rounded-2xl border border-line bg-white px-4 py-3">
+            <Text className="text-[21px] font-bold text-ink">可提现资产</Text>
+            <Text className="mt-1 text-[13px] text-muted">优先展示当前持仓与常用币种</Text>
+          </View>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10, paddingBottom: 24 }}>
+          {visibleTokens.map((t) => (
+            <Pressable
+              key={t.symbol}
+              onPress={() => {
+                setSymbol(t.symbol);
+                setPage("network");
+              }}
+              className="flex-row items-center justify-between border-b border-line py-4 active:opacity-70"
+            >
+              <View className="flex-row items-center" style={{ gap: 10 }}>
+                <TokenIcon symbol={t.symbol} size={28} />
+                <View>
+                  <Text className="text-[22px] font-semibold text-ink">{t.symbol}</Text>
+                  <Text className="text-[13px] text-muted">X Layer</Text>
+                </View>
+              </View>
+              <View className="items-end">
+                <Text className="text-[22px] font-semibold text-ink">{t.qty.toFixed(t.qty >= 1 ? 4 : 6)}</Text>
+                <Text className="text-[12px] text-muted">${t.valueUsd.toFixed(2)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (page === "network") {
+    return (
+      <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+        <View className="flex-row items-center px-3 pb-2 pt-1">
+          <Pressable onPress={() => setPage("token")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+            <ArrowLeftIcon size={22} />
+          </Pressable>
+          <View className="ml-1">
+            <Text className="text-[30px] font-bold text-ink">选择网络</Text>
+            <Text className="text-[12px] text-muted">根据目标地址选择最优费用网络</Text>
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX }}>
+          <View className="flex-row items-center rounded-2xl border border-line bg-surface px-3 py-2.5">
+            <SearchIcon size={18} color="#9CA3AF" />
+            <TextInput value={networkSearch} onChangeText={setNetworkSearch} placeholder="搜索网络" className="ml-2 flex-1 text-[14px] text-ink" />
+          </View>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
+          <View className="rounded-2xl border border-line bg-white px-4 py-3">
+            <Text className="text-[21px] font-bold text-ink">可用网络</Text>
+            <Text className="mt-1 text-[13px] text-muted">系统将优先推荐低手续费网络</Text>
+          </View>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 10, paddingBottom: 24 }}>
+          {visibleNetworks.map((n) => (
+            <Pressable
+              key={n.name}
+              onPress={() => {
+                setNetwork(n.name);
+                setPage("address");
+              }}
+              className="flex-row items-center justify-between border-b border-line py-4 active:opacity-70"
+            >
+              <View className="flex-row items-center" style={{ gap: 10 }}>
+                <TokenIcon symbol={n.name === "X Layer" ? "OKB" : n.name === "Solana" ? "SOL" : "ETH"} size={28} />
+                <View className="flex-row items-center" style={{ gap: 6 }}>
+                  <Text className="text-[22px] font-semibold text-ink">{n.name}</Text>
+                  {n.tag ? (
+                    <View className="rounded-md bg-lime-200 px-1.5 py-0.5">
+                      <Text className="text-[10px] font-bold" style={{ color: "#365314" }}>{n.tag}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+              <View className="items-end">
+                <Text className="text-[16px] font-semibold text-ink">{n.feeLabel}</Text>
+                <Text className="text-[12px] text-muted">网络费</Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (page === "address") {
+    return (
+      <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+        <View className="flex-row items-center px-3 pb-1 pt-1">
+          <Pressable onPress={() => setPage("network")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+            <ArrowLeftIcon size={22} />
+          </Pressable>
+          <Text className="ml-1 text-[30px] font-bold text-ink">收款地址</Text>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 2 }}>
+          <TextInput
+            value={address}
+            onChangeText={setAddress}
+            placeholder="输入钱包地址或域名"
+            placeholderTextColor="#9CA3AF"
+            className="text-[34px] font-semibold text-ink"
+          />
+          <View className="mt-3 flex-row justify-end">
+            <Pressable className="rounded-full border border-line bg-surface px-4 py-2 active:opacity-80">
+              <Text className="text-[14px] font-semibold text-ink2">粘贴</Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
+          <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <Pressable onPress={() => setAddressTab("recent")} className={`rounded-full px-3 py-1.5 ${addressTab === "recent" ? "bg-ink" : "border border-line bg-surface"}`}>
+                <Text className={`text-[13px] font-semibold ${addressTab === "recent" ? "text-white" : "text-ink2"}`}>最近使用</Text>
+              </Pressable>
+              <Pressable onPress={() => setAddressTab("mine")} className={`rounded-full px-3 py-1.5 ${addressTab === "mine" ? "bg-ink" : "border border-line bg-surface"}`}>
+                <Text className={`text-[13px] font-semibold ${addressTab === "mine" ? "text-white" : "text-ink2"}`}>我的钱包</Text>
+              </Pressable>
+              <Pressable onPress={() => setAddressTab("book")} className={`rounded-full px-3 py-1.5 ${addressTab === "book" ? "bg-ink" : "border border-line bg-surface"}`}>
+                <Text className={`text-[13px] font-semibold ${addressTab === "book" ? "text-white" : "text-ink2"}`}>地址簿</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, paddingTop: 8, paddingBottom: 24 }}>
+          {addressTab === "book" && displayedAddresses.length === 0 ? (
+            <View className="items-center py-12">
+              <Text className="text-[14px] text-muted">地址簿暂未接入，敬请期待</Text>
+            </View>
+          ) : null}
+          {displayedAddresses.map((addr, idx) => (
+            <Pressable
+              key={addr}
+              onPress={() => {
+                setAddress(addr);
+                setPage("amount");
+              }}
+              className="flex-row items-center justify-between border-b border-line py-3.5 active:opacity-70"
+            >
+              <View className="flex-row items-center" style={{ gap: 10 }}>
+                {renderAddressIdenticon(addr)}
+                <View>
+                  <Text className="text-[18px] font-semibold text-ink">{addr.slice(0, 6)}...{addr.slice(-4)}</Text>
+                  <Text className="text-[14px] text-muted">{addr}</Text>
+                </View>
+              </View>
+              <Text className="text-[22px] text-muted">×</Text>
+            </Pressable>
+          ))}
+          {addressTab !== "book" && displayedAddresses.length === 0 ? (
+            <View className="items-center py-12">
+              <Text className="text-[14px] text-muted">{addressTab === "mine" ? "暂无钱包地址" : "暂无最近地址，请先输入或完成一次提现"}</Text>
+            </View>
+          ) : null}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (page === "amount") {
+    const readyToNext = !!address.trim() && Number(amount) > 0 && Number(amount) <= balance;
+    return (
+      <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+        <View className="flex-row items-center px-3 pb-2 pt-1">
+          <Pressable onPress={() => setPage("address")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+            <ArrowLeftIcon size={22} />
+          </Pressable>
+        </View>
+        <View style={{ paddingHorizontal: uiSpace.pageX }}>
+          <Text className="text-[16px] text-muted">可用：{balance.toFixed(symbol === "USDT" || symbol === "USDC" ? 2 : 4)} {symbol} <Text className="font-bold text-ink">最大</Text></Text>
+          <View className="mt-2 flex-row items-center" style={{ gap: 6 }}>
+            <View style={{ width: 3, height: 54, borderRadius: 99, backgroundColor: "#16A34A" }} />
+            <Text className="text-[68px] font-bold text-ink">{amount || "0"}</Text>
+            <Text className="text-[64px] font-semibold" style={{ color: "#9CA3AF" }}>{symbol}</Text>
+          </View>
+          <View className="mt-1 flex-row items-center justify-between">
+            <Text className="text-[17px] text-muted">{(Number(amount || 0) * unitPrice).toFixed(2)} USD  ▾</Text>
+            <Text className="text-[24px] font-semibold text-ink">⇅</Text>
+          </View>
+        </View>
+        <View className="mt-auto px-8 pb-6">
+          <View className="flex-row flex-wrap justify-between">
+            {["1","2","3","4","5","6","7","8","9",".","0","⌫"].map((k) => (
+              <Pressable
+                key={k}
+                onPress={() => {
+                  if (k === "⌫") {
+                    setAmount((prev) => prev.slice(0, -1));
+                    return;
+                  }
+                  appendAmount(k);
+                }}
+                style={{ width: "30%", height: 52, alignItems: "center", justifyContent: "center", marginBottom: 10 }}
+              >
+                <Text className="text-[32px] text-ink">{k}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            onPress={() => {
+              if (!readyToNext) return;
+              rememberAddress(address);
+              setPage("confirm");
+            }}
+            className="mt-2 h-12 items-center justify-center rounded-full active:opacity-80"
+            style={{ backgroundColor: readyToNext ? "#1F7A1F" : "#B8D9B8" }}
+          >
+            <Text className="text-[18px] font-semibold text-white">下一步</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+      <View className="flex-row items-center justify-between px-3 pb-2 pt-1">
+        <Pressable onPress={() => setPage("amount")} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+          <ArrowLeftIcon size={22} />
+        </Pressable>
+        <Text className="text-[17px] font-semibold text-ink">确认发送</Text>
+        <View className="h-10 w-10" />
+      </View>
+      <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 10 }}>
+        <Surface elevation={1} padded={false}>
+          <View className="px-4 py-3">
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <TokenIcon symbol={symbol} size={28} />
+              <Text className="text-[40px] font-semibold text-ink">-{amount || "0"} {symbol}</Text>
+            </View>
+          </View>
+          <View className="border-t border-line px-4 py-3">
+            <View className="flex-row items-center justify-between py-1.5">
+              <Text className="text-[14px] text-ink2">网络</Text>
+              <Text className="text-[14px] font-semibold text-ink">{network}</Text>
+            </View>
+            <View className="flex-row items-center justify-between py-1.5">
+              <Text className="text-[14px] text-ink2">网络费用</Text>
+              <View className="rounded-md border border-line bg-surface px-1.5 py-0.5">
+                <Text className="text-[11px] font-bold text-ink2">待链上估算</Text>
+              </View>
+            </View>
+            <View className="flex-row items-center justify-between py-1.5">
+              <Text className="text-[14px] text-ink2">发送地址</Text>
+              <Text className="text-[13px] font-semibold text-ink">{symbol} 钱包</Text>
+            </View>
+            <View className="flex-row items-center justify-between py-1.5">
+              <Text className="text-[14px] text-ink2">收款地址</Text>
+              <Text className="text-[13px] font-semibold text-ink">{address.slice(0, 8)}...{address.slice(-6)}</Text>
+            </View>
+          </View>
+        </Surface>
+      </View>
+      <View className="mt-auto flex-row px-4 pb-6" style={{ gap: 10 }}>
+        <Pressable className="h-12 flex-1 items-center justify-center rounded-full bg-surface active:opacity-80" onPress={() => setPage("amount")}>
+          <Text className="text-[18px] font-semibold text-ink2">拒绝</Text>
+        </Pressable>
+        <Pressable
+          disabled={!canSubmit || sending}
+          onPress={async () => {
+            if (!canSubmit || sending || !session?.token) return;
+            setSendError("");
+            setSending(true);
+            try {
+              const chain =
+                network === "X Layer" ? "xlayer" :
+                network === "Solana" ? "solana" :
+                "ethereum";
+              const res = await okxOnchainClient.sendWalletTransfer(
+                {
+                  chain,
+                  symbol,
+                  toAddress: address.trim(),
+                  amount: amount.trim()
+                },
+                session.token
+              );
+              const txHash = String(res?.data?.txHash || "");
+              Alert.alert("发送已提交", txHash ? `交易哈希：${txHash}` : "已广播到链上，等待确认");
+              setAmount("");
+              setAddress("");
+              setPage("token");
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "发送失败，请稍后重试";
+              setSendError(msg);
+            } finally {
+              setSending(false);
+            }
+          }}
+          className="h-12 flex-1 items-center justify-center rounded-full active:opacity-80"
+          style={{ backgroundColor: canSubmit && !sending ? "#15803D" : "#D1D5DB" }}
+        >
+          <Text className="text-[18px] font-semibold text-white">{sending ? "发送中..." : "确认"}</Text>
+        </Pressable>
+      </View>
+      {sendError ? (
+        <Text className="px-4 pb-4 text-center text-[12px]" style={{ color: "#B91C1C" }}>
+          {sendError}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function SwapScreen({
+  onClose,
+  token,
+  assets
+}: {
+  onClose: () => void;
+  token?: string;
+  assets: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
+}) {
+  const [fromSymbol, setFromSymbol] = useState<"USDT" | "ETH" | "SOL" | "USDC">("USDT");
+  const [toSymbol, setToSymbol] = useState<"USDT" | "ETH" | "SOL" | "USDC">("ETH");
+  const [pickerSide, setPickerSide] = useState<null | "from" | "to">(null);
+  const [amount, setAmount] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [doneOpen, setDoneOpen] = useState(false);
+  const [networkFeeUsd, setNetworkFeeUsd] = useState("0.32");
+  const [priceImpactPct, setPriceImpactPct] = useState("0.00");
+  const [routerLabel, setRouterLabel] = useState("OKX DEX Aggregator");
+  const [slippageBps, setSlippageBps] = useState(50);
+  const [remoteToAmount, setRemoteToAmount] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+  const [lastTxHash, setLastTxHash] = useState<string>("");
+  const prices: Record<string, number> = { USDT: 1, USDC: 1, ETH: 2380, SOL: 165 };
+  const balances: Record<string, number> = {
+    USDT: assets.find((a) => a.symbol === "USDT")?.qty ?? 0,
+    USDC: assets.find((a) => a.symbol === "USDC")?.qty ?? 0,
+    ETH: assets.find((a) => a.symbol === "ETH")?.qty ?? 0,
+    SOL: assets.find((a) => a.symbol === "SOL")?.qty ?? 0
+  };
+  const parsedAmount = Number(amount || 0);
+  const fromPrice = prices[fromSymbol];
+  const toPrice = prices[toSymbol];
+  const outputAmount = parsedAmount > 0 && fromPrice > 0 && toPrice > 0 ? (parsedAmount * fromPrice) / toPrice : 0;
+  const quote = remoteToAmount ?? "";
+  const minReceived = (Number(quote) * 0.995).toFixed(6);
+  const insufficient = parsedAmount > (balances[fromSymbol] ?? 0);
+  const hasAmount = parsedAmount > 0;
+  const hasRealQuote = !!quote && Number(quote) > 0;
+  const canPreview = hasAmount && !insufficient && hasRealQuote && !quoteLoading;
+  const buttonText = parsedAmount <= 0
+    ? "输入金额"
+    : insufficient
+    ? `${fromSymbol} 余额不足，去补充`
+    : quoteLoading
+    ? "报价中..."
+    : "预览兑换";
+
+  useEffect(() => {
+    if (!hasAmount) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setQuoteLoading(true);
+        setQuoteError("");
+        const quoteRes = await okxOnchainClient.getSwapQuote(
+          {
+            fromChain: "xlayer",
+            fromSymbol,
+            fromAmount: String(parsedAmount),
+            toChain: "xlayer",
+            toSymbol,
+            slippageBps
+          },
+          token
+        );
+        if (cancelled) return;
+        const q = quoteRes.data;
+        const toAmt = Number(q.toAmount);
+        if (Number.isFinite(toAmt) && toAmt > 0) {
+          setRemoteToAmount(toAmt.toFixed(6));
+        } else {
+          setRemoteToAmount(null);
+          setQuoteError("未获取到有效报价");
+        }
+        setNetworkFeeUsd(q.estimatedGasUsd || "0.32");
+        setPriceImpactPct(((q.priceImpactBps || 0) / 100).toFixed(2));
+        setRouterLabel(q.routerLabel || "OKX DEX Aggregator");
+        if (typeof q.slippageBps === "number" && q.slippageBps > 0) setSlippageBps(q.slippageBps);
+      } catch {
+        setRemoteToAmount(null);
+        setQuoteError("OKX 报价不可用，请稍后重试");
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fromSymbol, toSymbol, parsedAmount, hasAmount, token, slippageBps]);
+
+  useEffect(() => {
+    if (!hasAmount) {
+      setRemoteToAmount(null);
+      setNetworkFeeUsd("0.32");
+      setPriceImpactPct("0.00");
+      setRouterLabel("OKX DEX Aggregator");
+      setQuoteError("");
+      setQuoteLoading(false);
+    }
+  }, [hasAmount]);
+
+  function flipPair() {
+    setFromSymbol(toSymbol);
+    setToSymbol(fromSymbol);
+  }
+
+  function pickSymbol(symbol: "USDT" | "ETH" | "SOL" | "USDC") {
+    if (!pickerSide) return;
+    if (pickerSide === "from") {
+      if (symbol === toSymbol) {
+        setFromSymbol(symbol);
+        setToSymbol(fromSymbol);
+      } else {
+        setFromSymbol(symbol);
+      }
+    } else {
+      if (symbol === fromSymbol) {
+        setToSymbol(symbol);
+        setFromSymbol(toSymbol);
+      } else {
+        setToSymbol(symbol);
+      }
+    }
+    setPickerSide(null);
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: uiColors.appBg }}>
+      <View className="flex-row items-center justify-between px-3 pb-2 pt-1">
+        <Pressable
+          accessibilityRole="button"
+          onPress={onClose}
+          className="h-10 w-10 items-center justify-center rounded-full active:bg-surface"
+        >
+          <ArrowLeftIcon size={22} />
+        </Pressable>
+        <Text className="text-[17px] font-semibold text-ink">兑换</Text>
+        <View className="h-10 w-10" />
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 8 }}>
+          <Surface elevation={1} padded={false}>
+            <View className="px-4 py-3">
+              <Text className="text-[12px] font-medium text-muted">你支付</Text>
+              <View className="mt-2 flex-row items-center justify-between">
+                <TextInput
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  className="text-[30px] font-bold text-ink"
+                  style={{ minWidth: 130, paddingVertical: 0 }}
+                />
+                <Pressable onPress={() => setPickerSide("from")} className="rounded-full border border-line bg-surface px-3 py-1.5 active:opacity-70">
+                  <View className="flex-row items-center" style={{ gap: 6 }}>
+                    <TokenIcon symbol={fromSymbol} size={18} />
+                    <Text className="text-[14px] font-semibold text-ink">{fromSymbol}</Text>
+                  </View>
+                </Pressable>
+              </View>
+              <Text className="mt-1 text-[12px] text-muted">
+                余额 {balances[fromSymbol].toFixed(fromSymbol === "USDT" || fromSymbol === "USDC" ? 2 : 4)} {fromSymbol}
+              </Text>
+            </View>
+
+            <View style={{ alignItems: "center", marginTop: -4, marginBottom: -4, zIndex: 3 }}>
+              <Pressable
+                onPress={flipPair}
+                className="h-10 w-10 items-center justify-center rounded-full border border-line bg-white active:opacity-80"
+                style={{
+                  shadowColor: "#0F172A",
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.08,
+                  shadowRadius: 6,
+                  elevation: 2
+                }}
+              >
+                <SwapIcon size={18} color="#0F0F0F" />
+              </Pressable>
+            </View>
+
+            <View className="border-t border-line px-4 py-3">
+              <Text className="text-[12px] font-medium text-muted">你将收到</Text>
+              <View className="mt-2 flex-row items-center justify-between">
+                <Text className="text-[26px] font-bold text-ink">{quote || "--"}</Text>
+                <Pressable onPress={() => setPickerSide("to")} className="rounded-full border border-line bg-surface px-3 py-1.5 active:opacity-70">
+                  <View className="flex-row items-center" style={{ gap: 6 }}>
+                    <TokenIcon symbol={toSymbol} size={18} />
+                    <Text className="text-[14px] font-semibold text-ink">{toSymbol}</Text>
+                  </View>
+                </Pressable>
+              </View>
+              <Text className="mt-1 text-[12px] text-muted">
+                {quoteLoading ? "获取实时报价中..." : quoteError ? quoteError : `约 $${(Number(quote || 0) * toPrice).toFixed(2)}`}
+              </Text>
+            </View>
+          </Surface>
+        </View>
+
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 12 }}>
+          {hasAmount ? (
+            <View
+              className="mb-2 rounded-xl border px-3 py-2.5"
+              style={{
+                borderColor: insufficient ? "#FECACA" : "#E5E7EB",
+                backgroundColor: "#FFFFFF"
+              }}
+            >
+              <View
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 8,
+                  bottom: 8,
+                  width: 3,
+                  borderTopLeftRadius: 6,
+                  borderBottomLeftRadius: 6,
+                  backgroundColor: insufficient ? "#EF4444" : "#9CA3AF"
+                }}
+              />
+              <Text className="text-[12px]" style={{ color: insufficient ? "#7F1D1D" : "#475569", paddingLeft: 4 }}>
+                {insufficient
+                  ? `余额不足：当前仅 ${balances[fromSymbol].toFixed(2)} ${fromSymbol}`
+                  : `流动性良好，预计成交滑点约 0.12%`}
+              </Text>
+            </View>
+          ) : null}
+          <Surface elevation={1} padded={false}>
+            <View className="flex-row items-center justify-between px-4 py-3">
+              <Text className="text-[13px] text-muted">预估汇率</Text>
+              <Text className="text-[13px] font-semibold text-ink">1 {toSymbol} ≈ {(toPrice / fromPrice).toFixed(4)} {fromSymbol}</Text>
+            </View>
+            <View className="border-t border-line flex-row items-center justify-between px-4 py-3">
+              <Text className="text-[13px] text-muted">网络费</Text>
+              <Text className="text-[13px] font-semibold text-ink">≈ ${networkFeeUsd}</Text>
+            </View>
+            {hasAmount ? (
+              <View className="border-t border-line flex-row items-center justify-between px-4 py-3">
+                <Text className="text-[13px] text-muted">滑点保护</Text>
+                <Text className="text-[13px] font-semibold text-ink">{(slippageBps / 100).toFixed(2)}%</Text>
+              </View>
+            ) : null}
+            <View className="border-t border-line flex-row items-center justify-between px-4 py-3">
+              <Text className="text-[13px] text-muted">价格影响 / 路由</Text>
+              <Text className="text-[13px] font-semibold text-ink">{priceImpactPct}% · {routerLabel}</Text>
+            </View>
+          </Surface>
+        </View>
+
+        <View style={{ paddingHorizontal: uiSpace.pageX, marginTop: 16 }}>
+          <Pressable
+            className="h-12 items-center justify-center rounded-xl active:opacity-80"
+            style={{ backgroundColor: canPreview ? "#0F0F0F" : "#D1D5DB" }}
+            onPress={() => {
+              if (!canPreview) return;
+              setPreviewOpen(true);
+            }}
+          >
+            <Text className="text-[15px] font-semibold text-white">{buttonText}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+
+      {previewOpen ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "#FFFFFF"
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              paddingHorizontal: 16,
+              paddingTop: 6,
+              paddingBottom: 22
+            }}
+          >
+            <View className="mb-3 flex-row items-center">
+              <Pressable onPress={() => setPreviewOpen(false)} className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+                <ArrowLeftIcon size={22} />
+              </Pressable>
+              <Text className="ml-1 text-[24px] font-bold text-ink">
+                确认 <Text style={{ color: "#16A34A" }}>授权并兑换</Text>
+              </Text>
+            </View>
+
+            <View className="border-t border-line pt-3">
+              <Text className="text-[14px] text-ink2">交易 1　授权</Text>
+              <View className="mt-2 flex-row items-center">
+                <TokenIcon symbol={fromSymbol} size={28} />
+                <Text className="ml-2 text-[42px] font-semibold text-ink">无限 {fromSymbol}</Text>
+              </View>
+            </View>
+
+            <View className="mt-4 border-t border-line pt-3">
+              <Text className="text-[14px] text-ink2">交易 2　兑换</Text>
+              <View className="mt-2 flex-row items-center">
+                <TokenIcon symbol={fromSymbol} size={28} />
+                <Text className="ml-2 text-[44px] font-semibold text-ink">-{amount || "0"} {fromSymbol}</Text>
+              </View>
+              <View className="mt-1 flex-row items-center">
+                <TokenIcon symbol={toSymbol} size={28} />
+                <Text className="ml-2 text-[44px] font-semibold text-ink">+{quote} {toSymbol}</Text>
+              </View>
+            </View>
+
+            <View className="mt-5 border-t border-line pt-3">
+              <View className="flex-row items-center justify-between py-1.5">
+                <Text className="text-[14px] text-ink2">网络</Text>
+                <Text className="text-[14px] font-medium text-ink">X Layer</Text>
+              </View>
+              <View className="flex-row items-center justify-between py-1.5">
+                <Text className="text-[14px] text-ink2">汇率</Text>
+                <Text className="text-[14px] font-medium text-ink">1 {fromSymbol} ≈ {(1 / Math.max(Number(quote || "0.000001"), 0.000001)).toFixed(4)} {toSymbol}</Text>
+              </View>
+              <View className="flex-row items-center justify-between py-1.5">
+                <Text className="text-[14px] text-ink2">最少获得</Text>
+                <Text className="text-[14px] font-medium text-ink">{minReceived} {toSymbol}</Text>
+              </View>
+            </View>
+
+            <View className="mt-auto flex-row" style={{ gap: 10 }}>
+              <Pressable
+                className="h-12 flex-1 items-center justify-center rounded-full bg-surface"
+                onPress={() => setPreviewOpen(false)}
+              >
+                <Text className="text-[16px] font-semibold text-ink2">取消</Text>
+              </Pressable>
+              <Pressable
+                className="h-12 flex-1 items-center justify-center rounded-full bg-emerald-700 active:opacity-80"
+                onPress={async () => {
+                  if (!canPreview) return;
+                  setConfirming(true);
+                  try {
+                    const execRes = await okxOnchainClient.executeSwap(
+                      {
+                        fromChain: "xlayer",
+                        fromSymbol,
+                        fromAmount: String(parsedAmount),
+                        toChain: "xlayer",
+                        toSymbol,
+                        slippageBps
+                      },
+                      token
+                    );
+                    setLastTxHash(execRes.data.txHash || "");
+                  } catch {
+                    setLastTxHash("");
+                    setQuoteError("OKX 执行失败，请稍后重试");
+                    return;
+                  } finally {
+                    setConfirming(false);
+                  }
+                  setPreviewOpen(false);
+                  setDoneOpen(true);
+                }}
+              >
+                <Text className="text-[16px] font-semibold text-white">
+                  {confirming ? "执行中..." : "确认"}
+                </Text>
+              </Pressable>
+            </View>
+            {quoteError ? (
+              <Text className="mt-2 text-center text-[12px]" style={{ color: "#B91C1C" }}>
+                {quoteError}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {doneOpen ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15,23,42,0.25)",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 26
+          }}
+        >
+          <View className="w-full rounded-2xl bg-white px-5 py-5">
+            <Text className="text-[17px] font-bold text-ink">兑换已提交</Text>
+            <Text className="mt-1 text-[13px] text-ink2">
+              {amount || "0"} {fromSymbol} → {quote} {toSymbol}
+            </Text>
+            <Text className="mt-1 text-[12px] text-muted">
+              {lastTxHash ? `交易哈希：${lastTxHash.slice(0, 14)}...${lastTxHash.slice(-8)}` : "交易哈希将在链上确认后展示。"}
+            </Text>
+            <View className="mt-4 flex-row" style={{ gap: 8 }}>
+              <Pressable
+                className="flex-1 h-10 items-center justify-center rounded-xl border border-line bg-surface"
+                onPress={() => setDoneOpen(false)}
+              >
+                <Text className="text-[13px] font-semibold text-ink2">继续兑换</Text>
+              </Pressable>
+              <Pressable
+                className="flex-1 h-10 items-center justify-center rounded-xl bg-ink"
+                onPress={() => {
+                  setDoneOpen(false);
+                  onClose();
+                }}
+              >
+                <Text className="text-[13px] font-semibold text-white">返回钱包</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {pickerSide ? (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15,23,42,0.25)",
+            justifyContent: "flex-end"
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderTopLeftRadius: 22,
+              borderTopRightRadius: 22,
+              paddingHorizontal: 16,
+              paddingTop: 14,
+              paddingBottom: 20
+            }}
+          >
+            <View className="mb-2 flex-row items-center justify-between">
+              <Text className="text-[16px] font-bold text-ink">选择币种</Text>
+              <Pressable onPress={() => setPickerSide(null)} className="rounded-full bg-surface px-2.5 py-1">
+                <Text className="text-[12px] font-semibold text-ink2">关闭</Text>
+              </Pressable>
+            </View>
+            {(["USDT", "USDC", "ETH", "SOL"] as const).map((symbol) => (
+              <Pressable
+                key={symbol}
+                onPress={() => pickSymbol(symbol)}
+                className="flex-row items-center justify-between border-b border-line px-1 py-3 active:opacity-70"
+              >
+                <View className="flex-row items-center" style={{ gap: 8 }}>
+                  <TokenIcon symbol={symbol} size={22} />
+                  <Text className="text-[15px] font-semibold text-ink">{symbol}</Text>
+                </View>
+                <Text className="text-[12px] text-muted">余额 {balances[symbol].toFixed(symbol === "USDT" || symbol === "USDC" ? 2 : 4)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       ) : null}
     </View>
   );
@@ -521,10 +2024,11 @@ function WalletSearchBar() {
         ) : (
           <View
             className="ml-1 rounded-full px-2 py-0.5"
-            style={{ backgroundColor: "#E5E7EB" }}
+            style={{ backgroundColor: "#E5E7EB", flexDirection: "row", alignItems: "center", gap: 3 }}
           >
+            <LockIcon size={10} color="#6B7280" />
             <Text className="text-[10px] font-semibold" style={{ color: "#6B7280" }}>
-              敬请期待
+              即将开放
             </Text>
           </View>
         )}
@@ -558,7 +2062,7 @@ function SegmentTab({
           : undefined
       }
     >
-      <Text className={`text-[14px] font-semibold ${active ? "text-ink" : "text-muted"}`}>{label}</Text>
+      <Text className={`text-[15px] ${active ? "font-bold text-ink" : "font-medium text-muted"}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -627,13 +2131,60 @@ function SparkChart({
 /**
  * Agent 状态 Banner:闪烁绿点 + 数字脉冲 + 跑动光带。
  */
-function AgentBanner() {
+function AgentBanner({
+  compact = false,
+  onNavigate
+}: {
+  compact?: boolean;
+  onNavigate: (view: AppView) => void;
+}) {
+  const banners: Array<{
+    id: string;
+    title: string;
+    subtitle: string;
+    target: AppView;
+    colors: [string, string, string];
+    accent: string;
+  }> = [
+    {
+      id: "agent",
+      title: "Agent · 运行中 2",
+      subtitle: "累计 +2 U",
+      target: "agent",
+      colors: ["#F8C93F", "#F4B320", "#E8A51C"],
+      accent: "#065F46"
+    },
+    {
+      id: "signal",
+      title: "发现链上机会",
+      subtitle: "点我去 AI 对话，一句话开跑",
+      target: "chat",
+      colors: ["#A78BFA", "#8B5CF6", "#7C3AED"],
+      accent: "#EDE9FE"
+    },
+    {
+      id: "community",
+      title: "社区热策略更新",
+      subtitle: "点我去社区，查看最新讨论",
+      target: "community",
+      colors: ["#34D399", "#10B981", "#059669"],
+      accent: "#D1FAE5"
+    }
+  ];
+  const [idx, setIdx] = useState(0);
+  const current = banners[idx];
+
   // 1. 状态绿点呼吸闪烁
   const dot = useSharedValue(1);
   // 2. 数字 +2U 微脉冲
   const pulse = useSharedValue(0);
-  // 3. 跑光带 -100% → 100%
-  const shine = useSharedValue(-1);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setIdx((i) => (i + 1) % banners.length);
+    }, 4200);
+    return () => clearInterval(t);
+  }, [banners.length]);
 
   useEffect(() => {
     dot.value = withRepeat(
@@ -652,16 +2203,7 @@ function AgentBanner() {
       -1,
       false
     );
-    shine.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 2200, easing: Easing.linear }),
-        withTiming(-1, { duration: 0 }),
-        withTiming(-1, { duration: 1200 })
-      ),
-      -1,
-      false
-    );
-  }, [dot, pulse, shine]);
+  }, [dot, pulse]);
 
   const dotStyle = useAnimatedStyle(() => ({
     opacity: dot.value,
@@ -674,52 +2216,53 @@ function AgentBanner() {
   const profitStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 + pulse.value * 0.06 }]
   }));
-  const shineStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shine.value * 280 }, { rotate: "20deg" }]
-  }));
-
   return (
-    <Pressable accessibilityRole="button" className="active:opacity-90">
+    <Pressable
+      accessibilityRole="button"
+      className="active:opacity-90"
+      onPress={() => onNavigate(current.target)}
+    >
       <View
         style={{
-          borderRadius: 18,
+          borderRadius: compact ? 18 : 18,
           overflow: "hidden",
-          shadowColor: "#D9AA43",
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.22,
-          shadowRadius: 14
+          shadowColor: "#C18412",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.18,
+          shadowRadius: 10
         }}
       >
         <LinearGradient
-          colors={["#FCD34D", "#F59E0B", "#D9AA43"]}
+          colors={current.colors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{
-            paddingVertical: 14,
-            paddingHorizontal: 16,
+            paddingVertical: compact ? 17 : 16,
+            paddingHorizontal: compact ? 18 : 16,
             flexDirection: "row",
             alignItems: "center"
           }}
         >
-          {/* 跑动光带 */}
-          <Animated.View
+          {/* 右侧静态高光：更接近 OKX 的克制风格 */}
+          <View
             pointerEvents="none"
             style={[
               {
                 position: "absolute",
-                top: -20,
-                bottom: -20,
-                width: 60,
-                backgroundColor: "rgba(255,255,255,0.45)"
-              },
-              shineStyle
+                top: -8,
+                bottom: -8,
+                right: 62,
+                width: 56,
+                backgroundColor: "rgba(255,255,255,0.26)",
+                transform: [{ skewX: "-20deg" }]
+              }
             ]}
           />
 
           {/* 左侧 spark icon + 闪烁绿点 */}
-          <View className="h-10 w-10 items-center justify-center">
-            <View className="h-9 w-9 items-center justify-center rounded-full bg-white/35">
-              <SparkIcon size={20} color="#7C2D12" />
+          <View className="h-11 w-11 items-center justify-center">
+            <View className="h-10 w-10 items-center justify-center rounded-full bg-white/30">
+              <SparkIcon size={20} color="rgba(15,23,42,0.78)" />
             </View>
             {/* 状态绿点 */}
             <View
@@ -737,9 +2280,9 @@ function AgentBanner() {
                 style={[
                   {
                     position: "absolute",
-                    width: 12,
-                    height: 12,
-                    borderRadius: 6,
+                    width: 13,
+                    height: 13,
+                    borderRadius: 6.5,
                     backgroundColor: "#22C55E"
                   },
                   dotHaloStyle
@@ -748,9 +2291,9 @@ function AgentBanner() {
               <Animated.View
                 style={[
                   {
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
+                    width: 9,
+                    height: 9,
+                    borderRadius: 4.5,
                     backgroundColor: "#22C55E",
                     borderWidth: 1.5,
                     borderColor: "#FFFFFF"
@@ -762,23 +2305,40 @@ function AgentBanner() {
           </View>
 
           <View className="ml-3 flex-1">
-            <Text className="text-[14px] font-bold text-amber-950">
-              Agent · 2 个策略正在运行
+            <Text className="text-[15px] font-bold text-amber-950" style={{ letterSpacing: -0.2 }}>
+              {current.title}
             </Text>
             <View className="mt-0.5 flex-row items-baseline">
-              <Text className="text-[12px] text-amber-900/80">累计盈利 </Text>
+              <Text className="text-[13px] text-amber-900/85">
+                {current.subtitle.includes("累计") ? "累计 " : ""}
+              </Text>
               <Animated.Text
                 style={[
-                  { fontSize: 13, fontWeight: "800", color: "#065F46" },
+                  { fontSize: 15, fontWeight: "800", color: current.accent },
                   profitStyle
                 ]}
               >
-                +2 U
+                {current.subtitle.includes("累计")
+                  ? current.subtitle.replace("累计 ", "")
+                  : current.subtitle}
               </Animated.Text>
+            </View>
+            <View className="mt-1 flex-row" style={{ gap: 4 }}>
+              {banners.map((b, i) => (
+                <View
+                  key={b.id}
+                  style={{
+                    width: i === idx ? 12 : 5,
+                    height: 5,
+                    borderRadius: 3,
+                    backgroundColor: i === idx ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.5)"
+                  }}
+                />
+              ))}
             </View>
           </View>
 
-          <ChevronRightIcon size={18} color="#7C2D12" />
+          <ChevronRightIcon size={18} color="rgba(93,49,7,0.55)" />
         </LinearGradient>
       </View>
     </Pressable>
@@ -791,16 +2351,68 @@ function AgentBanner() {
  *  - 总资产数字呼吸脉冲
  *  - +8.2% 绿胶囊呼吸高亮
  */
+function AgentWalletPanel({
+  rows,
+  loading
+}: {
+  rows: Array<{symbol:string; qty:number; price:number; valueUsd:number; change24h:number}>;
+  loading: boolean;
+}) {
+  return (
+    <Surface elevation={1} padded={false}>
+      <View>
+        {loading ? (
+          <View className="px-4 py-4">
+                  <Text className="text-[13px] text-muted">链上资产加载中...</Text>
+          </View>
+        ) : rows.length === 0 ? (
+          <View className="px-4 py-4">
+            <Text className="text-[13px] text-muted">暂无代币行可展示（需成功拉取资产汇总后显示持仓与计价）。</Text>
+          </View>
+        ) : (
+          rows.map((row, idx) => {
+            const up = row.change24h >= 0;
+            return (
+              <View key={`${row.symbol}_${idx}`} className={`flex-row items-center px-4 py-4 ${idx > 0 ? "border-t border-line" : ""}`}>
+                <TokenIcon symbol={row.symbol} size={32} />
+                <View className="ml-3 flex-1">
+                  <View className="flex-row items-start justify-between">
+                    <View>
+                      <Text className="text-[16px] font-semibold text-ink">{row.symbol}</Text>
+                      <Text className="mt-1 text-[13px]" style={{ color: "#94A3B8" }}>
+                        数量 {row.qty.toFixed(row.qty >= 1 ? 4 : 6)}
+                      </Text>
+                    </View>
+                    <View style={{ minWidth: 98, alignItems: "flex-end" }}>
+                      <Text className="text-[16px] font-semibold text-ink">${row.valueUsd.toFixed(2)}</Text>
+                      <Text className="mt-1 text-[13px]" style={{ color: "#94A3B8" }}>
+                        ${row.price.toFixed(row.price >= 1 ? 2 : 6)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                <View className="ml-2 rounded-full px-2 py-0.5" style={{ backgroundColor: up ? "#DCFCE7" : "#FEE2E2" }}>
+                  <Text className="text-[11px] font-semibold" style={{ color: up ? "#15803D" : "#DC2626" }}>
+                    {up ? "+" : ""}{row.change24h.toFixed(2)}%
+                  </Text>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </View>
+    </Surface>
+  );
+}
+
 function HeroCard({
   hideBalance,
-  onToggleHide,
   totalBalance,
   pnlPercent,
   monthPnl,
   portfolioSpark
 }: {
   hideBalance: boolean;
-  onToggleHide: () => void;
   totalBalance: string;
   pnlPercent: string;
   monthPnl: string;
@@ -926,23 +2538,23 @@ function HeroCard({
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1">
             <View className="h-1.5 w-1.5 rounded-full bg-amber-300" />
-            <Text className="text-[11px] font-semibold text-white">Multi-chain</Text>
+            <Text className="text-[13px] font-semibold text-white">Multi-chain</Text>
           </View>
           <View className="flex-row items-center gap-1">
-            <Text className="text-[11px] text-white/60">本月收益</Text>
-            <Text className="text-[12px] font-bold text-emerald-300">{monthPnl}</Text>
+            <Text className="text-[13px] font-medium text-white/70">本月收益</Text>
+            <Text className="text-[14px] font-bold text-emerald-300">{monthPnl}</Text>
           </View>
         </View>
 
         {/* 余额 */}
         <View className="mt-4">
-          <Text className="text-[12px] tracking-wider text-white/60">总资产 (USD)</Text>
+          <Text className="text-[14px] font-medium tracking-wider text-white/70">总资产 (USD)</Text>
           <View className="mt-1 flex-row items-center">
             <Animated.Text
               style={[
                 {
                   fontSize: 40,
-                  fontFamily: "JetBrainsMono_700Bold",
+                  fontFamily: "Inter_700Bold",
                   lineHeight: 44,
                   fontWeight: "800",
                   color: "#FFFFFF",
@@ -954,12 +2566,6 @@ function HeroCard({
             >
               {hideBalance ? "$ ••••••" : `$${totalBalance}`}
             </Animated.Text>
-            <Pressable
-              onPress={onToggleHide}
-              className="ml-2 h-7 w-7 items-center justify-center rounded-full bg-white/15 active:opacity-70"
-            >
-              <EyeIcon size={14} color="#FFFFFF" />
-            </Pressable>
           </View>
 
           <View className="mt-2 flex-row items-center gap-2">
@@ -977,9 +2583,9 @@ function HeroCard({
                 greenStyle
               ]}
             >
-              <Text className="text-[12px] font-bold text-emerald-300">{pnlPercent}</Text>
+              <Text className="text-[14px] font-bold text-emerald-300">{pnlPercent}</Text>
             </Animated.View>
-            <Text className="text-[12px] text-white/70">最近 30 天</Text>
+            <Text className="text-[14px] font-medium text-white/75">最近 30 天</Text>
           </View>
         </View>
 

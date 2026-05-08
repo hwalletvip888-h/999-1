@@ -1,4 +1,4 @@
-// 卡片生成与管理 mock
+// 卡片生成与管理（仅存本地卡库，无演示数据字段）
 import type { HWalletCard, CardStatus } from "../../types/card";
 import type { ApiResponse } from "../../types/api";
 
@@ -7,7 +7,7 @@ const cards: HWalletCard[] = [];
 
 export function createCard(card: HWalletCard): ApiResponse<HWalletCard> {
   cards.push(card);
-  return { ok: true, data: card, simulationMode: true };
+  return { ok: true, data: card, simulationMode: false };
 }
 
 export function createTradeCard(card: HWalletCard): ApiResponse<HWalletCard> {
