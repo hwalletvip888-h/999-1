@@ -60,4 +60,4 @@ BFF 访问日志会打印 **`X-Request-Id`**（若客户端传入）。
 
 **MCP**：根目录 **`mcp-hwallet-server/`** 提供 stdio MCP，启动时读取 **`GET /api/meta/capabilities`** 并代理到 BFF；见该目录 `README.md`。
 
-**App 侧**：`getHwalletApiBase` / `hwalletAbsoluteUrl` 在 **`walletApiCore.ts`**；HTTP 工具在 **`walletApiHttp.ts`**；`walletApi.ts` 仅会话与业务 API。`okxOnchain` 的 `callBackend` 只依赖 **`walletApiCore`**，避免循环依赖。
+**App 侧**：`getHwalletApiBase` / `hwalletAbsoluteUrl` 在 **`walletApiCore.ts`**；超时与 `X-Request-Id`、合并 **`AbortSignal`** 在 **`walletApiHttp.ts`**；`walletApi.ts` 仅会话与业务 API。`okxOnchain` 的 `callBackend` 使用 **`walletApiCore` + `walletApiHttp`**（与 `walletApiCore` 单向依赖，无环）。

@@ -3,7 +3,7 @@
 | 文件 | 职责 |
 |------|------|
 | `types.ts` | `ChainId`、`WalletPortfolio*`、`Dex*`、`Defi*` 等 DTO |
-| `hwalletBackendFetch.ts` | `callBackend`（经 `walletApiCore.getHwalletApiBase`） |
+| `hwalletBackendFetch.ts` | `callBackend`（`hwalletAbsoluteUrl` + `walletApiHttp.fetchWithTimeout`，错误为 `HwalletHttpError`） |
 | `portfolioNormalize.ts` | `toChainId`、`normalizePortfolioPayload` |
 | `client.ts` | `okxOnchainClient` 方法聚合 |
 

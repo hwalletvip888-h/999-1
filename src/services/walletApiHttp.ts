@@ -1,10 +1,11 @@
 /**
- * 移动端 H Wallet 后端 HTTP 工具（超时、POST JSON）
+ * 移动端 H Wallet 后端 HTTP 工具（超时、POST JSON、与调用方 AbortSignal 合并）
  */
 import { hwalletAbsoluteUrl } from "./walletApiCore";
+import { mergeUserSignalWithTimeout } from "./mergeUserSignalWithTimeout";
+import { FETCH_TIMEOUT_MS, OTP_POST_DEADLINE_MS } from "./hwalletHttpConstants";
 
-export const FETCH_TIMEOUT_MS = 28_000;
-export const OTP_POST_DEADLINE_MS = 32_000;
+export { FETCH_TIMEOUT_MS, OTP_POST_DEADLINE_MS } from "./hwalletHttpConstants";
 
 function withRequestId(init: RequestInit): RequestInit {
   const headers = new Headers(init.headers as HeadersInit | undefined);
@@ -17,13 +18,15 @@ function withRequestId(init: RequestInit): RequestInit {
   return { ...init, headers };
 }
 
-export async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+export async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const timeoutController = new AbortController();
+  const t = setTimeout(() => timeoutController.abort(), FETCH_TIMEOUT_MS);
+  const next = withRequestId(init);
+  const signal = mergeUserSignalWithTimeout(next.signal ?? undefined, timeoutController.signal);
   try {
     return await fetch(url, {
-      ...withRequestId(init),
-      signal: controller.signal,
+      ...next,
+      signal,
     });
   } finally {
     clearTimeout(t);
@@ -37,7 +40,11 @@ export function raceOtpPost<T extends { ok: boolean; error?: string }>(p: Promis
   return Promise.race([p, timeout]);
 }
 
-export async function postJson<T = any>(path: string, body: unknown): Promise<T> {
+export async function postJson<T = any>(
+  path: string,
+  body: unknown,
+  opts?: { signal?: AbortSignal },
+): Promise<T> {
   const url = hwalletAbsoluteUrl(path);
   if (!url) {
     return { ok: false, error: "未配置 EXPO_PUBLIC_HWALLET_API_BASE" } as T;
@@ -47,6 +54,7 @@ export async function postJson<T = any>(path: string, body: unknown): Promise<T>
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: opts?.signal,
     });
     const raw = await res.text();
     let data: unknown;
