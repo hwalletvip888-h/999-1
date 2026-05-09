@@ -93,8 +93,11 @@ export function ChatScreen() {
   // 逐字输入：记录每条 AI 文本消息当前已露出的字符数
   const [revealLens, setRevealLens] = useState<Record<string, number>>({});
   const revealTimers = useRef<ReturnType<typeof setInterval>[]>([]);
+  /** 取消上一次尚未完成的编排请求（意图 + 闲聊 fetch） */
+  const promptAbortRef = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
+      promptAbortRef.current?.abort();
       moodTimers.current.forEach(clearTimeout);
       revealTimers.current.forEach(clearInterval);
       if (easterHideTimer.current) clearTimeout(easterHideTimer.current);
@@ -117,6 +120,24 @@ export function ChatScreen() {
   async function sendMessage(text = input) {
     const trimmed = text.trim();
     if (!trimmed) return;
+
+    const priorMessages = messages;
+    const chatHistory = priorMessages
+      .filter(
+        (m) =>
+          m.kind === "text" &&
+          Boolean(m.text?.trim()) &&
+          (m.role === "user" || m.role === "assistant"),
+      )
+      .slice(-20)
+      .map((m) => ({
+        role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+        content: (m.text || "").trim(),
+      }));
+
+    promptAbortRef.current?.abort();
+    promptAbortRef.current = new AbortController();
+    const abortSignal = promptAbortRef.current.signal;
 
     const userMessage: ChatMessage = {
       id: makeId("msg_user"),
@@ -160,16 +181,46 @@ export function ChatScreen() {
       scrollToEndSoon();
     };
 
-    // 业务主流程（带步骤回调）
-    const result = await handleUserPrompt(trimmed, onStep);
-    setAiTyping(false);
-    // 步骤指示器保留在消息列表中，组件会自动折叠
+    try {
+      const result = await handleUserPrompt(trimmed, onStep, { chatHistory, abortSignal });
 
-    // clarify
-    if (!result.ok || !result.data) {
-      return;
-    }
-    const { replyText, card, clarifyQuestion } = result.data;
+      if (!result.ok || !result.data) {
+        const errLine =
+          result.errorMsg ||
+          (!result.data
+            ? "服务暂时不可用。请确认本机/服务器已启动钱包后端，且 App 中 EXPO_PUBLIC_HWALLET_API_BASE 指向该地址。"
+            : "处理失败，请稍后重试。");
+        const codePart = result.errorCode ? `（${result.errorCode}）` : "";
+        setMessages((current) =>
+          current.map((m) =>
+            m.id === stepsMessageId && m.kind === "steps"
+              ? {
+                  ...m,
+                  steps: (m.steps ?? []).map((s) =>
+                    s.status === "active" || s.status === "pending"
+                      ? { ...s, status: "error" as const }
+                      : s,
+                  ),
+                }
+              : m,
+          ),
+        );
+        setMessages((current) => [
+          ...current,
+          {
+            id: makeId("msg_ai_err"),
+            role: "assistant",
+            kind: "text",
+            text: `⚠️ ${errLine}${codePart}`,
+            createdAt: nowLabel(),
+          },
+        ]);
+        setHeroMood("idle");
+        scrollToEndSoon();
+        return;
+      }
+
+      const { replyText, card, clarifyQuestion } = result.data;
     if (clarifyQuestion) {
       setMessages((current) => [
         ...current,
@@ -217,6 +268,37 @@ export function ChatScreen() {
       setHeroMood("speaking");
       scheduleMood(setHeroMood, "idle", 800);
       scrollToEndSoon();
+    }
+    } catch (e) {
+      const errLine = e instanceof Error ? e.message : String(e);
+      setMessages((current) =>
+        current.map((m) =>
+          m.id === stepsMessageId && m.kind === "steps"
+            ? {
+                ...m,
+                steps: (m.steps ?? []).map((s) =>
+                  s.status === "active" || s.status === "pending"
+                    ? { ...s, status: "error" as const }
+                    : s,
+                ),
+              }
+            : m,
+        ),
+      );
+      setMessages((current) => [
+        ...current,
+        {
+          id: makeId("msg_ai_err"),
+          role: "assistant",
+          kind: "text",
+          text: `⚠️ 出了点问题：${errLine}`,
+          createdAt: nowLabel(),
+        },
+      ]);
+      setHeroMood("idle");
+      scrollToEndSoon();
+    } finally {
+      setAiTyping(false);
     }
   }
 

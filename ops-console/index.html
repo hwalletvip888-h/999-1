@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H Wallet 运营台</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --ok: #22c55e;
+      --warn: #eab308;
+      --err: #ef4444;
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      justify-content: space-between;
+    }
+    h1 { font-size: 1.125rem; font-weight: 600; margin: 0; letter-spacing: 0.02em; }
+    .sub { color: var(--muted); font-size: 0.8125rem; }
+    main { padding: 1.25rem; max-width: 1200px; margin: 0 auto; }
+    .auth-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    input[type="password"], input[type="text"] {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
+      min-width: 200px;
+      font-size: 0.875rem;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 500;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      margin-top: 1.25rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.125rem;
+    }
+    .card h2 { margin: 0 0 0.75rem; font-size: 0.9375rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .kv { font-size: 0.875rem; line-height: 1.6; }
+    .kv span { color: var(--muted); display: inline-block; min-width: 7rem; }
+    .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+    .badge.ok { background: rgba(34,197,94,0.2); color: var(--ok); }
+    .badge.err { background: rgba(239,68,68,0.2); color: var(--err); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; margin-top: 0.5rem; }
+    th, td { text-align: left; padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; }
+    .err-msg { color: var(--err); font-size: 0.875rem; margin-top: 1rem; }
+    pre.raw {
+      margin: 0.75rem 0 0;
+      padding: 0.75rem;
+      background: #0d1117;
+      border-radius: 8px;
+      overflow: auto;
+      font-size: 0.75rem;
+      max-height: 280px;
+      border: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>H Wallet 运营台</h1>
+      <div class="sub">只读监控 · CLI 沙箱目录 · 配置快照（需 HWALLET_OPS_ADMIN_TOKEN）</div>
+    </div>
+    <div class="auth-bar">
+      <input type="password" id="opsKey" placeholder="运维密钥 (X-Ops-Key)" autocomplete="off" />
+      <button type="button" id="btnSave">保存到浏览器</button>
+      <button type="button" class="secondary" id="btnLoad">加载数据</button>
+    </div>
+  </header>
+  <main>
+    <p class="sub">打开地址：<code id="origin"></code> — 请通过同一域名访问本页，以便调用 Admin API。</p>
+    <div id="err" class="err-msg" style="display:none;"></div>
+    <div class="grid">
+      <div class="card">
+        <h2>服务健康</h2>
+        <div id="health" class="kv">尚未加载</div>
+      </div>
+      <div class="card">
+        <h2>配置快照（脱敏）</h2>
+        <div id="config" class="kv">尚未加载</div>
+      </div>
+      <div class="card" style="grid-column: 1 / -1;">
+        <h2>CLI 用户沙箱（目录名 = email SHA256 前 16 位）</h2>
+        <div id="sandboxCount" class="kv"></div>
+        <table>
+          <thead><tr><th>sandboxId</th><th>最近修改 (mtime)</th></tr></thead>
+          <tbody id="sandboxBody"></tbody>
+        </table>
+      </div>
+      <div class="card" style="grid-column: 1 / -1;">
+        <h2>原始 JSON（overview）</h2>
+        <pre class="raw" id="rawJson">{}</pre>
+      </div>
+    </div>
+  </main>
+  <script>
+    const STORAGE_KEY = "hwallet_ops_admin_key";
+    document.getElementById("origin").textContent = location.origin;
+
+    function getKey() {
+      const inp = document.getElementById("opsKey");
+      return (inp.value || localStorage.getItem(STORAGE_KEY) || "").trim();
+    }
+
+    document.getElementById("btnSave").onclick = () => {
+      const k = document.getElementById("opsKey").value.trim();
+      if (k) localStorage.setItem(STORAGE_KEY, k);
+      setErr(k ? "" : "请输入密钥后再保存");
+    };
+
+    function setErr(msg) {
+      const el = document.getElementById("err");
+      el.style.display = msg ? "block" : "none";
+      el.textContent = msg || "";
+    }
+
+    async function api(path) {
+      const key = getKey();
+      if (!key) throw new Error("请填写运维密钥或先保存到浏览器");
+      const r = await fetch(path, {
+        headers: { "X-Ops-Key": key, "Accept": "application/json" },
+      });
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 200) || r.statusText); }
+      if (!r.ok) throw new Error(data.error || data.msg || "HTTP " + r.status);
+      return data;
+    }
+
+    function fmtTime(ms) {
+      if (ms == null) return "—";
+      return new Date(ms).toLocaleString("zh-CN", { hour12: false });
+    }
+
+    document.getElementById("btnLoad").onclick = async () => {
+      setErr("");
+      try {
+        const overview = await api("/api/admin/overview");
+        document.getElementById("rawJson").textContent = JSON.stringify(overview, null, 2);
+
+        const h = overview.health || {};
+        const cliOk = h.agentWallet === "cli-per-user";
+        document.getElementById("health").innerHTML =
+          '<div><span>服务</span> ' + (h.service || "—") + "</div>" +
+          '<div><span>Agent Wallet</span> <span class="badge ' + (cliOk ? "ok" : "err") + '">' + (h.agentWallet || "—") + "</span></div>" +
+          '<div><span>CLI 根目录</span> <code>' + (h.cliHomeRoot || "—") + "</code></div>" +
+          '<div><span>AI</span> ' + (h.ai || "—") + "</div>";
+
+        const cfg = overview.config || {};
+        document.getElementById("config").innerHTML =
+          '<div><span>端口</span> ' + (cfg.walletPort ?? "—") + "</div>" +
+          '<div><span>CLI_HOME_ROOT</span> <code>' + (cfg.cliHomeRoot || "—") + "</code></div>" +
+          '<div><span>OKX API Key</span> ' + (cfg.okxApiKeyConfigured ? "已配置" : "未配置") + "</div>" +
+          '<div><span>运维台 Token</span> ' + (cfg.opsAdminConfigured ? "已启用" : "未启用") + "</div>";
+
+        const boxes = overview.cliSandboxes || [];
+        document.getElementById("sandboxCount").innerHTML =
+          "<span>数量</span> <strong>" + boxes.length + "</strong>";
+        document.getElementById("sandboxBody").innerHTML = boxes
+          .map(function (b) {
+            return "<tr><td><code>" + b.sandboxId + "</code></td><td>" + fmtTime(b.mtimeMs) + "</td></tr>";
+          })
+          .join("") || "<tr><td colspan='2' style='color:var(--muted)'>暂无沙箱目录</td></tr>";
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    };
+
+    (function init() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) document.getElementById("opsKey").value = saved;
+    })();
+  </script>
+</body>
+</html>

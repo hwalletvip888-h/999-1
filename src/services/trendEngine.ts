@@ -7,7 +7,7 @@
  *
  * 在 Node.js 环境（tsx 运行）中可以直接读取文件。
  */
-import { getHwalletApiBase } from "./walletApi";
+import { getHwalletApiBase } from "./walletApiCore";
 
 // 检测是否在 Node.js 环境
 const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;

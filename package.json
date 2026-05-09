@@ -18,7 +18,12 @@
     "deploy:remote": "bash deploy/remote-deploy.sh",
     "github:bootstrap": "bash deploy/gh-actions-bootstrap.sh",
     "deploy:init": "bash deploy/init-local-env.sh",
-    "deploy:readme": "node -e \"require('fs').createReadStream('deploy/START_HERE.md').pipe(process.stdout)\""
+    "deploy:readme": "node -e \"require('fs').createReadStream('deploy/START_HERE.md').pipe(process.stdout)\"",
+    "bootstrap:subpkgs": "npm install --prefix h1-platform && npm install --prefix mcp-hwallet-server",
+    "test:h1": "npm install --prefix h1-platform && npm test --prefix h1-platform",
+    "test:services": "vitest run --config vitest.services.config.ts",
+    "mcp:hwallet": "npm install --prefix mcp-hwallet-server && npm run dev --prefix mcp-hwallet-server",
+    "mcp:hwallet:build": "npm run build --prefix mcp-hwallet-server"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -59,6 +64,7 @@
     "prettier-plugin-tailwindcss": "^0.5.11",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }

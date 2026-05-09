@@ -46,7 +46,9 @@ export type {
   WalletPortfolio,
   WalletPortfolioToken,
   DexSwapQuote,
+  DexSwapExecuteResult,
+  WalletSendResult,
   DefiOpportunity,
   DefiPosition,
-  DexSignal
+  DexSignal,
 } from './okxOnchainClient';

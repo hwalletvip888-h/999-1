@@ -1,0 +1,706 @@
+openapi: 3.0.3
+info:
+  title: AI Trading Community API
+  description: >
+    社区 App 的完整 API 定义，以 OKX Web3 API (`/api/v5/...`、`/api/v6/...`) 
+    风格为蓝本设计，路径结构对齐，认证方式兼容。
+  version: 1.0.0
+  contact:
+    name: Community Dev Team
+
+servers:
+  - url: https://your-community-api.com
+    description: 生产环境
+  - url: https://staging.your-community-api.com
+    description: 预发布环境
+
+# ---------- 安全方案（与 OKX 一致） ----------
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: OK-ACCESS-KEY
+      description: |
+        复刻 OKX 签名体系，必须同时传递：
+        - OK-ACCESS-KEY：API Key
+        - OK-ACCESS-SIGN：HMAC-SHA256(timestamp + method + path + body, SecretKey) → Base64
+        - OK-ACCESS-PASSPHRASE：创建 API Key 时设置的密码
+        - OK-ACCESS-TIMESTAMP：Unix 时间戳（毫秒）
+        - OK-ACCESS-PROJECT：项目标识
+
+  # ---------- 通用响应模型 ----------
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+          example: "success"
+        data:
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 50001
+        msg:
+          type: string
+          example: "Internal error"
+        data:
+          type: object
+
+# ---------- 各模块路径定义 ----------
+paths:
+
+  # ===================== User 用户服务 =====================
+  /api/community/v1/user/register:
+    post:
+      tags: [User]
+      summary: 邮箱注册并绑定 Agentic Wallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                inviteCode: { type: string }
+      responses:
+        '200':
+          description: 注册成功，返回用户 ID 与钱包地址
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId:   { type: string }
+                          walletAddress: { type: string }
+                          token:    { type: string, description: "JWT 令牌" }
+
+  /api/community/v1/user/login:
+    post:
+      tags: [User]
+      summary: 邮箱登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: 登录成功，返回 JWT
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId: { type: string }
+                          token:  { type: string }
+
+  /api/community/v1/user/profile:
+    get:
+      tags: [User]
+      summary: 获取用户画像
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: 用户画像数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId:        { type: string }
+                          email:         { type: string }
+                          walletAddress: { type: string }
+                          level:         { type: integer }
+                          points:        { type: integer }
+                          memberSince:   { type: string, format: date-time }
+
+  # ===================== Wallet 钱包封装层 =====================
+  /api/community/v1/wallet/balance:
+    get:
+      tags: [Wallet]
+      summary: 获取多链资产余额与 USD 投资组合总值
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: address
+          in: query
+          required: false
+          schema: { type: string }
+          description: 钱包地址（不传则查当前用户 Agentic Wallet）
+        - name: chainIndex
+          in: query
+          required: false
+          schema: { type: string }
+          description: 链标识（不传则返回全链汇总）
+      responses:
+        '200':
+          description: 资产数据
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          totalUsdValue: { type: number }
+                          chains:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                chainIndex: { type: string }
+                                chainName:  { type: string }
+                                tokens:     { type: array }
+                                usdValue:   { type: number }
+
+  /api/community/v1/wallet/tokens:
+    get:
+      tags: [Wallet]
+      summary: 查询指定链上代币持仓明细
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: chainIndex
+          in: query
+          required: true
+          schema: { type: string }
+        - name: address
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: 代币持仓明细
+
+  /api/community/v1/wallet/txs:
+    get:
+      tags: [Wallet]
+      summary: 查询交易历史
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: address
+          in: query
+          required: false
+          schema: { type: string }
+        - name: direction
+          in: query
+          required: false
+          schema: { type: string, enum: [in, out, all] }
+        - name: timeRange
+          in: query
+          required: false
+          schema: { type: string, enum: [7d, 30d, 90d, 1y, all] }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          description: 交易历史列表
+
+  /api/community/v1/wallet/sub-wallets:
+    get:
+      tags: [Wallet]
+      summary: 获取子钱包列表及标签
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: 子钱包列表（Agentic Wallet 最多派生 50 个）
+
+  # ===================== Market 行情服务 =====================
+  /api/community/v1/market/price:
+    get:
+      tags: [Market]
+      summary: 获取代币实时价格
+      parameters:
+        - name: tokenSymbol
+          in: query
+          required: true
+          schema: { type: string }
+          example: "BTC"
+        - name: currency
+          in: query
+          required: false
+          schema: { type: string, default: "USD" }
+      responses:
+        '200':
+          description: 实时价格数据
+
+  /api/community/v1/market/candles:
+    get:
+      tags: [Market]
+      summary: 获取 K 线数据（与 OKX `/api/v6/dex/market/candles` 字段对齐）
+      parameters:
+        - name: chainIndex
+          in: query
+          required: true
+          schema: { type: string }
+          example: "1"
+          description: 链标识（1=Ethereum）
+        - name: tokenContractAddress
+          in: query
+          required: true
+          schema: { type: string }
+          description: 代币合约地址（EVM 链传全小写）
+        - name: bar
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [1s, 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W, 1M, 3M]
+          description: 时间粒度
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, maximum: 299, default: 100 }
+        - name: after
+          in: query
+          required: false
+          schema: { type: string }
+        - name: before
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: K 线数组 [ts, o, h, l, c, vol, volUsd, confirm]
+
+  /api/community/v1/market/trending:
+    get:
+      tags: [Market]
+      summary: 获取社区热门代币排行榜
+      description: 内部聚合 OKX DEX 数据 + 社区自有社交指标（讨论量、搜索频次等）
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: [1h, 24h, 7d], default: "24h" }
+      responses:
+        '200':
+          description: 热门代币排名列表
+
+  # ===================== Trade 交易服务 =====================
+  /api/community/v1/trade/swap:
+    post:
+      tags: [Trade]
+      summary: 构建代币兑换交易（返回确认卡片所需数据）
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromToken, toToken, amount]
+              properties:
+                fromToken:
+                  type: string
+                  description: 卖出代币合约地址
+                toToken:
+                  type: string
+                  description: 买入代币合约地址
+                amount:
+                  type: string
+                  description: 卖出数量（最小可分割单位）
+                slippagePercent:
+                  type: string
+                  default: "0.5"
+                chainIndex:
+                  type: string
+                  description: 链标识
+      responses:
+        '200':
+          description: 交易预检单（报价、预估 Gas、滑点信息）与待确认卡片数据
+
+  /api/community/v1/trade/confirm:
+    post:
+      tags: [Trade]
+      summary: 用户确认后执行交易（广播上链）
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tradeId]
+              properties:
+                tradeId:
+                  type: string
+                  description: 由 /trade/swap 返回的预订单 ID
+                confirmToken:
+                  type: string
+                  description: 前端二次确认的一次性 Token
+      responses:
+        '200':
+          description: 交易哈希与链上状态
+
+  /api/community/v1/trade/status/{tradeId}:
+    get:
+      tags: [Trade]
+      summary: 查询交易状态
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: tradeId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 链上确认进度与最终状态
+
+  /api/community/v1/trade/approve:
+    get:
+      tags: [Trade]
+      summary: 获取用户对 DEX 结算合约的授权状态
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: chainIndex
+          in: query
+          required: true
+          schema: { type: string }
+        - name: tokenAddress
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 授权额度与状态
+
+  /api/community/v1/trade/approve-build:
+    post:
+      tags: [Trade]
+      summary: 构建 Approve 交易数据
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chainIndex, tokenAddress, amount]
+              properties:
+                chainIndex:    { type: string }
+                tokenAddress:  { type: string }
+                amount:        { type: string }
+      responses:
+        '200':
+          description: Approve 交易原始数据
+
+  # ===================== Community 社区服务 =====================
+  /api/community/v1/community/rooms:
+    get:
+      tags: [Community]
+      summary: 获取可加入的聊天室列表
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema: { type: string, enum: [general, trading, signal, meme] }
+      responses:
+        '200':
+          description: 聊天室列表
+
+  /api/community/v1/community/chat:
+    post:
+      tags: [Community]
+      summary: 发送聊天消息
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roomId, message]
+              properties:
+                roomId:  { type: string }
+                message: { type: string, maxLength: 1000 }
+                replyTo: { type: string, description: "引用消息 ID" }
+      responses:
+        '200':
+          description: 消息 ID 与时间戳
+
+  /api/community/v1/community/feed:
+    get:
+      tags: [Community]
+      summary: 获取探索广场动态流
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema: { type: string, enum: [all, trade, signal, article] }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+        - name: before
+          in: query
+          required: false
+          schema: { type: string, description: "分页游标" }
+      responses:
+        '200':
+          description: 动态流数据
+
+  /api/community/v1/community/leaderboard:
+    get:
+      tags: [Community]
+      summary: 获取交易员排行榜
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: [7d, 30d, 90d, all], default: "30d" }
+        - name: sortBy
+          in: query
+          required: false
+          schema: { type: string, enum: [pnl, winRate, followers], default: "pnl" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 排行榜数据
+
+  # ===================== Cards 成就卡服务 =====================
+  /api/community/v1/cards/generate:
+    post:
+      tags: [Cards]
+      summary: 生成交易成功卡片
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [txHash, tokenPair, amount]
+              properties:
+                txHash:    { type: string }
+                tokenPair: { type: string, example: "ETH→UNI" }
+                amount:    { type: string }
+                chainIndex:{ type: string }
+      responses:
+        '200':
+          description: 卡片 SVG URL 与 JSON 结构数据
+
+  /api/community/v1/cards/list:
+    get:
+      tags: [Cards]
+      summary: 获取用户卡库列表
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: 卡片集合
+
+  /api/community/v1/cards/analytics:
+    get:
+      tags: [Cards]
+      summary: 获取用户交易数据分析
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: 投资组合建议、交易习惯统计
+
+  # ===================== Strategy 策略服务 =====================
+  /api/community/v1/strategy/signal:
+    get:
+      tags: [Strategy]
+      summary: 获取 AI 合约信号
+      parameters:
+        - name: symbol
+          in: query
+          required: true
+          schema: { type: string, example: "ETHUSDT" }
+        - name: riskLevel
+          in: query
+          required: false
+          schema: { type: string, enum: [low, medium, high], default: "medium" }
+      responses:
+        '200':
+          description: 合约信号（入场价、止损、止盈、杠杆建议）
+
+  /api/community/v1/strategy/auto-invest:
+    post:
+      tags: [Strategy]
+      summary: 创建自动赚币策略
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protocol, token, condition, amount]
+              properties:
+                protocol:
+                  type: string
+                  enum: [Aave, Lido, PancakeSwap, Kamino, NAVI]
+                  description: 目标协议
+                token:     { type: string }
+                condition:
+                  type: object
+                  properties:
+                    type:   { type: string, enum: [apy_above, apy_below, price_above, price_below] }
+                    value:  { type: string }
+                amount:    { type: string }
+      responses:
+        '200':
+          description: 策略 ID 与状态
+
+  /api/community/v1/strategy/list:
+    get:
+      tags: [Strategy]
+      summary: 获取用户已创建的策略列表
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: 策略列表（含执行状态）
+
+  /api/community/v1/strategy/{strategyId}:
+    delete:
+      tags: [Strategy]
+      summary: 删除指定策略
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - name: strategyId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 删除确认
+
+  # ===================== Leaderboard 排行榜服务 =====================
+  /api/community/v1/leaderboard/traders:
+    get:
+      tags: [Leaderboard]
+      summary: 获取交易员排名
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, enum: [7d, 30d, 90d, all], default: "30d" }
+        - name: sortBy
+          in: query
+          required: false
+          schema: { type: string, enum: [pnl, winRate, followers], default: "pnl" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: 交易员排名列表
+
+  /api/community/v1/leaderboard/traders/{traderId}:
+    get:
+      tags: [Leaderboard]
+      summary: 查看特定交易员详细指标
+      parameters:
+        - name: traderId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 交易员详情（历史收益、胜率、持仓偏好等）
+
+  # ===================== Points 积分服务 =====================
+  /api/community/v1/points/balance:
+    get:
+      tags: [Points]
+      summary: 查询用户积分余额
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: 积分余额
+
+  /api/community/v1/points/earn:
+    post:
+      tags: [Points]
+      summary: 触发积分赚取
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [trade, check_in, invite, community_interact]
+                metadata:
+                  type: object
+                  description: 附加数据（如交易哈希、被邀请人 ID）
+      responses:
+        '200':
+          description: 本次获得的积分
+
+  /api/community/v1/points/level:
+    get:
+      tags: [Points]
+      summary: 查询当前等级与权益
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200':
+          description: 等级信息及对应权益

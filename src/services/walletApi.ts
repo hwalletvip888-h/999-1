@@ -1,31 +1,13 @@
 /**
  * walletApi — Agent Wallet / 后端鉴权与地址
  *
- * POST /api/auth/send-otp     { email }
- * POST /api/auth/verify-otp   { email, code }
- * GET  /api/wallet/addresses  Authorization: Bearer <token>
- *
- * 基础地址优先级：构建注入 `EXPO_PUBLIC_HWALLET_API_BASE` / `HWALLET_API_BASE`，缺省回退到内置地址。
+ * HTTP 与 Base URL 见 `walletApiCore.ts`、`walletApiHttp.ts`（`getHwalletApiBase` 请从 `walletApiCore` 引用以避免与 onchain 客户端循环依赖）。
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
+import { hwalletAbsoluteUrl } from "./walletApiCore";
+import { fetchWithTimeout, postJson, raceOtpPost } from "./walletApiHttp";
 
-const DEFAULT_HWALLET_API_BASE = "https://api.hvip.io";
-
-/** H Wallet 后端根 URL，去掉末尾 `/` */
-export function getHwalletApiBase(): string {
-  const a = String(process.env.EXPO_PUBLIC_HWALLET_API_BASE ?? "").trim();
-  const b = String(process.env.HWALLET_API_BASE ?? "").trim();
-  const c = String((Constants.expoConfig?.extra as { hwalletApiBase?: string } | undefined)?.hwalletApiBase ?? "").trim();
-  return (a || b || c || DEFAULT_HWALLET_API_BASE).replace(/\/+$/, "");
-}
-
-function hwalletAbsoluteUrl(path: string): string | null {
-  const base = getHwalletApiBase();
-  if (!base) return null;
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${p}`;
-}
+export { getHwalletApiBase } from "./walletApiCore";
 
 export type ChainAddress = {
   chainIndex: string;
@@ -56,7 +38,7 @@ function normalizeAddresses(input: any): WalletAddresses | null {
     return {
       evm: Array.isArray(input.evm) ? input.evm : [],
       solana: Array.isArray(input.solana) ? input.solana : [],
-      xlayer: Array.isArray(input.xlayer) ? input.xlayer : []
+      xlayer: Array.isArray(input.xlayer) ? input.xlayer : [],
     };
   }
 
@@ -125,18 +107,6 @@ export function getCachedSession(): Session | null {
   return cachedSession;
 }
 
-const OTP_POST_DEADLINE_MS = 32_000;
-
-function raceOtpPost<T extends { ok: boolean; error?: string }>(p: Promise<T>): Promise<T> {
-  const timeout: Promise<T> = new Promise((resolve) =>
-    setTimeout(
-      () => resolve({ ok: false, error: "请求超时，请检查网络后重试" } as T),
-      OTP_POST_DEADLINE_MS
-    )
-  );
-  return Promise.race([p, timeout]);
-}
-
 export async function sendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const trimmed = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
@@ -147,7 +117,7 @@ export async function sendOtp(email: string): Promise<{ ok: boolean; error?: str
 
 export async function verifyOtp(
   email: string,
-  code: string
+  code: string,
 ): Promise<{ ok: boolean; session?: Session; error?: string }> {
   const trimmed = email.trim().toLowerCase();
   const codeTrim = code.trim();
@@ -162,7 +132,7 @@ export async function verifyOtp(
       isNew?: boolean;
       addresses?: any;
       error?: string;
-    }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim })
+    }>("/api/auth/verify-otp", { email: trimmed, code: codeTrim }),
   );
 
   if (!result.ok || !result.token || !result.accountId) {
@@ -175,7 +145,7 @@ export async function verifyOtp(
     if (addrUrl) {
       try {
         const res = await fetchWithTimeout(addrUrl, {
-          headers: { Authorization: `Bearer ${result.token}` }
+          headers: { Authorization: `Bearer ${result.token}` },
         });
         const raw = await res.text();
         let data: Record<string, unknown> = {};
@@ -202,7 +172,7 @@ export async function verifyOtp(
     email: trimmed,
     accountId: result.accountId,
     addresses,
-    isNew: result.isNew ?? false
+    isNew: result.isNew ?? false,
   };
   await saveSession(session);
   return { ok: true, session };
@@ -215,7 +185,7 @@ export async function refreshAddresses(): Promise<WalletAddresses | null> {
   if (!addrUrl) return s.addresses;
   try {
     const res = await fetchWithTimeout(addrUrl, {
-      headers: { Authorization: `Bearer ${s.token}` }
+      headers: { Authorization: `Bearer ${s.token}` },
     });
     const raw = await res.text();
     let data: Record<string, unknown> = {};
@@ -240,8 +210,6 @@ export async function logout(): Promise<void> {
   await clearSession();
 }
 
-// ─── 子账户管理 ─────────────────────────────────────────────
-
 export type WalletAccount = {
   accountId: string;
   accountName: string;
@@ -249,7 +217,6 @@ export type WalletAccount = {
   solAddress?: string;
 };
 
-/** 列出当前邮箱下所有子账户 */
 export async function listAccounts(): Promise<{
   ok: boolean;
   currentAccountId?: string;
@@ -262,7 +229,7 @@ export async function listAccounts(): Promise<{
   if (!url) return { ok: false, accounts: [], error: "未配置后端地址" };
   try {
     const res = await fetchWithTimeout(url, {
-      headers: { Authorization: `Bearer ${s.token}` }
+      headers: { Authorization: `Bearer ${s.token}` },
     });
     const raw = await res.text();
     const data = raw ? JSON.parse(raw) : {};
@@ -277,7 +244,6 @@ export async function listAccounts(): Promise<{
   }
 }
 
-/** 切换激活子账户（顶部选择器调用） */
 export async function switchAccount(accountId: string): Promise<{ ok: boolean; error?: string; currentAccountId?: string }> {
   const s = await loadSession();
   if (!s) return { ok: false, error: "未登录" };
@@ -292,7 +258,6 @@ export async function switchAccount(accountId: string): Promise<{ ok: boolean; e
     const raw = await res.text();
     const data = raw ? JSON.parse(raw) : {};
     if (!data?.ok) return { ok: false, error: data?.error || "切换失败" };
-    // 同步更新本地 session 的 accountId
     const next: Session = { ...s, accountId: String(data.currentAccountId || accountId) };
     await saveSession(next);
     return { ok: true, currentAccountId: next.accountId };
@@ -301,7 +266,6 @@ export async function switchAccount(accountId: string): Promise<{ ok: boolean; e
   }
 }
 
-/** 新增子账户 */
 export async function addAccount(): Promise<{ ok: boolean; accountId?: string; accountName?: string; error?: string }> {
   const s = await loadSession();
   if (!s) return { ok: false, error: "未登录" };
@@ -318,50 +282,6 @@ export async function addAccount(): Promise<{ ok: boolean; accountId?: string; a
     return { ok: true, accountId: data.accountId, accountName: data.accountName };
   } catch (err: any) {
     return { ok: false, error: err?.message || "网络异常" };
-  }
-}
-
-/** 移动端弱网 / 服务端不可达时，无超时会导致界面一直卡在「发送中」 */
-const FETCH_TIMEOUT_MS = 28_000;
-
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-async function postJson<T = any>(path: string, body: unknown): Promise<T> {
-  const url = hwalletAbsoluteUrl(path);
-  if (!url) {
-    return { ok: false, error: "未配置 EXPO_PUBLIC_HWALLET_API_BASE" } as T;
-  }
-  try {
-    const res = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    const raw = await res.text();
-    let data: unknown;
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      return {
-        ok: false,
-        error: res.ok ? "服务器响应格式异常" : `HTTP ${res.status}`
-      } as T;
-    }
-    return data as T;
-  } catch (e: unknown) {
-    const name = e && typeof e === "object" && "name" in e ? String((e as { name?: string }).name) : "";
-    if (name === "AbortError") {
-      return { ok: false, error: "连接超时，请检查网络或服务是否可达" } as T;
-    }
-    return { ok: false, error: "网络异常，请稍后重试" } as T;
   }
 }
 

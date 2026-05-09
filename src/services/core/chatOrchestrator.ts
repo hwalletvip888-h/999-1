@@ -4,6 +4,7 @@
  * 通过 onStep 回调实时通知 UI 当前进度
  */
 import { askClaude, chatWithAI, type AIIntent } from './claudeAI';
+import type { ChatIntentAction } from '../intentNormalize';
 import { api } from '../../api/gateway';
 import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
@@ -16,11 +17,17 @@ import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../ap
 /** 步骤回调类型 */
 export type OnStepCallback = (steps: AIStep[]) => void;
 
+/** 编排层可选参数：多轮对话上下文 + 取消进行中的网络请求 */
+export type HandleUserPromptOptions = {
+  chatHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  abortSignal?: AbortSignal;
+};
+
 /**
  * 根据 action 生成对应的步骤列表（5 步制：理解 → 查数据 → 风控 → 出卡 → 等待确认）
  * 第 6/7 步（执行中 / 已上链 / 入库）由 ChatScreen.confirmCard 在用户点确认后单独追加。
  */
-function buildSteps(action: string): AIStep[] {
+function buildSteps(action: ChatIntentAction): AIStep[] {
   const base: AIStep[] = [
     { id: 's1', label: '理解你的意图', icon: '🧠', status: 'pending' },
   ];
@@ -82,7 +89,14 @@ function buildSteps(action: string): AIStep[] {
         { id: 's3', label: '计算总权益', icon: '📊', status: 'pending' },
         { id: 's4', label: '生成资产报告', icon: '🎴', status: 'pending' },
       ];
-    default:
+    case 'signal':
+      return [
+        ...base,
+        { id: 's2', label: '扫描链上信号', icon: '🛰️', status: 'pending' },
+        { id: 's3', label: '聚合机会数据', icon: '📡', status: 'pending' },
+        { id: 's4', label: '生成机会卡片', icon: '🎴', status: 'pending' },
+      ];
+    case 'chat':
       return [
         ...base,
         { id: 's2', label: '组织回复内容', icon: '💬', status: 'pending' },
@@ -117,7 +131,8 @@ async function advanceSafety(steps: AIStep[], onStep?: OnStepCallback): Promise<
 
 export async function handleUserPrompt(
   input: string,
-  onStep?: OnStepCallback
+  onStep?: OnStepCallback,
+  options?: HandleUserPromptOptions,
 ): Promise<ApiResponse<{ replyText: string; card?: HWalletCard; clarifyQuestion?: string }>> {
   const now = new Date().toISOString();
 
@@ -126,7 +141,7 @@ export async function handleUserPrompt(
   steps = advanceStep(steps, 's1', 'active', onStep);
 
   // 使用 Claude AI 识别意图
-  const intent: AIIntent = await askClaude(input);
+  const intent: AIIntent = await askClaude(input, options?.abortSignal);
   console.log('[Orchestrator] AI intent:', intent.action, intent.symbol, intent.amount);
 
   // 识别完成后，重建步骤列表（根据实际 action）
@@ -633,13 +648,14 @@ export async function handleUserPrompt(
       }
 
       // ─── 闲聊 ───
-      case 'chat':
-      default: {
+      case 'chat': {
         steps = advanceStep(steps, 's2', 'active', onStep);
         await delay(300);
         steps = advanceStep(steps, 's2', 'done', onStep);
 
-        const replyText = intent.reply || await chatWithAI([], input);
+        const replyText =
+          intent.reply ||
+          (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal));
         return {
           ok: true,
           data: { replyText },
@@ -648,16 +664,17 @@ export async function handleUserPrompt(
       }
     }
   } catch (err: any) {
-    // 标记当前活跃步骤为 error
     const errorSteps = steps.map((s) =>
-      s.status === 'active' ? { ...s, status: 'error' as const } : s
+      s.status === "active" ? { ...s, status: "error" as const } : s,
     );
     onStep?.(errorSteps);
 
+    const msg = err?.message || "网络错误";
     return {
-      ok: true,
-      data: { replyText: `⚠️ 操作失败：${err.message || '网络错误'}，请稍后重试。` },
-      simulationMode: false
+      ok: false,
+      errorCode: "H1.ORC.HANDLE_PROMPT_FAILED",
+      errorMsg: msg,
+      simulationMode: false,
     };
   }
 }
