@@ -1,5 +1,6 @@
 import * as http from "http";
 import { parseBody } from "../http-utils";
+import { parseAuthSendOtpBody, parseAuthVerifyOtpBody } from "../schemas/auth";
 import { handleSendOtpViaProvider, handleVerifyOtpViaProvider } from "../wallet-cli-handlers";
 
 export async function tryAuthRoutes(
@@ -14,15 +15,27 @@ export async function tryAuthRoutes(
     (url === "/api/auth/verify-otp" || url === "/api/agent-wallet/verify") && method === "POST";
 
   if (isSendOtp) {
-    const body = await parseBody(req);
-    const result = await handleSendOtpViaProvider(body.email);
+    const raw = await parseBody(req);
+    const parsed = parseAuthSendOtpBody(raw);
+    if (!parsed.ok) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: parsed.error }));
+      return true;
+    }
+    const result = await handleSendOtpViaProvider(parsed.data.email);
     res.writeHead(200);
     res.end(JSON.stringify(result));
     return true;
   }
   if (isVerifyOtp) {
-    const body = await parseBody(req);
-    const result = await handleVerifyOtpViaProvider(body.email, body.code);
+    const raw = await parseBody(req);
+    const parsed = parseAuthVerifyOtpBody(raw);
+    if (!parsed.ok) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: parsed.error }));
+      return true;
+    }
+    const result = await handleVerifyOtpViaProvider(parsed.data.email, parsed.data.code);
     res.writeHead(200);
     res.end(JSON.stringify(result));
     return true;

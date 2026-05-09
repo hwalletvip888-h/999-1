@@ -18,6 +18,7 @@ import type { FunctionComponent } from "react";
 // 初始消息为空，用户进入后看到海豚引导页
 const initialMessages: import("../types").ChatMessage[] = [];
 import { handleUserPrompt } from "../services/core/chatOrchestrator";
+import { formatHwalletErrorForUser } from "../services/hwalletErrorUi";
 import { updateCardStatus } from "../services/core/cardsApi";
 import { cardLibrary } from "../services/cardLibrary";
 import { makeId } from "../utils/id";
@@ -270,7 +271,7 @@ export function ChatScreen() {
       scrollToEndSoon();
     }
     } catch (e) {
-      const errLine = e instanceof Error ? e.message : String(e);
+      const errLine = formatHwalletErrorForUser(e);
       setMessages((current) =>
         current.map((m) =>
           m.id === stepsMessageId && m.kind === "steps"

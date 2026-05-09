@@ -32,6 +32,7 @@ import type { AppView } from "../types";
 import { isPositive } from "../utils/format";
 import { useSession, sessionStore } from "../services/sessionStore";
 import { refreshAddresses, listAccounts, switchAccount, addAccount, type WalletAccount } from "../services/walletApi";
+import { formatHwalletErrorForUser } from "../services/hwalletErrorUi";
 import { uiColors, uiSpace } from "../theme/uiSystem";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -165,10 +166,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           setAssetSparks({});
           setPortfolioSpark(defaultSpark);
         } catch (portfolioErr: unknown) {
-          const msg =
-            portfolioErr instanceof Error
-              ? portfolioErr.message
-              : "暂时拉不到链上资产汇总，请检查网络或稍后重试。";
+          const msg = formatHwalletErrorForUser(portfolioErr);
           setWalletDataError(
             Platform.OS === "web"
               ? "浏览器环境需经服务端代理调用 OKX 资产接口；请使用 Expo Go 或配置 HTTPS 后端。"
@@ -181,7 +179,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         setLoading(false);
       } catch (err) {
         console.warn("[WalletScreen] 加载真实数据失败:", err);
-        setWalletDataError("Agent Wallet 实时资产拉取失败，请稍后重试");
+        setWalletDataError(formatHwalletErrorForUser(err));
         setTotalBalance("—");
         setRealAssets([]);
         setAgentAssets([]);
@@ -1706,8 +1704,7 @@ function WithdrawScreen({
               setWithdrawChainKey("");
               setPage("token");
             } catch (err) {
-              const msg = err instanceof Error ? err.message : "发送失败，请稍后重试";
-              setSendError(msg);
+              setSendError(formatHwalletErrorForUser(err));
             } finally {
               setSending(false);
             }
@@ -2081,9 +2078,9 @@ function SwapScreen({
                       token
                     );
                     setLastTxHash(execRes.data.txHash || "");
-                  } catch {
+                  } catch (e) {
                     setLastTxHash("");
-                    setQuoteError("OKX 执行失败，请稍后重试");
+                    setQuoteError(formatHwalletErrorForUser(e));
                     return;
                   } finally {
                     setConfirming(false);

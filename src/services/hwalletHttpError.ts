@@ -12,3 +12,7 @@ export class HwalletHttpError extends Error {
     this.name = "HwalletHttpError";
   }
 }
+
+export function isHwalletHttpError(e: unknown): e is HwalletHttpError {
+  return e instanceof HwalletHttpError;
+}
