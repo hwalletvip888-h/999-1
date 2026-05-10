@@ -12,6 +12,8 @@ import {
   sanitizeIntentPayload,
   type AIIntent,
 } from "./intentNormalize";
+import { fetchWithDeadline } from "./fetchWithDeadline";
+import { EXTERNAL_LLM_FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || "";
@@ -113,21 +115,25 @@ export async function chatWithAI(
   ];
 
   try {
-    const response = await fetch(DEEPSEEK_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+    const response = await fetchWithDeadline(
+      DEEPSEEK_API_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: DEEPSEEK_CHAT_MODEL,
+          messages: allMessages,
+          max_tokens: CHAT_MAX_TOKENS,
+          temperature: 0.7,
+          top_p: 0.9,
+        }),
+        signal: abortSignal,
       },
-      body: JSON.stringify({
-        model: DEEPSEEK_CHAT_MODEL,
-        messages: allMessages,
-        max_tokens: CHAT_MAX_TOKENS,
-        temperature: 0.7,
-        top_p: 0.9,
-      }),
-      signal: abortSignal,
-    });
+      EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+    );
 
     if (!response.ok) {
       const errText = await response.text();
@@ -176,21 +182,25 @@ export async function recognizeIntent(userMessage: string, signal?: AbortSignal)
   }
 
   try {
-    const response = await fetch(CLAUDE_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": CLAUDE_API_KEY,
-        "anthropic-version": "2023-06-01",
+    const response = await fetchWithDeadline(
+      CLAUDE_API_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": CLAUDE_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: CLAUDE_INTENT_MODEL,
+          max_tokens: INTENT_MAX_TOKENS,
+          system: INTENT_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: userMessage }],
+        }),
+        signal,
       },
-      body: JSON.stringify({
-        model: CLAUDE_INTENT_MODEL,
-        max_tokens: INTENT_MAX_TOKENS,
-        system: INTENT_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userMessage }],
-      }),
-      signal,
-    });
+      EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+    );
 
     if (!response.ok) {
       console.error("[AIChat] Claude API error:", response.status);
@@ -219,23 +229,27 @@ async function recognizeIntentFallback(userMessage: string, signal?: AbortSignal
     return localRuleIntent(userMessage);
   }
   try {
-    const response = await fetch(DEEPSEEK_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+    const response = await fetchWithDeadline(
+      DEEPSEEK_API_URL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: DEEPSEEK_INTENT_MODEL,
+          messages: [
+            { role: "system", content: INTENT_SYSTEM_PROMPT },
+            { role: "user", content: userMessage },
+          ],
+          max_tokens: INTENT_MAX_TOKENS,
+          temperature: 0.3,
+        }),
+        signal,
       },
-      body: JSON.stringify({
-        model: DEEPSEEK_INTENT_MODEL,
-        messages: [
-          { role: "system", content: INTENT_SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: INTENT_MAX_TOKENS,
-        temperature: 0.3,
-      }),
-      signal,
-    });
+      EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+    );
 
     if (!response.ok) {
       console.error("[AIChat] DeepSeek Intent fallback error:", response.status);

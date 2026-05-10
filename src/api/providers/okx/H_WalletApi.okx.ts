@@ -13,8 +13,8 @@ import type {
   H_Chain,
 } from '../../contracts/H_WalletApi';
 // V6（链上赚币）严格不依赖 V5 客户端，统一走中性传输层
-import type { OkxCredentials } from './okxHttpCore';
-import * as okxClient from './okxHttpCore';
+import type { OkxCredentials } from './okxClient';
+import * as okxClient from './okxClient';
 
 /** OKX 链 ID 映射 */
 const CHAIN_ID_MAP: Record<H_Chain, string> = {

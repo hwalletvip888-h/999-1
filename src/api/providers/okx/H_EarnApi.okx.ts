@@ -12,8 +12,8 @@ import type {
 } from '../../contracts/H_EarnApi';
 import type { H_Chain } from '../../contracts/H_WalletApi';
 // V6（链上赚币）严格不依赖 V5 客户端，统一走中性传输层
-import type { OkxCredentials } from './okxHttpCore';
-import * as okxClient from './okxHttpCore';
+import type { OkxCredentials } from './okxClient';
+import * as okxClient from './okxClient';
 
 export class OkxH_EarnApi implements IH_EarnApi {
   private creds: OkxCredentials;

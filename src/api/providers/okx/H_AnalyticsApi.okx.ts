@@ -12,8 +12,8 @@ import type {
   H_RiskScore,
 } from '../../contracts/H_AnalyticsApi';
 // 平台中性层 — 走通用传输，不跟任一产品线绑定
-import type { OkxCredentials } from './okxHttpCore';
-import * as okxClient from './okxHttpCore';
+import type { OkxCredentials } from './okxClient';
+import * as okxClient from './okxClient';
 
 export class OkxH_AnalyticsApi implements IH_AnalyticsApi {
   private creds: OkxCredentials;
