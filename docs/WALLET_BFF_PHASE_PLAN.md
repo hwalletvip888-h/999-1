@@ -12,7 +12,6 @@
 - **`HTTP_ROUTE_CATALOG`** 由 **`h1-capabilities.buildBffHttpRouteCatalog()`** 从 **`H1_CAPABILITY_REGISTRY` + 固定端点** 生成，与 `/ops`、**`GET /api/admin/diagnostics`** 同源，减少双份维护。
 - **`/api/admin/*`** 路径与运维页 Admin 表由 **`admin-api-catalog.ADMIN_API_ROUTE_SPECS`** 单一维护，`admin-routes` 通过 **`matchAdminRoute`** 分发。
 - **`/ops` 运维台**：`ops-bootstrap` 含 **`adminQuickGets`**（与 catalog 同源的一键 GET）、**`publicQuickLinks`**（`/health`、`/ops`）；页内 **HTTP 状态 / 超时 / 非 JSON** 错误提示已文案化（P2）。
-- **Telegram 运维告警（可选）**：`HWALLET_TELEGRAM_ALERT_BOT_TOKEN` + `HWALLET_TELEGRAM_ALERT_CHAT_ID`；`http-server` 未捕获路由异常 → 500、启动时 **onchainos CLI 不可用**、`unhandledRejection` / `uncaughtException` 会**按类型节流**推送（`HWALLET_TELEGRAM_ALERT_MIN_INTERVAL_MS`，默认 120s）；`POST /api/admin/telegram-test` 手动探活；**不落 token / chat_id 到消息外日志**。
 - App 侧 `walletApi` / `hwalletBackendFetch` 与 BFF 路径对齐；`pingHwalletBackend` → `/health`。
 
 ---
@@ -25,7 +24,7 @@
 |------|------|----------|------|
 | P1 | **Admin 文档与路由同源** | `admin-api-catalog.ts`：`ADMIN_API_ROUTE_SPECS` + `matchAdminRoute`；`admin-routes` 表驱动分发；`ADMIN_OPS_API_DOCS` 由同表生成 | **已完成** |
 | P2 | **运维台体验** | 例如：`/ops` 内一键打开「当前 origin + 常用 Admin URL」、错误态更友好、可选暗色外主题（非必须） | **已完成** |
-| P3 | **可观测性（安全）** | 结构化日志、按路径计数（内存环缓冲）、**不落密钥**；与现有 `X-Request-Id` 对齐；**Telegram 告警见上「已完成」** | 待办 |
+| P3 | **可观测性（安全）** | 结构化日志、按路径计数（内存环缓冲）、**不落密钥**；与现有 `X-Request-Id` 对齐 | 待办 |
 | P4 | **BFF 集成测试** | 对关键路由做 `supertest` 式或 `node:http` 本机起服短测（鉴权、413、429、meta token） | 待办 |
 | P5 | **`h1-platform` ↔ BFF** | 文档已写「尚未全量硬绑」；若要接：先定 **HTTP 契约 / 版本前缀**，再改 `h1-capabilities` 与 MCP 文档 | 远期 |
 | P6 | **App 内入口** | 例如设置里「打开运维台」（`EXPO_PUBLIC_HWALLET_API_BASE` + `/ops` 系统浏览器）；纯产品决策 | 可选 |
@@ -46,7 +45,6 @@
 | BFF 入口 | `src/services/walletBackend.ts` → `src/wallet-backend/http-server.ts` |
 | 能力表 / 路由表生成 | `src/wallet-backend/h1-capabilities.ts` |
 | Admin 路径与文档 | `src/wallet-backend/admin-api-catalog.ts` |
-| Telegram 告警（可选） | `src/wallet-backend/telegram-alert.ts` |
 | Admin + 诊断 + 公开路由聚合 | `src/wallet-backend/admin-ops.ts` |
 | `/ops` HTML 组装 | `src/wallet-backend/ops-console-html.ts` |
 | App 调 BFF | `src/api/providers/okx/onchain/hwalletBackendFetch.ts`、`src/services/walletApi*.ts` |

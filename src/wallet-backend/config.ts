@@ -38,13 +38,3 @@ export const AI_RATE_LIMIT_WINDOW_MS = parseInt(
   process.env.HWALLET_AI_RATE_LIMIT_WINDOW_MS || String(60_000),
   10,
 );
-
-/** 可选：Telegram Bot 告警（`https://api.telegram.org/bot<token>/sendMessage`） */
-export const TELEGRAM_ALERT_BOT_TOKEN = (process.env.HWALLET_TELEGRAM_ALERT_BOT_TOKEN || "").trim();
-/** 接收告警的 chat_id（私聊、群或频道 id，见 Telegram BotFather / getUpdates） */
-export const TELEGRAM_ALERT_CHAT_ID = (process.env.HWALLET_TELEGRAM_ALERT_CHAT_ID || "").trim();
-/** 同一告警 category 的最小间隔（毫秒），防刷屏 */
-export const TELEGRAM_ALERT_MIN_INTERVAL_MS = parseInt(
-  process.env.HWALLET_TELEGRAM_ALERT_MIN_INTERVAL_MS || String(120_000),
-  10,
-);

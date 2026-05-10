@@ -7,7 +7,6 @@ import { isAiRouteRateLimited } from "./ai-rate-limit";
 import { dispatchJsonRoutes } from "./routes/index";
 import { tryServeOpsConsole } from "./routes/ops-console-route";
 import { INVALID_JSON_BODY } from "./http-utils";
-import { notifyTelegramAlertThrottled } from "./telegram-alert";
 
 export { parseBody } from "./http-utils";
 
@@ -75,12 +74,6 @@ export function startWalletBackendHttpServer(): void {
         res.end(JSON.stringify({ ok: false, error: "Invalid JSON body" }));
         return;
       }
-      notifyTelegramAlertThrottled("http_dispatch_500", [
-        `请求处理异常 → HTTP 500`,
-        `${req.method || "?"} ${url}`,
-        `ip=${clientIp}${idPart}`,
-        `msg=${String(err?.message || err).slice(0, 500)}`,
-      ]);
       res.writeHead(500);
       res.end(JSON.stringify({ error: err.message || "Internal error" }));
     }
@@ -107,12 +100,6 @@ export function startWalletBackendHttpServer(): void {
       console.error(
         `[WalletBackend] ⚠️ onchainos CLI 不可用，钱包功能将无法工作。请在服务器执行: curl -sSL https://raw.githubusercontent.com/okx/onchainos-skills/main/install.sh | sh`,
       );
-      notifyTelegramAlertThrottled("onchainos_cli_unavailable", [
-        "启动检测：onchainos CLI 不可用",
-        "钱包相关接口将无法工作",
-        `CLI_HOME_ROOT=${CLI_HOME_ROOT}`,
-        `端口=${WALLET_PORT}`,
-      ]);
     }
   });
 }
