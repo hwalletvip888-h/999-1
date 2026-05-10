@@ -16,6 +16,7 @@ export const CHAT_INTENT_ACTIONS = [
   "portfolio",
   "address",
   "transfer",
+  "introduce",
   "signal",
   "chat",
 ] as const;
@@ -183,6 +184,9 @@ export function buildLocalRuleIntentPayload(input: string): Record<string, unkno
     const toAddress = addrMatch?.[0];
     const chain = toAddress?.startsWith("0x") ? "evm" : toAddress ? "solana" : undefined;
     return { action: "transfer", symbol: "USDT", amount, toAddress, chain, reply: "" };
+  }
+  if (/你是谁|你能做什么|你会什么|介绍|功能|能力|你有什么|帮我做什么|你能帮|什么功能/.test(lower)) {
+    return { action: "introduce", reply: "" };
   }
   if (/价格|行情|多少钱|今日|查一下/.test(lower)) {
     return { action: "price", symbol, reply: "" };

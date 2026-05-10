@@ -5,6 +5,7 @@
  */
 import { askClaude, chatWithAI, type AIIntent } from './claudeAI';
 import type { ChatIntentAction } from '../intentNormalize';
+import { localRuleIntent } from '../intentNormalize';
 import { api } from '../../api/gateway';
 import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
@@ -117,6 +118,11 @@ function buildSteps(action: ChatIntentAction): AIStep[] {
         ...base,
         { id: 's2', label: '组织回复内容', icon: '💬', status: 'pending' },
       ];
+    case 'introduce':
+      return [
+        ...base,
+        { id: 's2', label: '展示能力清单', icon: '✨', status: 'pending' },
+      ];
   }
 }
 
@@ -156,8 +162,15 @@ export async function handleUserPrompt(
   let steps = buildSteps('chat'); // 先用通用步骤
   steps = advanceStep(steps, 's1', 'active', onStep);
 
-  // 使用 Claude AI 识别意图
-  const intent: AIIntent = await askClaude(input, options?.abortSignal);
+  // 先跑本地规则（零延迟）；命中则跳过 AI 网络请求
+  const localIntent = localRuleIntent(input);
+  const skipAI = localIntent.action !== 'chat'; // 非闲聊的本地规则直接用
+
+  // 使用 Claude AI 识别意图（本地规则未命中时才调用）
+  const chatHistory = (options?.chatHistory ?? []).slice(-6);
+  const intent: AIIntent = skipAI
+    ? localIntent
+    : await askClaude(input, options?.abortSignal, chatHistory);
   console.log('[Orchestrator] AI intent:', intent.action, intent.symbol, intent.amount);
 
   // 识别完成后，重建步骤列表（根据实际 action）
@@ -839,6 +852,45 @@ export async function handleUserPrompt(
         };
       }
 
+      // ─── 自我介绍 / 能力说明 ───
+      case 'introduce': {
+        steps = advanceStep(steps, 's2', 'active', onStep);
+        await delay(200);
+        steps = advanceStep(steps, 's2', 'done', onStep);
+        return {
+          ok: true,
+          data: {
+            replyText: `👋 **Hi，我是 H**，你的链上 AI 资产管家 🐬
+
+**我能帮你做这些事：**
+
+💰 **资产管理**
+• 查看链上钱包资产总览（EVM + Solana）
+• 显示充值 / 收款地址，一键复制
+• 转账提现，自动识别链别，陌生地址有安全提示
+
+📊 **行情 & 交易**
+• 实时查询 BTC / ETH / SOL 等任意代币价格
+• 开合约做多 / 做空（带 K 线卡片）
+• 链上代币兑换（Swap，聚合最优路由）
+• 网格策略（AI 自动推荐参数）
+
+🌱 **链上赚币**
+• 质押 / DeFi 存款（Lido、Aave 等协议）
+• 扫描链上高收益机会（聪明钱信号）
+
+🛡️ **安全 & 记忆**
+• 转账地址安全提醒（首次陌生地址自动警告）
+• 多轮对话记住上下文（问完地址可以接着追问）
+
+---
+直接说你想做的事就行，比如：
+「充值」「BTC 行情」「转 100U 给 0xAbc...」「做多 ETH 100U」`,
+          },
+          simulationMode: false,
+        };
+      }
+
       // ─── 闲聊 ───
       case 'chat': {
         steps = advanceStep(steps, 's2', 'active', onStep);
@@ -847,8 +899,7 @@ export async function handleUserPrompt(
 
         const replyText =
           intent.reply ||
-          (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal));
-        return {
+          (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal));        return {
           ok: true,
           data: { replyText },
           simulationMode: false

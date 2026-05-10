@@ -14,7 +14,11 @@ export type { AIIntent };
 /**
  * 意图识别 — 调用后端 /api/ai/intent (Claude)
  */
-export async function askClaude(userMessage: string, abortSignal?: AbortSignal): Promise<AIIntent> {
+export async function askClaude(
+  userMessage: string,
+  abortSignal?: AbortSignal,
+  history: Array<{ role: "user" | "assistant"; content: string }> = [],
+): Promise<AIIntent> {
   const url = hwalletAbsoluteUrl("/api/ai/intent");
   if (!url) {
     console.warn("[AI] EXPO_PUBLIC_HWALLET_API_BASE 未配置，使用本地意图规则");
@@ -25,7 +29,7 @@ export async function askClaude(userMessage: string, abortSignal?: AbortSignal):
     const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: userMessage }),
+      body: JSON.stringify({ message: userMessage, history: history.slice(-6) }),
       signal: abortSignal,
     });
 

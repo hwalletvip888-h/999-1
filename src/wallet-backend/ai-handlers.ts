@@ -18,11 +18,12 @@ export async function handleAiChatRequest(body: {
 
 export async function handleAiIntentRequest(body: {
   message?: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }): Promise<{ ok: true; intent: unknown } | { ok: false; error: string }> {
-  const { message } = body;
+  const { message, history = [] } = body;
   if (!message) {
     return { ok: false, error: "message is required" };
   }
-  const intent = await recognizeIntent(message);
+  const intent = await recognizeIntent(message, undefined, history.slice(-6));
   return { ok: true, intent };
 }
