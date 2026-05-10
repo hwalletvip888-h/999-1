@@ -5,7 +5,8 @@
  *
  * | 常量 | 典型调用方 | 对接对象 |
  * |------|------------|----------|
- * | `FETCH_TIMEOUT_MS` | `walletApiHttp.fetchWithTimeout` / `getWithTimeout`；`api/providers/okx/okxHttpCore.request` | 自家 BFF（`EXPO_PUBLIC_HWALLET_API_BASE`）；**OKX V5 REST**（`https://www.okx.com`，官方签名头，无自研协议） |
+ * | `FETCH_TIMEOUT_MS` | `walletApiHttp.fetchWithTimeout` / `getWithTimeout`；`okxHttpCore.request` | RN → 自家 BFF；**OKX V5 REST**（`www.okx.com`，官方签名） |
+ * | （同上） | `wallet-backend/server-fetch` 默认参数 | Node → `okx-http.ts` 等出站（`web3.okx.com`，官方签名） |
  * | `OTP_POST_DEADLINE_MS` | `walletApiHttp.raceOtpPost` | 同上 BFF，OTP 相关 POST 与 UI 层竞态上限 |
  * | `OKX_AGENTIC_FETCH_TIMEOUT_MS` | `agentWalletProviders` → `fetchWithDeadline` | **OKX Web3 Agentic priapi**（`web3.okx.com`，官方路径与头；仍非自研栈） |
  * | `EXTERNAL_LLM_FETCH_TIMEOUT_MS` | `aiChat` → `fetchWithDeadline`；`HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS` 可调 | Claude / DeepSeek 等**第三方 LLM HTTP**（与 OKX 无关） |

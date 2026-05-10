@@ -1,4 +1,5 @@
-/** MCP → BFF 出站请求默认超时（毫秒）；可用 HWALLET_MCP_FETCH_TIMEOUT_MS 覆盖，clamp 10s–120s */
+/** MCP → BFF 出站请求默认超时（毫秒）；可用 HWALLET_MCP_FETCH_TIMEOUT_MS 覆盖，clamp 10s–120s。
+ * 默认数值须与仓库根目录 `src/services/hwalletHttpConstants.ts` 中 `FETCH_TIMEOUT_MS` 一致（MCP 子包不 import 该文件，避免子包与主工程耦合）。 */
 
 function clampMs(n: number, lo: number, hi: number): number {
   if (!Number.isFinite(n)) return lo;
