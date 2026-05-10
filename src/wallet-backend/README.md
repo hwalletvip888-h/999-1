@@ -17,6 +17,7 @@
 | `ai-handlers.ts` | `/api/ai/chat`、`/api/ai/intent` 薄封装；`recognizeIntent` 出口已 sanitize（见 `src/services/intentNormalize.ts`） |
 | `http-utils.ts` | `parseBody` |
 | `schemas/ai.ts`、`schemas/auth.ts` | **Zod** 校验 `/api/ai/*`、登录 OTP 请求体；路由层 400 返回结构化错误 |
+| `schemas/walletDex.ts` | **Zod** 校验 `/api/v6/dex/*`、`/api/v6/wallet/send`、`/api/wallet/accounts/switch` 请求体 |
 | `http-server.ts` | CORS、请求日志、`/ops` 与 `dispatchJsonRoutes` 编排 |
 | `h1-capabilities.ts` | **`H1.skill.*` ↔ BFF 路径** 单一注册表 + JSON Schema（供 MCP / OpenAPI 生成） |
 | `routes/` | 按域拆分：`meta-routes`（`GET /api/meta/capabilities`）、`ops-console-route`、`admin-routes`、`auth-routes`、`wallet-routes`、`dex-routes`、`ai-routes`、`health-route`、`index` 分发 |

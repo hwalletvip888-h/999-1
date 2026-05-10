@@ -21,6 +21,7 @@ import { useCardLibrary, type SavedCard } from "../services/cardLibrary";
 import { useMemberProfile } from "../services/memberSystem";
 import { useEmergencyState } from "../services/emergencyStop";
 import { okxOnchainClient, type DefiOpportunity } from "../api/providers/okx/okxOnchainClient";
+import { formatHwalletErrorForUser } from "../services/hwalletErrorUi";
 import type { AppView } from "../types";
 import { uiColors, uiSpace } from "../theme/uiSystem";
 
@@ -88,16 +89,24 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
 
   // 今日机会推送（V6 链上发现） — 进入页面时拉一次，缓存到本地 state
   const [opportunities, setOpportunities] = useState<DefiOpportunity[]>([]);
+  const [opportunityLoadHint, setOpportunityLoadHint] = useState("");
   useEffect(() => {
-    let cancelled = false;
-    okxOnchainClient.discoverOpportunities({ minApr: 3 }).then((res) => {
-      if (cancelled) return;
-      const safe = (res.data || []).filter((o) => o.securityScore >= 70).slice(0, 3);
-      setOpportunities(safe);
-    }).catch(() => {
-      if (!cancelled) setOpportunities([]);
-    });
-    return () => { cancelled = true; };
+    const ac = new AbortController();
+    setOpportunityLoadHint("");
+    okxOnchainClient
+      .discoverOpportunities({ minApr: 3 }, undefined, { signal: ac.signal })
+      .then((res) => {
+        if (ac.signal.aborted) return;
+        const safe = (res.data || []).filter((o) => o.securityScore >= 70).slice(0, 3);
+        setOpportunities(safe);
+        if (safe.length === 0) setOpportunityLoadHint("");
+      })
+      .catch((e) => {
+        if (ac.signal.aborted) return;
+        setOpportunities([]);
+        setOpportunityLoadHint(formatHwalletErrorForUser(e));
+      });
+    return () => ac.abort();
   }, []);
 
   const v5TotalPnl = v5Rows.reduce((s, r) => s + parseFloat(r.pnlText.replace(/[^\d.\-]/g, "")) * (r.pnlPositive ? 1 : -1), 0);
@@ -185,6 +194,12 @@ export function AgentCenterScreen({ onChangeView }: AgentCenterScreenProps) {
             ))}
           </View>
         </>
+      ) : opportunityLoadHint ? (
+        <View style={{ paddingHorizontal: uiSpace.pageX, paddingBottom: 10 }}>
+          <Text style={{ fontSize: 13, color: "#64748B", lineHeight: 18 }}>
+            今日机会暂不可用：{opportunityLoadHint}
+          </Text>
+        </View>
       ) : null}
 
       {/* V5：AI 合约策略 */}

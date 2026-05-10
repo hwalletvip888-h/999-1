@@ -13,8 +13,14 @@ import type {
   WalletSendResult,
 } from "./types";
 
+/** 可选：传入页面卸载时的 AbortSignal，与内置超时合并 */
+export type OnchainRequestOpts = { signal?: AbortSignal };
+
 export const okxOnchainClient = {
-  async getWalletPortfolio(token: string): Promise<{ data: WalletPortfolio; simulationMode: boolean }> {
+  async getWalletPortfolio(
+    token: string,
+    opts?: OnchainRequestOpts,
+  ): Promise<{ data: WalletPortfolio; simulationMode: boolean }> {
     const backendBase = getHwalletApiBase();
 
     if (typeof __DEV__ !== "undefined" && __DEV__) {
@@ -24,7 +30,7 @@ export const okxOnchainClient = {
     if (!backendBase) {
       throw new Error("未配置 EXPO_PUBLIC_HWALLET_API_BASE，无法经后端拉取钱包资产。");
     }
-    const raw = await callBackend<any>("/api/v6/wallet/portfolio", { token });
+    const raw = await callBackend<any>("/api/v6/wallet/portfolio", { token, signal: opts?.signal });
     const normalized = normalizePortfolioPayload(raw);
     if (!normalized) {
       throw new Error("OKX 官方余额接口返回异常");
@@ -42,6 +48,7 @@ export const okxOnchainClient = {
       slippageBps?: number;
     },
     token?: string,
+    opts?: OnchainRequestOpts,
   ): Promise<{ data: DexSwapQuote; simulationMode: boolean }> {
     const creds = loadOkxCredentials();
     const builderCode = creds?.builderCode;
@@ -50,6 +57,7 @@ export const okxOnchainClient = {
       body: { ...params, builderCode },
       token,
       builderCode,
+      signal: opts?.signal,
     });
     return { data, simulationMode: false };
   },
@@ -64,6 +72,7 @@ export const okxOnchainClient = {
       slippageBps?: number;
     },
     token?: string,
+    opts?: OnchainRequestOpts,
   ): Promise<{ data: DexSwapExecuteResult; simulationMode: boolean }> {
     const creds = loadOkxCredentials();
     const builderCode = creds?.builderCode;
@@ -72,6 +81,7 @@ export const okxOnchainClient = {
       body: { ...params, builderCode },
       token,
       builderCode,
+      signal: opts?.signal,
     });
     return { data, simulationMode: false };
   },
@@ -85,11 +95,13 @@ export const okxOnchainClient = {
       tokenAddress?: string;
     },
     token: string,
+    opts?: OnchainRequestOpts,
   ): Promise<{ data: WalletSendResult; simulationMode: boolean }> {
     const data = await callBackend<WalletSendResult>("/api/v6/wallet/send", {
       method: "POST",
       body: params,
       token,
+      signal: opts?.signal,
     });
     return { data, simulationMode: false };
   },
@@ -97,28 +109,35 @@ export const okxOnchainClient = {
   async discoverOpportunities(
     filter: { minApr?: number; chain?: ChainId; riskTag?: "low" | "medium" | "high" } = {},
     token?: string,
+    opts?: OnchainRequestOpts,
   ): Promise<{ data: DefiOpportunity[]; simulationMode: boolean }> {
     const data = await callBackend<DefiOpportunity[]>("/api/v6/defi/discover", {
       method: "POST",
       body: filter,
       token,
+      signal: opts?.signal,
     });
     return { data: Array.isArray(data) ? data : [], simulationMode: false };
   },
 
-  async getDefiPositions(token: string): Promise<{ data: DefiPosition[]; simulationMode: boolean }> {
-    const data = await callBackend<DefiPosition[]>("/api/v6/defi/portfolio", { token });
+  async getDefiPositions(
+    token: string,
+    opts?: OnchainRequestOpts,
+  ): Promise<{ data: DefiPosition[]; simulationMode: boolean }> {
+    const data = await callBackend<DefiPosition[]>("/api/v6/defi/portfolio", { token, signal: opts?.signal });
     return { data: Array.isArray(data) ? data : [], simulationMode: false };
   },
 
   async fetchSignals(
     filter: { signalType?: "smart_money_buy" | "kol_call" | "trenches_new"; chain?: ChainId } = {},
     token?: string,
+    opts?: OnchainRequestOpts,
   ): Promise<{ data: DexSignal[]; simulationMode: boolean }> {
     const data = await callBackend<DexSignal[]>("/api/v6/dex/signal", {
       method: "POST",
       body: filter,
       token,
+      signal: opts?.signal,
     });
     return { data: Array.isArray(data) ? data : [], simulationMode: false };
   },
@@ -126,11 +145,13 @@ export const okxOnchainClient = {
   async securityScan(
     params: { contract: string; chain: ChainId },
     token?: string,
+    opts?: OnchainRequestOpts,
   ): Promise<{ data: { score: number; flags: string[]; isHoneypot: boolean }; simulationMode: boolean }> {
     const data = await callBackend<{ score: number; flags: string[]; isHoneypot: boolean }>("/api/v6/security/scan", {
       method: "POST",
       body: params,
       token,
+      signal: opts?.signal,
     });
     return { data, simulationMode: false };
   },

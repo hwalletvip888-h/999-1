@@ -543,8 +543,8 @@ export async function handleUserPrompt(
         let signals: DexSignal[] = [];
         try {
           const [oppRes, sigRes] = await Promise.all([
-            okxOnchainClient.discoverOpportunities({ minApr: 3 }),
-            okxOnchainClient.fetchSignals({})
+            okxOnchainClient.discoverOpportunities({ minApr: 3 }, undefined, { signal: options?.abortSignal }),
+            okxOnchainClient.fetchSignals({}, undefined, { signal: options?.abortSignal }),
           ]);
           opps = (oppRes.data || []).filter((o) => o.securityScore >= 70).slice(0, 5);
           signals = (sigRes.data || []).slice(0, 5);

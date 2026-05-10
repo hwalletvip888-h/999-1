@@ -1,5 +1,5 @@
 import React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Dimensions, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -68,6 +68,8 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const [accountSwitching, setAccountSwitching] = useState(false);
 
+  const reloadPortfolioAbortRef = useRef<AbortController | null>(null);
+
   const accountIdMasked = session?.accountId
     ? `${session.accountId.slice(0, 6)}…${session.accountId.slice(-4)}`
     : "未连接";
@@ -105,6 +107,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
 
   // 加载 Agent Wallet 汇总（仅真实接口，无本地模拟兜底）
   useEffect(() => {
+    const ac = new AbortController();
     (async () => {
       try {
         if (!session?.token) {
@@ -120,7 +123,8 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         }
 
         try {
-          const portfolio = await okxOnchainClient.getWalletPortfolio(session.token);
+          const portfolio = await okxOnchainClient.getWalletPortfolio(session.token, { signal: ac.signal });
+          if (ac.signal.aborted) return;
           setWalletDataError("");
           const tokens = portfolio.data.tokens ?? [];
           const totalUsd = Number(portfolio.data.totalUsd || 0);
@@ -166,6 +170,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
           setAssetSparks({});
           setPortfolioSpark(defaultSpark);
         } catch (portfolioErr: unknown) {
+          if (ac.signal.aborted) return;
           const msg = formatHwalletErrorForUser(portfolioErr);
           setWalletDataError(
             Platform.OS === "web"
@@ -178,6 +183,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         }
         setLoading(false);
       } catch (err) {
+        if (ac.signal.aborted) return;
         console.warn("[WalletScreen] 加载真实数据失败:", err);
         setWalletDataError(formatHwalletErrorForUser(err));
         setTotalBalance("—");
@@ -186,6 +192,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         setLoading(false);
       }
     })();
+    return () => ac.abort();
   }, [session?.token]);
 
   // 进入 Wallet 页面后刷新一次 Agent Wallet 地址
@@ -214,10 +221,18 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
     setLoading(true);
     try {
       if (!session?.token) return;
-      const portfolio = await okxOnchainClient.getWalletPortfolio(session.token);
-      const tokens = portfolio.data.tokens ?? [];
-      // 这两个 useEffect 会自动重跑，这里只是兜底
-      void tokens;
+      reloadPortfolioAbortRef.current?.abort();
+      const ac = new AbortController();
+      reloadPortfolioAbortRef.current = ac;
+      try {
+        await okxOnchainClient.getWalletPortfolio(session.token, { signal: ac.signal });
+      } catch (e) {
+        if (!ac.signal.aborted) {
+          console.warn("[WalletScreen] reloadEverything:", formatHwalletErrorForUser(e));
+        }
+      } finally {
+        if (reloadPortfolioAbortRef.current === ac) reloadPortfolioAbortRef.current = null;
+      }
     } catch {
       /* noop */
     }
@@ -271,6 +286,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
   // 再用 OKX 行情拉单价 + 24h 涨跌（拉不到就用持仓 USD 估值反推）
   useEffect(() => {
     let cancelled = false;
+    const ac = new AbortController();
     (async () => {
       try {
         if (!session?.token) {
@@ -283,15 +299,17 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
 
         let tokens: any[] = [];
         try {
-          const portfolio = await okxOnchainClient.getWalletPortfolio(session.token);
+          const portfolio = await okxOnchainClient.getWalletPortfolio(session.token, { signal: ac.signal });
           tokens = portfolio.data.tokens ?? [];
         } catch {
-          if (!cancelled) {
+          if (!cancelled && !ac.signal.aborted) {
             setAgentAssets([]);
             setAgentAssetLoading(false);
           }
           return;
         }
+
+        if (cancelled || ac.signal.aborted) return;
 
         // 跨链同 symbol 聚合 + 同时保留每条链的明细
         const chainLabel = (c: string): string => {
@@ -371,6 +389,7 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
     })();
     return () => {
       cancelled = true;
+      ac.abort();
     };
   }, [session?.token]);
   const [swapOpen, setSwapOpen] = useState(false);
@@ -1140,6 +1159,13 @@ function WithdrawScreen({
   const [recentAddresses, setRecentAddresses] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const sendAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      sendAbortRef.current?.abort();
+    };
+  }, []);
 
   const tokenOptions = assets
     .filter((a) => a.symbol && (a.qty > 0 || ["USDT", "ETH", "SOL", "BNB", "OKB", "USDC"].includes(a.symbol)))
@@ -1684,6 +1710,9 @@ function WithdrawScreen({
                 Alert.alert("未选择网络", "请退回上一步重新选择提现网络。");
                 return;
               }
+              sendAbortRef.current?.abort();
+              sendAbortRef.current = new AbortController();
+              const sendSignal = sendAbortRef.current.signal;
               const apiChain = (aggregatedChains.find((c) => c.chain === withdrawChainKey)?.api ??
                 WITHDRAW_CHAIN_META[withdrawChainKey]?.api ??
                 withdrawChainKey) as ChainId;
@@ -1695,7 +1724,8 @@ function WithdrawScreen({
                   amount: amount.trim(),
                   ...(tokenContractForSend ? { tokenAddress: tokenContractForSend } : {}),
                 },
-                session.token
+                session.token,
+                { signal: sendSignal },
               );
               const txHash = String(res?.data?.txHash || "");
               Alert.alert("发送已提交", txHash ? `交易哈希：${txHash}` : "已广播到链上，等待确认");
@@ -1748,6 +1778,14 @@ function SwapScreen({
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [lastTxHash, setLastTxHash] = useState<string>("");
+  const swapExecuteAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      swapExecuteAbortRef.current?.abort();
+    };
+  }, []);
+
   const prices: Record<string, number> = { USDT: 1, USDC: 1, ETH: 2380, SOL: 165 };
   const balances: Record<string, number> = {
     USDT: assets.find((a) => a.symbol === "USDT")?.qty ?? 0,
@@ -1775,7 +1813,7 @@ function SwapScreen({
 
   useEffect(() => {
     if (!hasAmount) return;
-    let cancelled = false;
+    const ac = new AbortController();
     (async () => {
       try {
         setQuoteLoading(true);
@@ -1789,9 +1827,10 @@ function SwapScreen({
             toSymbol,
             slippageBps
           },
-          token
+          token,
+          { signal: ac.signal },
         );
-        if (cancelled) return;
+        if (ac.signal.aborted) return;
         const q = quoteRes.data;
         const toAmt = Number(q.toAmount);
         if (Number.isFinite(toAmt) && toAmt > 0) {
@@ -1804,15 +1843,16 @@ function SwapScreen({
         setPriceImpactPct(((q.priceImpactBps || 0) / 100).toFixed(2));
         setRouterLabel(q.routerLabel || "OKX DEX Aggregator");
         if (typeof q.slippageBps === "number" && q.slippageBps > 0) setSlippageBps(q.slippageBps);
-      } catch {
+      } catch (e) {
+        if (ac.signal.aborted) return;
         setRemoteToAmount(null);
-        setQuoteError("OKX 报价不可用，请稍后重试");
+        setQuoteError(formatHwalletErrorForUser(e));
       } finally {
-        if (!cancelled) setQuoteLoading(false);
+        if (!ac.signal.aborted) setQuoteLoading(false);
       }
     })();
     return () => {
-      cancelled = true;
+      ac.abort();
     };
   }, [fromSymbol, toSymbol, parsedAmount, hasAmount, token, slippageBps]);
 
@@ -2066,6 +2106,9 @@ function SwapScreen({
                   if (!canPreview) return;
                   setConfirming(true);
                   try {
+                    swapExecuteAbortRef.current?.abort();
+                    swapExecuteAbortRef.current = new AbortController();
+                    const execSig = swapExecuteAbortRef.current.signal;
                     const execRes = await okxOnchainClient.executeSwap(
                       {
                         fromChain: "xlayer",
@@ -2075,7 +2118,8 @@ function SwapScreen({
                         toSymbol,
                         slippageBps
                       },
-                      token
+                      token,
+                      { signal: execSig },
                     );
                     setLastTxHash(execRes.data.txHash || "");
                   } catch (e) {

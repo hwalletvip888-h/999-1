@@ -8,6 +8,7 @@ import {
   handleSwitchAccount,
   handleWalletSendViaCli,
 } from "../wallet-cli-handlers";
+import { parseSwitchAccountBody, parseWalletSendBody } from "../schemas/walletDex";
 
 export async function tryWalletRoutes(
   req: http.IncomingMessage,
@@ -42,8 +43,14 @@ export async function tryWalletRoutes(
     return true;
   }
   if (isWalletSend) {
-    const body = await parseBody(req);
-    const result = await handleWalletSendViaCli(auth, body);
+    const raw = await parseBody(req);
+    const parsed = parseWalletSendBody(raw);
+    if (!parsed.ok) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: parsed.error }));
+      return true;
+    }
+    const result = await handleWalletSendViaCli(auth, parsed.data);
     if (!result?.ok) {
       res.writeHead(400);
       res.end(JSON.stringify({ error: result?.error || "wallet send failed" }));
@@ -60,8 +67,14 @@ export async function tryWalletRoutes(
     return true;
   }
   if (isSwitchAccount) {
-    const body = await parseBody(req);
-    const result = await handleSwitchAccount(auth, body?.accountId);
+    const raw = await parseBody(req);
+    const parsed = parseSwitchAccountBody(raw);
+    if (!parsed.ok) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: parsed.error }));
+      return true;
+    }
+    const result = await handleSwitchAccount(auth, parsed.data.accountId);
     res.writeHead(result.ok ? 200 : 400);
     res.end(JSON.stringify(result));
     return true;

@@ -14,4 +14,5 @@ export type {
   DefiPosition,
   DexSignal,
 } from "./onchain/types";
+export type { OnchainRequestOpts } from "./onchain/client";
 export { okxOnchainClient } from "./onchain/client";
