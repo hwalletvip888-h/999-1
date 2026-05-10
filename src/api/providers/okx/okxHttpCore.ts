@@ -13,6 +13,7 @@
  *   - request(): fetch + 超时 + 自动签名（creds 可选）+ 可选 AbortSignal
  */
 import CryptoJS from "crypto-js";
+import { FETCH_TIMEOUT_MS } from "../../../services/hwalletHttpConstants";
 import { mergeUserSignalWithTimeout } from "../../../services/mergeUserSignalWithTimeout";
 
 // ─── 类型 ──────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ export class OkxApiError extends Error {
 // ─── 配置 ──────────────────────────────────────────────────────
 
 export const OKX_BASE_URL = "https://www.okx.com";
-const TIMEOUT_MS = 15000;
+/** OKX 未规定客户端超时；与 App/BFF 共用 FETCH_TIMEOUT_MS，避免与 priapi 等路径各写一套魔数 */
 
 // ─── 签名 ──────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ export async function request<T = any>(
   }
 
   const timeoutController = new AbortController();
-  const timer = setTimeout(() => timeoutController.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => timeoutController.abort(), FETCH_TIMEOUT_MS);
   const signal = mergeUserSignalWithTimeout(opts?.signal ?? undefined, timeoutController.signal);
 
   try {
