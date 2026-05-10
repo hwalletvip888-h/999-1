@@ -81,7 +81,9 @@ export function startWalletBackendHttpServer(): void {
 
   server.listen(WALLET_PORT, "0.0.0.0", () => {
     console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${WALLET_PORT}`);
-    console.log(`[WalletBackend] 运维台: http://localhost:${WALLET_PORT}/ops （Admin: /api/admin/overview|system|trend-status|ai-limits|ping）`);
+    console.log(
+      `[WalletBackend] 运维台: http://localhost:${WALLET_PORT}/ops （Admin: overview|system|trend-status|ai-limits|settings GET/POST|ping）`,
+    );
     console.log(`[WalletBackend] AI Chat: /api/ai/chat | Intent: /api/ai/intent`);
     console.log(`[WalletBackend] Trend: GET /api/trend`);
     console.log(`[WalletBackend] 能力发现(MCP 对齐): GET http://localhost:${WALLET_PORT}/api/meta/capabilities`);

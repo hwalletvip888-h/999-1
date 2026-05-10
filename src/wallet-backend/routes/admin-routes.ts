@@ -7,6 +7,8 @@ import {
   assertOpsAuthorized,
 } from "../admin-ops";
 import { OPS_ADMIN_TOKEN } from "../config";
+import { parseBody } from "../http-utils";
+import { applyRuntimeSettingsPatch, buildRuntimeSettingsPayload } from "../runtime-settings";
 
 export async function tryAdminRoutes(
   req: http.IncomingMessage,
@@ -54,6 +56,35 @@ export async function tryAdminRoutes(
   if (url === "/api/admin/ai-limits" && method === "GET") {
     res.writeHead(200);
     res.end(JSON.stringify(adminAiLimitsPayload()));
+    return true;
+  }
+  if (url === "/api/admin/settings" && method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify(buildRuntimeSettingsPayload()));
+    return true;
+  }
+  if (url === "/api/admin/settings" && method === "POST") {
+    let body: unknown;
+    try {
+      body = await parseBody(req);
+    } catch (e: any) {
+      if (e?.message === "PAYLOAD_TOO_LARGE") {
+        res.writeHead(413);
+        res.end(JSON.stringify({ ok: false, error: "Request body too large" }));
+        return true;
+      }
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: "Invalid JSON body" }));
+      return true;
+    }
+    const out = applyRuntimeSettingsPatch(body);
+    if (!out.ok) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: out.error }));
+      return true;
+    }
+    res.writeHead(200);
+    res.end(JSON.stringify(out.payload));
     return true;
   }
   if (url === "/api/admin/ping" && method === "GET") {

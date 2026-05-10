@@ -1,19 +1,14 @@
 import * as fs from "fs";
 import * as nodePath from "path";
 import { parseTrendOutput, type TrendReport } from "../trend/trendParse";
-
-function trendOutputDir(): string {
-  const fromEnv = (process.env.HWALLET_TREND_OUTPUT_DIR || "").trim();
-  if (fromEnv) return fromEnv;
-  return nodePath.join(process.env.HOME || "/root", "trend_engine/output");
-}
+import { getEffectiveTrendOutputDir } from "./runtime-settings";
 
 /**
  * 读取 trend_engine 目录下最新一份 report_*.json，解析 BTC（或首个币种）为 TrendReport。
  */
 export function readLatestTrendReportFromDisk(): TrendReport | null {
   try {
-    const TREND_OUTPUT_DIR = trendOutputDir();
+    const TREND_OUTPUT_DIR = getEffectiveTrendOutputDir();
     if (!fs.existsSync(TREND_OUTPUT_DIR)) return null;
 
     const files = fs

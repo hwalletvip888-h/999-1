@@ -14,6 +14,7 @@
 | `dex-tokens.ts` | `mapClientChainToCli`、`symbolToContract`、`pickSignerAddressForChain` |
 | `wallet-cli-handlers.ts` | 所有钱包/DEX CLI 业务 handler |
 | `admin-ops.ts` | 运维台鉴权、`listCliSandboxes`、`adminOverviewPayload` |
+| `runtime-settings.ts` | 工作台运行时 JSON（`HWALLET_RUNTIME_SETTINGS_PATH` 或 `CLI_HOME_ROOT/runtime-settings.json`）覆盖 AI 限流、JSON 体上限、CORS、trend 目录；**无需重启** |
 | `ai-handlers.ts` | `/api/ai/chat`、`/api/ai/intent` 薄封装；`recognizeIntent` 出口已 sanitize（见 `src/services/intentNormalize.ts`） |
 | `http-utils.ts` | `parseBody` |
 | `schemas/ai.ts`、`schemas/auth.ts` | **Zod** 校验 `/api/ai/*`、登录 OTP 请求体；路由层 400 返回结构化错误 |
@@ -52,6 +53,7 @@
 | `HWALLET_MAX_JSON_BODY_BYTES` | `262144` | `parseBody` 拒绝超限 JSON，返回 **413** |
 | `HWALLET_AI_RATE_LIMIT_MAX` | `120` | 每 IP 每窗口内允许 `/api/ai/*` **POST** 次数；`0` 关闭 |
 | `HWALLET_AI_RATE_LIMIT_WINDOW_MS` | `60000` | 限流窗口毫秒 |
+| `HWALLET_RUNTIME_SETTINGS_PATH` | （默认 `CLI_HOME_ROOT/runtime-settings.json`） | 持久化**运行时覆盖**；`GET/POST /api/admin/settings` 读写；覆盖项含 AI 限流、`HWALLET_MAX_JSON_BODY_BYTES`、`HWALLET_CORS_ORIGINS`、`HWALLET_TREND_OUTPUT_DIR` 的**进程内热替换** |
 | `HWALLET_META_CAPABILITIES_TOKEN` | 空 | 若设置，拉能力表须带 **`X-Hwallet-Meta-Token`**（MCP 子进程设同名变量即可） |
 
 BFF 访问日志会打印 **`X-Request-Id`**（若客户端传入）。

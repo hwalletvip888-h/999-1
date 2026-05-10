@@ -76,13 +76,17 @@
     code { font-size: 0.78em; background: rgba(0,0,0,0.35); padding: 0.1rem 0.35rem; border-radius: 4px; }
     .toolbar { margin-bottom: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
     .hint { color: var(--muted); font-size: 0.78rem; margin-top: 0.35rem; }
+    label.lbl2 { display: block; font-size: 0.72rem; color: var(--muted); margin-bottom: 0.2rem; }
+    .field { margin-bottom: 0.65rem; }
+    .field-row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+    .field-row input[type="text"], .field-row input[type="number"] { flex: 1; min-width: 140px; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>H Wallet 运维台</h1>
-      <div class="sub">只读监控 · 进程与趋势快照 · 需 <code>HWALLET_OPS_ADMIN_TOKEN</code></div>
+      <div class="sub">监控 + 运行时参数（持久化 JSON，热生效）· 需 <code>HWALLET_OPS_ADMIN_TOKEN</code></div>
     </div>
     <div class="auth-bar">
       <input type="password" id="opsKey" placeholder="X-Ops-Key" autocomplete="off" />
@@ -95,6 +99,7 @@
       <button type="button" class="nav active" data-view="dash">总览</button>
       <button type="button" class="nav" data-view="system">系统</button>
       <button type="button" class="nav" data-view="trend">趋势引擎</button>
+      <button type="button" class="nav" data-view="settings">运行时参数</button>
       <button type="button" class="nav" data-view="api">Admin API</button>
     </nav>
     <main>
@@ -135,6 +140,58 @@
         </div>
       </section>
 
+      <section id="view-settings" class="view">
+        <div class="toolbar">
+          <button type="button" id="btnLoadSettings">加载当前参数</button>
+          <button type="button" id="btnSaveSettings">保存到服务器</button>
+          <button type="button" class="secondary" id="btnResetOverrides">清除全部覆盖（回退 env）</button>
+        </div>
+        <div class="grid">
+          <div class="card" style="grid-column:1/-1;">
+            <h2>持久化文件</h2>
+            <div id="setPath" class="kv">—</div>
+            <p class="hint">默认 <code>CLI_HOME_ROOT/runtime-settings.json</code>，可用环境变量 <code>HWALLET_RUNTIME_SETTINGS_PATH</code> 指定。</p>
+          </div>
+          <div class="card" style="grid-column:1/-1;">
+            <h2>可热替换项（保存后立即对进程生效）</h2>
+            <div class="field">
+              <label class="lbl2">aiRateLimitMax（每 IP / 窗；0=关闭）</label>
+              <div class="field-row">
+                <input type="number" id="inAiMax" min="0" step="1" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">aiRateLimitWindowMs</label>
+              <div class="field-row">
+                <input type="number" id="inAiWin" min="1000" step="1000" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">maxJsonBodyBytes</label>
+              <div class="field-row">
+                <input type="number" id="inMaxBody" min="1024" step="1024" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">corsAllowedOrigins（<code>*</code> 或逗号分隔，须含协议）</label>
+              <div class="field-row">
+                <input type="text" id="inCors" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">trendOutputDir（report_*.json 目录）</label>
+              <div class="field-row">
+                <input type="text" id="inTrendDir" autocomplete="off" />
+              </div>
+            </div>
+          </div>
+          <div class="card" style="grid-column:1/-1;">
+            <h2>GET 响应 JSON</h2>
+            <pre class="raw" id="setRaw">{}</pre>
+          </div>
+        </div>
+      </section>
+
       <section id="view-trend" class="view">
         <div class="toolbar">
           <button type="button" id="btnLoadTrend">加载趋势状态</button>
@@ -150,7 +207,7 @@
 
       <section id="view-api" class="view">
         <div class="card" style="max-width:720px;">
-          <h2>GET 接口（均需 <code>X-Ops-Key</code>）</h2>
+          <h2>Admin API（均需 <code>X-Ops-Key</code>）</h2>
           <table>
             <thead><tr><th>路径</th><th>说明</th></tr></thead>
             <tbody>
@@ -159,9 +216,10 @@
               <tr><td><code>/api/admin/system</code></td><td>进程 uptime、Node 版本、内存</td></tr>
               <tr><td><code>/api/admin/trend-status</code></td><td>趋势磁盘报告摘要（无则 hasReport:false）</td></tr>
               <tr><td><code>/api/admin/ai-limits</code></td><td>AI 限流窗口与当前桶数量</td></tr>
+              <tr><td><code>/api/admin/settings</code></td><td>GET：运行时参数快照；POST：JSON 合并写入（字段见 README）</td></tr>
             </tbody>
           </table>
-          <p class="hint">未设置 <code>HWALLET_OPS_ADMIN_TOKEN</code> 时上述接口返回 503。</p>
+          <p class="hint">未设置 <code>HWALLET_OPS_ADMIN_TOKEN</code> 时上述接口返回 503。除 <code>GET /api/admin/settings</code> 外，<code>POST /api/admin/settings</code> 亦需同一密钥。</p>
         </div>
       </section>
     </main>
@@ -191,6 +249,97 @@
       el.textContent = msg || "";
     }
 
+    async function apiPost(path, bodyObj) {
+      var key = getKey();
+      if (!key) throw new Error("请填写运维密钥或先保存");
+      var ctrl = new AbortController();
+      var tid = setTimeout(function () { ctrl.abort(); }, OPS_FETCH_MS);
+      try {
+        var r = await fetch(path, {
+          method: "POST",
+          headers: {
+            "X-Ops-Key": key,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(bodyObj || {}),
+          signal: ctrl.signal,
+        });
+        var text = await r.text();
+        var data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(text.slice(0, 200) || r.statusText);
+        }
+        if (!r.ok) throw new Error(data.error || data.msg || "HTTP " + r.status);
+        return data;
+      } catch (e) {
+        if (e && e.name === "AbortError") throw new Error("请求超时（" + OPS_FETCH_MS + " ms）");
+        throw e;
+      } finally {
+        clearTimeout(tid);
+      }
+    }
+
+    function fillSettingsForm(d) {
+      var eff = d.effective || {};
+      document.getElementById("inAiMax").value = eff.aiRateLimitMax != null ? String(eff.aiRateLimitMax) : "";
+      document.getElementById("inAiWin").value = eff.aiRateLimitWindowMs != null ? String(eff.aiRateLimitWindowMs) : "";
+      document.getElementById("inMaxBody").value = eff.maxJsonBodyBytes != null ? String(eff.maxJsonBodyBytes) : "";
+      document.getElementById("inCors").value = eff.corsAllowedOrigins != null ? String(eff.corsAllowedOrigins) : "";
+      document.getElementById("inTrendDir").value = eff.trendOutputDir != null ? String(eff.trendOutputDir) : "";
+      document.getElementById("setPath").innerHTML =
+        '<div><span class="lbl">路径</span> <code>' + (d.filePath || "—") + "</code></div>";
+      document.getElementById("setRaw").textContent = JSON.stringify(d, null, 2);
+    }
+
+    document.getElementById("btnLoadSettings").onclick = async function () {
+      setErr("");
+      try {
+        var d = await api("/api/admin/settings");
+        fillSettingsForm(d);
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    };
+
+    document.getElementById("btnSaveSettings").onclick = async function () {
+      setErr("");
+      try {
+        var body = {
+          aiRateLimitMax: parseInt(document.getElementById("inAiMax").value, 10),
+          aiRateLimitWindowMs: parseInt(document.getElementById("inAiWin").value, 10),
+          maxJsonBodyBytes: parseInt(document.getElementById("inMaxBody").value, 10),
+          corsAllowedOrigins: document.getElementById("inCors").value,
+          trendOutputDir: document.getElementById("inTrendDir").value.trim(),
+        };
+        if (!Number.isFinite(body.aiRateLimitMax)) throw new Error("aiRateLimitMax 无效");
+        if (!Number.isFinite(body.aiRateLimitWindowMs)) throw new Error("aiRateLimitWindowMs 无效");
+        if (!Number.isFinite(body.maxJsonBodyBytes)) throw new Error("maxJsonBodyBytes 无效");
+        var d = await apiPost("/api/admin/settings", body);
+        fillSettingsForm(d);
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    };
+
+    document.getElementById("btnResetOverrides").onclick = async function () {
+      setErr("");
+      try {
+        var d = await apiPost("/api/admin/settings", {
+          aiRateLimitMax: null,
+          aiRateLimitWindowMs: null,
+          maxJsonBodyBytes: null,
+          corsAllowedOrigins: null,
+          trendOutputDir: null,
+        });
+        fillSettingsForm(d);
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    };
+
     async function api(path) {
       var key = getKey();
       if (!key) throw new Error("请填写运维密钥或先保存");
@@ -198,12 +347,16 @@
       var tid = setTimeout(function () { ctrl.abort(); }, OPS_FETCH_MS);
       try {
         var r = await fetch(path, {
-          headers: { "X-Ops-Key": key, "Accept": "application/json" },
+          headers: { "X-Ops-Key": key, Accept: "application/json" },
           signal: ctrl.signal,
         });
         var text = await r.text();
         var data;
-        try { data = JSON.parse(text); } catch (e) { throw new Error(text.slice(0, 200) || r.statusText); }
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          throw new Error(text.slice(0, 200) || r.statusText);
+        }
         if (!r.ok) throw new Error(data.error || data.msg || "HTTP " + r.status);
         return data;
       } catch (e) {
@@ -316,6 +469,7 @@
       var id = active.id;
       if (id === "view-dash") document.getElementById("btnLoadDash").click();
       else if (id === "view-system") document.getElementById("btnLoadSys").click();
+      else if (id === "view-settings") document.getElementById("btnLoadSettings").click();
       else if (id === "view-trend") document.getElementById("btnLoadTrend").click();
     };
 

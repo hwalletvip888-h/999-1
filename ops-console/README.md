@@ -22,6 +22,16 @@
 | GET | `/api/admin/system` | 进程 uptime、Node 版本、内存占用 |
 | GET | `/api/admin/trend-status` | 趋势磁盘报告摘要（无数据时 `hasReport: false`） |
 | GET | `/api/admin/ai-limits` | AI 限流窗口、每 IP 上限、当前内存桶数量 |
+| GET | `/api/admin/settings` | 运行时参数：文件路径、env 基线、当前生效值、已存覆盖项 |
+| POST | `/api/admin/settings` | JSON body 合并写入运行时文件（字段见下）；`null` 清除该项覆盖 |
+
+`POST /api/admin/settings` 可写字段（均为可选；传 `null` 表示删除该键的覆盖）：
+
+- `aiRateLimitMax`：整数 `0`～`100000`（`0` 关闭 AI POST 限流）
+- `aiRateLimitWindowMs`：`1000`～`86400000`
+- `maxJsonBodyBytes`：`1024`～`10485760`
+- `corsAllowedOrigins`：字符串，与 `HWALLET_CORS_ORIGINS` 同格式（`*` 或逗号分隔 Origin）
+- `trendOutputDir`：趋势 `report_*.json` 所在目录绝对路径
 
 未设置 `HWALLET_OPS_ADMIN_TOKEN` 时，Admin API 返回 **503**；`/ops` 页面仍可打开，但无法拉取数据。
 
