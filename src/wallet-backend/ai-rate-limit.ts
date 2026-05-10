@@ -24,3 +24,12 @@ export function isAiRouteRateLimited(clientKey: string): boolean {
   }
   return false;
 }
+
+/** 运营台只读：当前内存中限流桶数量（不含各 IP 具体计数，避免泄露） */
+export function getAiRateLimitStats(): { bucketCount: number; max: number; windowMs: number } {
+  return {
+    bucketCount: buckets.size,
+    max: AI_RATE_LIMIT_MAX,
+    windowMs: AI_RATE_LIMIT_WINDOW_MS,
+  };
+}

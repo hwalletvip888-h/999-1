@@ -1,4 +1,4 @@
-# H Wallet 运营台（人类操作）
+# H Wallet 运维台（人类操作）
 
 由 **`walletBackend`** 托管，与 App API 同进程、同端口。
 
@@ -7,7 +7,7 @@
 1. 启动后端：`npm run dev:wallet-backend`（默认 `http://localhost:3100`）
 2. 浏览器打开：**`http://localhost:3100/ops`**
 3. 在服务器上设置环境变量 **`HWALLET_OPS_ADMIN_TOKEN`**（强随机字符串），重启后端。
-4. 在运营页输入该密钥 → **保存到浏览器** → **加载数据**。
+4. 在运营页输入该密钥 → **保存** → 左侧切换视图后点击 **加载…** 拉取数据。
 
 ## 请求超时
 
@@ -19,6 +19,9 @@
 |------|------|------|
 | GET | `/api/admin/ping` | 校验密钥是否有效 |
 | GET | `/api/admin/overview` | 健康检查、CLI 沙箱列表、脱敏配置快照 |
+| GET | `/api/admin/system` | 进程 uptime、Node 版本、内存占用 |
+| GET | `/api/admin/trend-status` | 趋势磁盘报告摘要（无数据时 `hasReport: false`） |
+| GET | `/api/admin/ai-limits` | AI 限流窗口、每 IP 上限、当前内存桶数量 |
 
 未设置 `HWALLET_OPS_ADMIN_TOKEN` 时，Admin API 返回 **503**；`/ops` 页面仍可打开，但无法拉取数据。
 

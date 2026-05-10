@@ -5,8 +5,10 @@ import * as fs from "fs";
 import * as http from "http";
 import * as nodePath from "path";
 import { CLI_HOME_ROOT, OKX_API_KEY, OKX_SECRET_KEY, OPS_ADMIN_TOKEN, WALLET_PORT } from "./config";
+import { getAiRateLimitStats } from "./ai-rate-limit";
 import { ensureCliHomeRoot } from "./cli-home";
 import { isOnchainosCliAvailable } from "./onchainos-cli";
+import { readLatestTrendReportFromDisk } from "./trend-from-disk";
 
 export function readOpsKey(req: http.IncomingMessage): string {
   const x = String(req.headers["x-ops-key"] || "").trim();
@@ -41,6 +43,45 @@ export function listCliSandboxes(): { sandboxId: string; mtimeMs: number }[] {
   } catch {
     return [];
   }
+}
+
+export function adminSystemPayload(): Record<string, unknown> {
+  const m = process.memoryUsage();
+  return {
+    ok: true,
+    uptimeSec: Math.floor(process.uptime()),
+    node: process.version,
+    pid: process.pid,
+    platform: process.platform,
+    memory: {
+      rss: m.rss,
+      heapUsed: m.heapUsed,
+      heapTotal: m.heapTotal,
+    },
+  };
+}
+
+export function adminTrendStatusPayload(): Record<string, unknown> {
+  const r = readLatestTrendReportFromDisk();
+  if (!r) {
+    return { ok: true, hasReport: false, summary: null };
+  }
+  return {
+    ok: true,
+    hasReport: true,
+    summary: {
+      symbol: r.symbol,
+      timestamp: r.timestamp,
+      overallScore: r.overallScore,
+      direction: r.direction,
+      directionCn: r.directionCn,
+      currentPrice: r.currentPrice,
+    },
+  };
+}
+
+export function adminAiLimitsPayload(): Record<string, unknown> {
+  return { ok: true, ...getAiRateLimitStats() };
 }
 
 export function adminOverviewPayload(): Record<string, unknown> {

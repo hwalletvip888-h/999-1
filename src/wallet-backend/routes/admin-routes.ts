@@ -1,5 +1,11 @@
 import * as http from "http";
-import { adminOverviewPayload, assertOpsAuthorized } from "../admin-ops";
+import {
+  adminAiLimitsPayload,
+  adminOverviewPayload,
+  adminSystemPayload,
+  adminTrendStatusPayload,
+  assertOpsAuthorized,
+} from "../admin-ops";
 import { OPS_ADMIN_TOKEN } from "../config";
 
 export async function tryAdminRoutes(
@@ -33,6 +39,21 @@ export async function tryAdminRoutes(
   if (url === "/api/admin/overview" && method === "GET") {
     res.writeHead(200);
     res.end(JSON.stringify(adminOverviewPayload()));
+    return true;
+  }
+  if (url === "/api/admin/system" && method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify(adminSystemPayload()));
+    return true;
+  }
+  if (url === "/api/admin/trend-status" && method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify(adminTrendStatusPayload()));
+    return true;
+  }
+  if (url === "/api/admin/ai-limits" && method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify(adminAiLimitsPayload()));
     return true;
   }
   if (url === "/api/admin/ping" && method === "GET") {
