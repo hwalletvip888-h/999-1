@@ -445,8 +445,8 @@ export function ChatScreen() {
       className="flex-1"
       style={{ backgroundColor: uiColors.appBg }}
       {...(Platform.OS !== 'web' ? {
-        behavior: Platform.OS === 'ios' ? 'padding' as const : 'height' as const,
-        keyboardVerticalOffset: Platform.OS === 'ios' ? insets.top + TOP_BAR_HEIGHT : 0,
+        behavior: Platform.OS === 'ios' ? 'padding' as const : 'padding' as const,
+        keyboardVerticalOffset: Platform.OS === 'ios' ? insets.top + TOP_BAR_HEIGHT : TOP_BAR_HEIGHT + 24,
       } : {})}
     >
       {messages.length === 0 ? (
