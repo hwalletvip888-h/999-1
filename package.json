@@ -22,6 +22,7 @@
     "bootstrap:subpkgs": "npm install --prefix h1-platform && npm install --prefix mcp-hwallet-server",
     "test:h1": "npm install --prefix h1-platform && npm test --prefix h1-platform",
     "test:services": "vitest run --config vitest.services.config.ts",
+    "security:audit": "npm audit",
     "mcp:hwallet": "npm install --prefix mcp-hwallet-server && npm run dev --prefix mcp-hwallet-server",
     "mcp:hwallet:build": "npm run build --prefix mcp-hwallet-server"
   },
@@ -67,5 +68,20 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "tar": "^7.5.15",
+    "@xmldom/xmldom": "^0.9.10",
+    "postcss": "^8.5.10",
+    "eas-cli": {
+      "ajv": "^8.20.0",
+      "diff": "^9.0.0",
+      "minimatch": "5.1.8",
+      "node-forge": "^1.4.0",
+      "yaml": "^2.8.4"
+    },
+    "react-native-markdown-display": {
+      "markdown-it": "^12.3.2"
+    }
   }
 }
