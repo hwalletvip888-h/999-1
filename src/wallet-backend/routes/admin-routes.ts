@@ -11,6 +11,7 @@ import {
 import { OPS_ADMIN_TOKEN } from "../config";
 import { parseBody } from "../http-utils";
 import { applyRuntimeSettingsPatch, buildRuntimeSettingsPayload } from "../runtime-settings";
+import { sendTelegramTestMessage } from "../telegram-alert";
 
 function json(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status);
@@ -62,6 +63,15 @@ async function dispatchAdminOp(
         return;
       }
       json(res, 200, out.payload);
+      return;
+    }
+    case "telegramTest": {
+      const r = await sendTelegramTestMessage();
+      if (!r.ok) {
+        json(res, 400, { ok: false, error: r.error });
+        return;
+      }
+      json(res, 200, { ok: true, sent: true, message: "telegram_test_sent" });
       return;
     }
   }

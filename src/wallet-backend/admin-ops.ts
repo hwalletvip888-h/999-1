@@ -20,6 +20,7 @@ import { ensureCliHomeRoot } from "./cli-home";
 import { buildBffHttpRouteCatalog } from "./h1-capabilities";
 import { isOnchainosCliAvailable } from "./onchainos-cli";
 import { readLatestTrendReportFromDisk } from "./trend-from-disk";
+import { isTelegramAlertConfigured } from "./telegram-alert";
 import {
   getEffectiveExternalLlmFetchTimeoutMs,
   getEffectiveTrendOutputDir,
@@ -127,6 +128,7 @@ export function adminOverviewPayload(): Record<string, unknown> {
       okxProjectIdConfigured: Boolean(String(OKX_PROJECT_ID || "").trim()),
       opsAdminConfigured: Boolean(OPS_ADMIN_TOKEN),
       metaCapabilitiesEnforced: Boolean(META_CAPABILITIES_TOKEN),
+      telegramAlertConfigured: isTelegramAlertConfigured(),
     },
   };
 }
@@ -229,6 +231,7 @@ export function adminDiagnosticsPayload(): Record<string, unknown> {
       metaCapabilitiesEnforced: Boolean(META_CAPABILITIES_TOKEN),
       okxProjectIdConfigured: Boolean(String(OKX_PROJECT_ID || "").trim()),
       okxApiKeyConfigured: Boolean(OKX_API_KEY && OKX_SECRET_KEY),
+      telegramAlertConfigured: isTelegramAlertConfigured(),
     },
     routeCatalog: HTTP_ROUTE_CATALOG,
   };

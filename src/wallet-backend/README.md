@@ -4,7 +4,7 @@
 
 | 模块 | 职责 |
 |------|------|
-| `config.ts` | 端口、路径、OKX 密钥、`MAX_JSON_BODY_BYTES`、`CORS_ALLOWED_ORIGINS`、AI 限流、`META_CAPABILITIES_TOKEN` 等 |
+| `config.ts` | 端口、路径、OKX 密钥、`MAX_JSON_BODY_BYTES`、`CORS_ALLOWED_ORIGINS`、AI 限流、`META_CAPABILITIES_TOKEN`、**`HWALLET_TELEGRAM_ALERT_*`** 等 |
 | `cors.ts` | `HWALLET_CORS_ORIGINS` → `Access-Control-Allow-Origin` |
 | `ai-rate-limit.ts` | `/api/ai/*` POST 按 IP 简单窗口限流 |
 | `meta-auth.ts` | 可选：`GET /api/meta/capabilities` 的 `X-Hwallet-Meta-Token` |
@@ -20,7 +20,8 @@
 | `http-utils.ts` | `parseBody` |
 | `schemas/ai.ts`、`schemas/auth.ts` | **Zod** 校验 `/api/ai/*`、登录 OTP 请求体；路由层 400 返回结构化错误 |
 | `schemas/walletDex.ts` | **Zod** 校验 `/api/v6/dex/*`、`/api/v6/wallet/send`、`/api/wallet/accounts/switch` 请求体 |
-| `http-server.ts` | CORS、请求日志、`/ops` 与 `dispatchJsonRoutes` 编排 |
+| `telegram-alert.ts` | **可选 Telegram 告警**：`notifyTelegramAlertThrottled`、`sendTelegramTestMessage`；与 `config` 中 `HWALLET_TELEGRAM_ALERT_*` 对齐 |
+| `http-server.ts` | CORS、请求日志、`/ops` 与 `dispatchJsonRoutes` 编排；**未捕获异常 → 500 时**可选 Telegram 通知 |
 | `h1-capabilities.ts` | **`H1.skill.*` ↔ BFF 路径** 单一注册表 + JSON Schema；**`buildBffHttpRouteCatalog()`** 生成运维/诊断用 HTTP 路由表（与注册表 + 固定端点一致） |
 | `ops-console-html.ts` | **`GET /ops` HTML 生成**：读取 `ops-console/index.html` 模板，注入 `admin-api-catalog` 的 `ADMIN_OPS_API_DOCS`、`HTTP_ROUTE_CATALOG` 与 `ops-bootstrap` JSON（含 **`adminQuickGets`**、**`publicQuickLinks`**，与 Admin 表同源） |
 | `routes/` | 按域拆分：`meta-routes`（`GET /api/meta/capabilities`）、`ops-console-route`、`admin-routes`、`auth-routes`、`wallet-routes`、`dex-routes`、`ai-routes`、`health-route`、`index` 分发 |
@@ -56,8 +57,13 @@
 | `HWALLET_AI_RATE_LIMIT_MAX` | `120` | 每 IP 每窗口内允许 `/api/ai/*` **POST** 次数；`0` 关闭 |
 | `HWALLET_AI_RATE_LIMIT_WINDOW_MS` | `60000` | 限流窗口毫秒 |
 | `HWALLET_RUNTIME_SETTINGS_PATH` | （默认 `CLI_HOME_ROOT/runtime-settings.json`） | 持久化**运行时覆盖**；`GET/POST /api/admin/settings`；可覆盖 AI 限流、JSON 体、CORS、trend 目录、LLM 模型与 token、**`externalLlmFetchTimeoutMs`**（与 `HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS` 同源，热生效）。**API 密钥**（`CLAUDE_API_KEY` / `DEEPSEEK_API_KEY`）仍须只在环境变量中配置 |
+| `HWALLET_TELEGRAM_ALERT_BOT_TOKEN` | 空 | 与 `HWALLET_TELEGRAM_ALERT_CHAT_ID` 同时设置时启用 **Telegram Bot 告警**（出站 `api.telegram.org`） |
+| `HWALLET_TELEGRAM_ALERT_CHAT_ID` | 空 | 接收消息的 chat id（私聊 / 群 / 频道） |
+| `HWALLET_TELEGRAM_ALERT_MIN_INTERVAL_MS` | `120000` | 同一告警 **category** 的最小发送间隔，防刷屏 |
 | `HWALLET_BUILD_REVISION` | 空 | 可选；`GET /api/admin/diagnostics` 的 `buildRevision` 字段（镜像/部署注入 commit 或版本号） |
 | `HWALLET_META_CAPABILITIES_TOKEN` | 空 | 若设置，拉能力表须带 **`X-Hwallet-Meta-Token`**（MCP 子进程设同名变量即可） |
+
+密钥与上述变量请放在 **PM2 `env` / 宿主机环境**，勿写入 Expo `EXPO_PUBLIC_*`。
 
 BFF 访问日志会打印 **`X-Request-Id`**（若客户端传入）。
 

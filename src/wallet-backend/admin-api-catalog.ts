@@ -1,6 +1,6 @@
 /**
  * Admin API（/api/admin/*）单一事实来源：路径、方法、运维页说明、路由分发 key。
- * 新增 Admin 接口时：**只改本文件**，并同步 `tryAdminRoutes` 中的 `dispatchAdminOp`。
+ * 新增 Admin 接口时：**只改本文件**，并同步 `routes/admin-routes.ts` 中 `dispatchAdminOp`。
  */
 
 export type AdminOp =
@@ -11,7 +11,8 @@ export type AdminOp =
   | "aiLimits"
   | "diagnostics"
   | "settingsGet"
-  | "settingsPost";
+  | "settingsPost"
+  | "telegramTest";
 
 export interface AdminApiRouteSpec {
   readonly path: string;
@@ -31,6 +32,12 @@ export const ADMIN_API_ROUTE_SPECS: readonly AdminApiRouteSpec[] = [
   { path: "/api/admin/diagnostics", method: "GET", docNote: "聚合只读诊断（进程、路由表、HTTP 常量等）", op: "diagnostics" },
   { path: "/api/admin/settings", method: "GET", docNote: "运行时参数快照", op: "settingsGet" },
   { path: "/api/admin/settings", method: "POST", docNote: "JSON 合并写入（字段见 ops-console/README）", op: "settingsPost" },
+  {
+    path: "/api/admin/telegram-test",
+    method: "POST",
+    docNote: "发送一条测试消息到 Telegram（需配置 HWALLET_TELEGRAM_ALERT_*）",
+    op: "telegramTest",
+  },
 ];
 
 /** 查找当前请求对应的 op；未命中返回 null（由路由层返回 404） */
@@ -51,6 +58,7 @@ export function buildAdminOpsDocRows(): { path: string; note: string }[] {
     "/api/admin/ai-limits",
     "/api/admin/diagnostics",
     "/api/admin/settings",
+    "/api/admin/telegram-test",
   ];
   const settings = ADMIN_API_ROUTE_SPECS.filter((r) => r.path === "/api/admin/settings");
   const rest = ADMIN_API_ROUTE_SPECS.filter((r) => r.path !== "/api/admin/settings");

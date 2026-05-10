@@ -15,6 +15,17 @@
 3. 在服务器上设置环境变量 **`HWALLET_OPS_ADMIN_TOKEN`**（强随机字符串），重启后端。
 4. 在运营页输入该密钥 → **保存** → 左侧切换视图后点击 **加载…** 拉取数据。
 
+## Telegram 告警（可选）
+
+1. 在 Telegram 与 [@BotFather](https://t.me/BotFather) 创建 Bot，拿到 **Bot Token**。
+2. 与 Bot 私聊发一条 `/start`，用 `https://api.telegram.org/bot<TOKEN>/getUpdates` 查看 **`chat.id`**（群需先把 Bot 拉进群再发一条消息）。
+3. 服务器环境变量：  
+   `HWALLET_TELEGRAM_ALERT_BOT_TOKEN=<token>`  
+   `HWALLET_TELEGRAM_ALERT_CHAT_ID=<id>`  
+   可选：`HWALLET_TELEGRAM_ALERT_MIN_INTERVAL_MS`（默认 `120000`，同类型告警最小间隔）。
+4. 重启 BFF 后，在运维台或 curl 调用 **`POST /api/admin/telegram-test`**（Header：`X-Ops-Key`）应收到测试消息。
+5. **自动推送**：`dispatchJsonRoutes` 未捕获异常导致 **HTTP 500**、进程启动时 **onchainos CLI 不可用**、Node **`unhandledRejection` / `uncaughtException`**（均按 category 节流）。消息中**不含**密钥与完整请求体。
+
 ## 请求超时
 
 页面向同源 `/api/admin/*` 的 `fetch` 使用 **28s** 超时（与仓库 `src/services/hwalletHttpConstants.ts` 中 `FETCH_TIMEOUT_MS` 对齐）；超时将提示检查后端是否可达。
@@ -30,6 +41,7 @@
 | GET | `/api/admin/diagnostics` | 聚合只读诊断：包版本、进程与内存、onchainos、CLI 沙箱数、趋势目录、运行时 JSON 文件元数据、HTTP 超时常量、功能开关、公开路由表（无密钥） |
 | GET | `/api/admin/settings` | 运行时参数：文件路径、env 基线、当前生效值、已存覆盖项 |
 | POST | `/api/admin/settings` | JSON body 合并写入运行时文件（字段见下）；`null` 清除该项覆盖 |
+| POST | `/api/admin/telegram-test` | 向已配置的 Telegram `chat_id` 发送一条测试消息（需同时设置 `HWALLET_TELEGRAM_ALERT_BOT_TOKEN` 与 `HWALLET_TELEGRAM_ALERT_CHAT_ID`） |
 
 `POST /api/admin/settings` 可写字段（均为可选；传 `null` 表示删除该键的覆盖）：
 

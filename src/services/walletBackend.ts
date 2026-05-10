@@ -14,5 +14,19 @@
  * 启动：`npm run dev:wallet-backend`（`npx tsx src/services/walletBackend.ts`）
  */
 import { startWalletBackendHttpServer } from "../wallet-backend/http-server";
+import { notifyTelegramAlertThrottled } from "../wallet-backend/telegram-alert";
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[WalletBackend] unhandledRejection", reason);
+  notifyTelegramAlertThrottled("unhandled_rejection", [String(reason ?? "").slice(0, 800)]);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[WalletBackend] uncaughtException", err);
+  notifyTelegramAlertThrottled("uncaught_exception", [
+    String(err?.message || err).slice(0, 800),
+    err?.stack ? String(err.stack).slice(0, 1200) : "",
+  ].filter(Boolean));
+});
 
 startWalletBackendHttpServer();
