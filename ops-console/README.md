@@ -1,6 +1,12 @@
 # H Wallet 运维台（人类操作）
 
-由 **`walletBackend`** 托管，与 App API 同进程、同端口。浏览器访问的 **`/ops` HTML 由后端在响应时生成**：读取仓库内 `ops-console/index.html` 作为模板，注入与 **`admin-api-catalog`** 中 **`ADMIN_OPS_API_DOCS`**、`admin-ops` 中 **`HTTP_ROUTE_CATALOG`** 一致的路由表及 `<script type="application/json" id="ops-bootstrap">`（便于后续前端扩展）；模板缺失时返回简短降级页。
+由 **`walletBackend`** 托管，与 App API 同进程、同端口。浏览器访问的 **`/ops` HTML 由后端在响应时生成**：读取仓库内 `ops-console/index.html` 作为模板，注入与 **`admin-api-catalog`** 中 **`ADMIN_OPS_API_DOCS`**、`admin-ops` 中 **`HTTP_ROUTE_CATALOG`** 一致的路由表及 `<script type="application/json" id="ops-bootstrap">`（内含 **`adminQuickGets`**、**`publicQuickLinks`**，供页内快捷入口；模板缺失时返回简短降级页。
+
+## 快捷入口与错误提示（P2）
+
+- **公开链接**：`/health`、`/ops` 在新标签打开（无需密钥）。
+- **Admin GET**：同源 `fetch` + `X-Ops-Key`，成功时 JSON 出现在「快速预览」区。
+- **错误文案**：503（未配置 token）、401/403、429、404、413、非 JSON 响应、超时、网络不可达等均有中文说明。
 
 ## 访问方式
 

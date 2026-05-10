@@ -1,12 +1,18 @@
 /**
  * 运维页 HTML：读取 `ops-console/index.html` 模板，注入与后端一致的路由表与元数据。
- * 单一事实来源：`admin-api-catalog` 中 `ADMIN_OPS_API_DOCS`、`admin-ops` 中 `HTTP_ROUTE_CATALOG`。
+ * 单一事实来源：`admin-api-catalog` 中 `ADMIN_OPS_API_DOCS` + Admin GET 快捷列表、`admin-ops` 中 `HTTP_ROUTE_CATALOG`。
  */
 import * as fs from "fs";
 import * as nodePath from "path";
-import { ADMIN_OPS_API_DOCS } from "./admin-api-catalog";
+import { ADMIN_API_ROUTE_SPECS, ADMIN_OPS_API_DOCS } from "./admin-api-catalog";
 import { HTTP_ROUTE_CATALOG } from "./admin-ops";
 import { WALLET_PORT } from "./config";
+
+/** 无需 X-Ops-Key、可在新标签直接打开的常用路径（与 `health-route` / `/ops` 一致） */
+const OPS_PUBLIC_QUICK_LINKS: readonly { path: string; note: string }[] = [
+  { path: "/health", note: "健康检查 JSON，无需密钥" },
+  { path: "/ops", note: "本运维页（同源）" },
+];
 
 function escapeHtml(s: string): string {
   return s
@@ -41,11 +47,18 @@ function resolveTemplatePath(): string | null {
 }
 
 function bootstrapJson(): string {
+  const adminQuickGets = ADMIN_API_ROUTE_SPECS.filter((r) => r.method === "GET").map((r) => ({
+    path: r.path,
+    label: r.path.replace(/^\/api\/admin\//, ""),
+    note: r.docNote,
+  }));
   const payload = {
     generatedAt: new Date().toISOString(),
     walletPort: WALLET_PORT,
     adminApi: ADMIN_OPS_API_DOCS,
     httpRoutes: HTTP_ROUTE_CATALOG,
+    adminQuickGets,
+    publicQuickLinks: [...OPS_PUBLIC_QUICK_LINKS],
   };
   return JSON.stringify(payload).replace(/</g, "\\u003c");
 }

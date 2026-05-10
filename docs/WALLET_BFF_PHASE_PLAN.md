@@ -11,6 +11,7 @@
 - 人类运维台：`/ops` **服务端组装 HTML**（模板 `ops-console/index.html` + 注入），Admin API，`runtime-settings` 热参数。
 - **`HTTP_ROUTE_CATALOG`** 由 **`h1-capabilities.buildBffHttpRouteCatalog()`** 从 **`H1_CAPABILITY_REGISTRY` + 固定端点** 生成，与 `/ops`、**`GET /api/admin/diagnostics`** 同源，减少双份维护。
 - **`/api/admin/*`** 路径与运维页 Admin 表由 **`admin-api-catalog.ADMIN_API_ROUTE_SPECS`** 单一维护，`admin-routes` 通过 **`matchAdminRoute`** 分发。
+- **`/ops` 运维台**：`ops-bootstrap` 含 **`adminQuickGets`**（与 catalog 同源的一键 GET）、**`publicQuickLinks`**（`/health`、`/ops`）；页内 **HTTP 状态 / 超时 / 非 JSON** 错误提示已文案化（P2）。
 - App 侧 `walletApi` / `hwalletBackendFetch` 与 BFF 路径对齐；`pingHwalletBackend` → `/health`。
 
 ---
@@ -22,7 +23,7 @@
 | 顺序 | 版块 | 内容摘要 | 状态 |
 |------|------|----------|------|
 | P1 | **Admin 文档与路由同源** | `admin-api-catalog.ts`：`ADMIN_API_ROUTE_SPECS` + `matchAdminRoute`；`admin-routes` 表驱动分发；`ADMIN_OPS_API_DOCS` 由同表生成 | **已完成** |
-| P2 | **运维台体验** | 例如：`/ops` 内一键打开「当前 origin + 常用 Admin URL」、错误态更友好、可选暗色外主题（非必须） | 待办 |
+| P2 | **运维台体验** | 例如：`/ops` 内一键打开「当前 origin + 常用 Admin URL」、错误态更友好、可选暗色外主题（非必须） | **已完成** |
 | P3 | **可观测性（安全）** | 结构化日志、按路径计数（内存环缓冲）、**不落密钥**；与现有 `X-Request-Id` 对齐 | 待办 |
 | P4 | **BFF 集成测试** | 对关键路由做 `supertest` 式或 `node:http` 本机起服短测（鉴权、413、429、meta token） | 待办 |
 | P5 | **`h1-platform` ↔ BFF** | 文档已写「尚未全量硬绑」；若要接：先定 **HTTP 契约 / 版本前缀**，再改 `h1-capabilities` 与 MCP 文档 | 远期 |
