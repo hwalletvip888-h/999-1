@@ -1,19 +1,19 @@
 /**
  * okx.ts — 凭证加载入口（可提交）
  *
- * 从内置硬编码凭证加载（生产构建）。
- * 如果凭证为空，返回 null，应用走 mock。
+ * 不在仓库内嵌生产 OKX CEX 密钥；CEX 账户经 BFF（`EXPO_PUBLIC_HWALLET_API_BASE`）与服务器环境变量。
+ * 本地开发在 `okx.local.ts` 提供 `OKX_CONFIG` / `okxCredentials`。
+ * 若凭证为空，返回 null，应用走 mock（或仅依赖 BFF 的接口仍可用）。
  */
 import { isOkxConfigured, type OkxCredentials } from "./okxTypes";
 
-// 生产环境凭证 — 构建时内联
+/** 不在 App 内嵌 OKX CEX 密钥；CEX 账户经 BFF + 服务器环境变量。本地开发用 `okx.local.ts`。 */
 const BUILT_IN_CREDENTIALS: OkxCredentials = {
-  apiKey: "b6c3f62f-5f74-45ba-a2fe-f38aa32e9fcf",
-  apiSecret: "804E87424CAEF1483E0968416108DFB3",
-  passphrase: "Haitun888.",
+  apiKey: "",
+  apiSecret: "",
+  passphrase: "",
   simulated: false,
-  // OKX Developer Platform > Builder Code（用于 X Layer / DEX 归因统计）
-  builderCode: "yf83qce657mqxsjw",
+  builderCode: "",
 };
 
 export function loadOkxCredentials(): OkxCredentials | null {

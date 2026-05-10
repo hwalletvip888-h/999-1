@@ -13,6 +13,8 @@ import {
 } from "./dex-tokens";
 import { isOnchainosCliAvailable, runOnchainosJson } from "./onchainos-cli";
 import { okxSignedRequest } from "./okx-http";
+import { request as okxCexRequest } from "../api/providers/okx/okxHttpCore";
+import { OKX_API_KEY, OKX_PASSPHRASE, OKX_SECRET_KEY } from "./config";
 
 export async function handleSendOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const e = String(email || "").trim().toLowerCase();
@@ -338,6 +340,33 @@ async function handleGetBalanceViaProviderLegacy(token: string) {
     tokens,
     lastUpdatedAt: new Date().toISOString(),
   };
+}
+
+/** CEX 账户余额：经服务器 OKX 密钥代理（App 只带登录 Bearer，不带 OKX Key） */
+export async function handleCexV5AccountBalance(token: string): Promise<{
+  ok: boolean;
+  okx?: { code: string; msg: string; data?: unknown };
+  error?: string;
+}> {
+  const t = String(token || "").trim();
+  if (!t) return { ok: false, error: "缺少 token" };
+  try {
+    homeFromToken(t);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg || "无效 token" };
+  }
+  if (!OKX_API_KEY || !OKX_SECRET_KEY || !OKX_PASSPHRASE) {
+    return { ok: false, error: "服务器未配置 OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE" };
+  }
+  try {
+    const creds = { apiKey: OKX_API_KEY, secretKey: OKX_SECRET_KEY, passphrase: OKX_PASSPHRASE };
+    const okx = await okxCexRequest("GET", "/api/v5/account/balance", creds);
+    return { ok: true, okx };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, error: msg };
+  }
 }
 
 export { handleGetBalanceViaProviderLegacy };

@@ -9,8 +9,42 @@ import type {
   H_AssetBalance,
   H_PnlRecord,
 } from '../../contracts/H_AccountApi';
+import { loadSession } from '../../../services/walletApi';
+import { getHwalletApiBase } from '../../../services/walletApiCore';
 import type { OkxCredentials } from './okxClient';
 import * as okxClient from './okxClient';
+import { callBackend } from './onchain/hwalletBackendFetch';
+
+function mapOkxBalanceResponseToOverview(res: { code: string; msg: string; data?: any[] }): H_AccountOverview {
+  if (res.code !== '0' || !res.data?.[0]) {
+    throw new Error(`[H_AccountApi] getOverview 失败: ${res.msg}`);
+  }
+  const acct = res.data[0];
+
+  const balances: H_AssetBalance[] = (acct.details || []).map((d: any) => ({
+    currency: d.ccy,
+    available: parseFloat(d.availBal || '0'),
+    frozen: parseFloat(d.frozenBal || '0'),
+    total: parseFloat(d.eq || '0'),
+    usdtValue: parseFloat(d.eqUsd || d.eq || '0'),
+  }));
+
+  return {
+    totalEquity: parseFloat(acct.totalEq || '0'),
+    availableBalance: parseFloat(acct.details?.[0]?.availBal || '0'),
+    usedMargin: parseFloat(acct.imr || '0'),
+    unrealizedPnl: parseFloat(acct.upl || '0'),
+    marginRatio: parseFloat(acct.mgnRatio || '0'),
+    balances,
+    updateTime: parseInt(acct.uTime || '0'),
+  };
+}
+
+type CexBalanceBffEnvelope = {
+  ok: boolean;
+  okx?: { code: string; msg: string; data?: any[] };
+  error?: string;
+};
 
 export class OkxH_AccountApi implements IH_AccountApi {
   private creds: OkxCredentials;
@@ -20,29 +54,26 @@ export class OkxH_AccountApi implements IH_AccountApi {
   }
 
   async getOverview(): Promise<H_AccountOverview> {
-    const res = await okxClient.getBalance(this.creds);
-    if (res.code !== '0' || !res.data?.[0]) {
-      throw new Error(`[H_AccountApi] getOverview 失败: ${res.msg}`);
+    if (getHwalletApiBase()) {
+      const session = await loadSession();
+      if (!session?.token) {
+        throw new Error('[H_AccountApi] CEX 总览需先完成钱包登录');
+      }
+      const envelope = await callBackend<CexBalanceBffEnvelope>('/api/cex/v5/account/balance', {
+        token: session.token,
+      });
+      if (!envelope?.ok || !envelope.okx) {
+        throw new Error(`[H_AccountApi] getOverview 失败: ${envelope?.error || 'BFF 未返回数据'}`);
+      }
+      return mapOkxBalanceResponseToOverview(envelope.okx);
     }
-    const acct = res.data[0];
-
-    const balances: H_AssetBalance[] = (acct.details || []).map((d: any) => ({
-      currency: d.ccy,
-      available: parseFloat(d.availBal || '0'),
-      frozen: parseFloat(d.frozenBal || '0'),
-      total: parseFloat(d.eq || '0'),
-      usdtValue: parseFloat(d.eqUsd || d.eq || '0'),
-    }));
-
-    return {
-      totalEquity: parseFloat(acct.totalEq || '0'),
-      availableBalance: parseFloat(acct.details?.[0]?.availBal || '0'),
-      usedMargin: parseFloat(acct.imr || '0'),
-      unrealizedPnl: parseFloat(acct.upl || '0'),
-      marginRatio: parseFloat(acct.mgnRatio || '0'),
-      balances,
-      updateTime: parseInt(acct.uTime || '0'),
-    };
+    if (!this.creds.apiKey?.trim() || !this.creds.secretKey?.trim() || !this.creds.passphrase?.trim()) {
+      throw new Error(
+        '[H_AccountApi] 未配置 EXPO_PUBLIC_HWALLET_API_BASE（或未登录）且无本地 OKX 密钥，无法拉取 CEX 账户',
+      );
+    }
+    const res = await okxClient.getBalance(this.creds);
+    return mapOkxBalanceResponseToOverview(res);
   }
 
   async getBalance(currency: string): Promise<H_AssetBalance> {

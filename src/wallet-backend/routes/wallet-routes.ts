@@ -2,6 +2,7 @@ import * as http from "http";
 import { parseBody } from "../http-utils";
 import {
   handleAddAccount,
+  handleCexV5AccountBalance,
   handleGetAddressesViaProvider,
   handleGetBalance,
   handleListAccounts,
@@ -29,9 +30,28 @@ export async function tryWalletRoutes(
   const isListAccounts = url === "/api/wallet/accounts" && method === "GET";
   const isSwitchAccount = url === "/api/wallet/accounts/switch" && method === "POST";
   const isAddAccount = url === "/api/wallet/accounts/add" && method === "POST";
+  const isCexV5Balance = url === "/api/cex/v5/account/balance" && method === "GET";
 
   if (isGetAddrs) {
     const result = await handleGetAddressesViaProvider(auth);
+    res.writeHead(200);
+    res.end(JSON.stringify(result));
+    return true;
+  }
+  if (isCexV5Balance) {
+    if (!auth) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ ok: false, error: "缺少 Authorization Bearer token" }));
+      return true;
+    }
+    const result = await handleCexV5AccountBalance(auth);
+    if (!result.ok) {
+      const err = String(result.error || "");
+      const status = err.includes("token") || err.includes("缺少") ? 401 : err.includes("未配置") ? 503 : 400;
+      res.writeHead(status);
+      res.end(JSON.stringify(result));
+      return true;
+    }
     res.writeHead(200);
     res.end(JSON.stringify(result));
     return true;
