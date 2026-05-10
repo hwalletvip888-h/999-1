@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mergeUserSignalWithTimeout } from "./mergeUserSignalWithTimeout";
-import { FETCH_TIMEOUT_MS, EXTERNAL_LLM_FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
+import { FETCH_TIMEOUT_MS, EXTERNAL_LLM_FETCH_TIMEOUT_MS, OKX_AGENTIC_FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
 
 describe("mergeUserSignalWithTimeout", () => {
   it("returns timeout signal when user signal is absent", () => {
@@ -33,6 +33,13 @@ describe("mergeUserSignalWithTimeout", () => {
     const timeout = new AbortController();
     const merged = mergeUserSignalWithTimeout(user.signal, timeout.signal);
     expect(merged.aborted).toBe(true);
+  });
+});
+
+describe("OKX_AGENTIC_FETCH_TIMEOUT_MS", () => {
+  it("is below general FETCH timeout (OTP fast-fail)", () => {
+    expect(OKX_AGENTIC_FETCH_TIMEOUT_MS).toBeLessThanOrEqual(FETCH_TIMEOUT_MS);
+    expect(OKX_AGENTIC_FETCH_TIMEOUT_MS).toBeGreaterThan(0);
   });
 });
 

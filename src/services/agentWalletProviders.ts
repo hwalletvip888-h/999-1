@@ -15,6 +15,8 @@
  */
 import { execFileSync, execSync } from "child_process";
 import * as crypto from "crypto";
+import { fetchWithDeadline } from "./fetchWithDeadline";
+import { OKX_AGENTIC_FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
 
 // ─── 公共类型 ─────────────────────────────────────────────────────
 
@@ -140,17 +142,9 @@ function generateTempKeyPair(): { privateKey: string; publicKey: string } {
   return { privateKey: priv.toString("base64"), publicKey: pub.toString("base64") };
 }
 
-/** OKX Agentic 公网请求超时：无超时会导致钱包后端一直挂起 → App 发送验证码无限转圈 */
-const OKX_AGENTIC_FETCH_MS = 25_000;
-
+/** OKX Agentic 公网请求：与 `fetchWithDeadline` 一致（合并超时 + 可选 AbortSignal） */
 async function okxFetch(url: string, init: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), OKX_AGENTIC_FETCH_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(tid);
-  }
+  return fetchWithDeadline(url, init, OKX_AGENTIC_FETCH_TIMEOUT_MS);
 }
 
 async function okxAgenticPublic(path: string, body: any): Promise<any> {

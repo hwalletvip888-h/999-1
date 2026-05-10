@@ -5,7 +5,12 @@ import { hwalletAbsoluteUrl } from "./walletApiCore";
 import { mergeUserSignalWithTimeout } from "./mergeUserSignalWithTimeout";
 import { FETCH_TIMEOUT_MS, OTP_POST_DEADLINE_MS } from "./hwalletHttpConstants";
 
-export { FETCH_TIMEOUT_MS, OTP_POST_DEADLINE_MS } from "./hwalletHttpConstants";
+export {
+  FETCH_TIMEOUT_MS,
+  OTP_POST_DEADLINE_MS,
+  EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+  OKX_AGENTIC_FETCH_TIMEOUT_MS,
+} from "./hwalletHttpConstants";
 
 function withRequestId(init: RequestInit): RequestInit {
   const headers = new Headers(init.headers as HeadersInit | undefined);
