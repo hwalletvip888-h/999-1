@@ -10,7 +10,7 @@ import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
 import type { AIStep } from '../../types';
 import { makeId } from '../../utils/id';
-import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard, buildTransferCard } from './cardApi';
+import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard, buildTransferCard, buildTransferSelectCard } from './cardApi';
 import { loadSession } from '../walletApi';
 // V6 链上机会发现客户端
 import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
@@ -547,19 +547,34 @@ export async function handleUserPrompt(
         const addrFromText = input.match(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/)?.[0];
         const toAddress = addrFromIntent || addrFromText || '';
 
+        // 提前解析 symbol / amount，buildTransferSelectCard 需要
+        const symbol = intent.symbol || 'USDT';
+        const amount = intent.amount || 0;
+
         if (!toAddress) {
           steps = advanceStep(steps, 's2', 'done', onStep);
+          await delay(150);
+          steps = await advanceSafety(steps, onStep);
+          steps = advanceStep(steps, 's3', 'active', onStep);
+          const selectCard = buildTransferSelectCard({
+            recentAddresses: options?.confirmedAddresses ?? [],
+            amount,
+            symbol,
+            userPrompt: input,
+          });
+          steps = advanceStep(steps, 's3', 'done', onStep);
           return {
             ok: true,
-            data: { replyText: '📤 **转账**\n\n请告诉我转账地址，例如："转 10 USDT 到 0xAbc..."' },
+            data: {
+              replyText: '📤 **转账**\n\n请选择近期地址或粘贴新地址 👇',
+              card: selectCard,
+            },
             simulationMode: false,
           };
         }
 
         // 链别识别
         const chain = intent.chain || (toAddress.startsWith('0x') ? 'evm' : 'solana');
-        const symbol = intent.symbol || 'USDT';
-        const amount = intent.amount || 0;
         const isKnown = (options?.confirmedAddresses ?? []).includes(toAddress);
 
         steps = advanceStep(steps, 's2', 'done', onStep);

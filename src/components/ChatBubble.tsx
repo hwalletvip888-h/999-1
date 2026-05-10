@@ -10,6 +10,7 @@ type ChatBubbleProps = {
   avatarMood?: DolphinMood;
   onConfirmCard?: (cardId: string) => void;
   onCancelCard?: (cardId: string) => void;
+  onConfirmTransferSelect?: (cardId: string, address: string, amount: number, symbol: string) => void;
 };
 
 /**
@@ -123,10 +124,18 @@ export function ChatBubble({
   message,
   avatarMood = "idle",
   onConfirmCard,
-  onCancelCard
+  onCancelCard,
+  onConfirmTransferSelect,
 }: ChatBubbleProps) {
   if (message.kind === "card" && message.card) {
-    return <TransactionCard card={message.card} onConfirm={onConfirmCard} onCancel={onCancelCard} />;
+    return (
+      <TransactionCard
+        card={message.card}
+        onConfirm={onConfirmCard}
+        onCancel={onCancelCard}
+        onConfirmTransferSelect={onConfirmTransferSelect}
+      />
+    );
   }
 
   // AI 步骤进度展示

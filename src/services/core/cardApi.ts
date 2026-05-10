@@ -311,6 +311,33 @@ export function buildTransferCard(params: {
   };
 }
 
+// ─── 8b. TransferSelectCard 地址选择卡片（无地址时弹出）──────────
+export function buildTransferSelectCard(params: {
+  recentAddresses: string[];
+  amount?: number;
+  symbol?: string;
+  userPrompt: string;
+}): HWalletCard {
+  return {
+    id: makeId("card_transfer_select"),
+    productLine: "v6",
+    module: "wallet",
+    cardType: "wallet_action",
+    header: "钱包操作卡",
+    title: "📤 选择转账地址",
+    riskLevel: "低",
+    status: "pending",
+    simulationMode: false,
+    userPrompt: params.userPrompt,
+    aiSummary: "请选择近期地址或粘贴新地址",
+    createdAt: now(),
+    recentAddresses: params.recentAddresses,
+    transferSelectMode: true,
+    amount: params.amount ?? 0,
+    symbol: params.symbol ?? "USDT",
+  };
+}
+
 // ─── 9. PortfolioCard 资产总览卡片 ─────────────────────────────
 export async function buildPortfolioCard(userPrompt: string): Promise<HWalletCard> {
   const overview = await api.account.getOverview();

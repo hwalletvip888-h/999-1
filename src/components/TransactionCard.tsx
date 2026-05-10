@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -20,6 +20,7 @@ type TransactionCardProps = {
   card: HWalletCard;
   onConfirm?: (cardId: string) => void;
   onCancel?: (cardId: string) => void;
+  onConfirmTransferSelect?: (cardId: string, address: string, amount: number, symbol: string) => void;
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -1145,12 +1146,281 @@ function PortfolioCard({ card, onConfirm, onCancel }: TransactionCardProps) {
 
 
 // ─────────────────────────────────────────────────────────────
+// TransferSelectCard — 地址选择 / 粘贴卡片
+// ─────────────────────────────────────────────────────────────
+function TransferSelectCard({ card, onConfirmTransferSelect, onCancel }: TransactionCardProps) {
+  const [pasteAddr, setPasteAddr] = useState("");
+  const [selectedAddr, setSelectedAddr] = useState("");
+  const recent = card.recentAddresses ?? [];
+  const symbol = card.symbol ?? "USDT";
+  const amount = card.amount ?? 0;
+
+  const chosenAddr = selectedAddr || pasteAddr.trim();
+  const isValid = chosenAddr.length >= 20;
+
+  function shorten(addr: string) {
+    return addr.length > 14 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
+  }
+
+  return (
+    <CardShell borderColor="#E0E7FF" bg="#F8F9FF" shadowColor="#6366F1">
+      {/* Header */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#F0F0F5" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#E0E7FF", alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 16 }}>📤</Text>
+            </View>
+            <View>
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: "#0F0F0F" }}>转账</Text>
+              {amount > 0 && (
+                <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#6B7280", marginTop: 1 }}>
+                  金额：{amount} {symbol}
+                </Text>
+              )}
+            </View>
+          </View>
+          <StatusPill status={card.status} />
+        </View>
+      </View>
+
+      {/* 近期地址 */}
+      {recent.length > 0 && (
+        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4 }}>
+          <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: "#9CA3AF", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 8 }}>
+            近期地址
+          </Text>
+          {recent.map((addr) => {
+            const isSelected = selectedAddr === addr;
+            return (
+              <Pressable
+                key={addr}
+                onPress={() => { setSelectedAddr(isSelected ? "" : addr); setPasteAddr(""); }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  marginBottom: 6,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: isSelected ? "#6366F1" : "#E5E7EB",
+                  backgroundColor: isSelected ? "#EEF2FF" : "#FFFFFF",
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontFamily: "JetBrainsMono_400Regular", color: isSelected ? "#4338CA" : "#374151" }} numberOfLines={1}>
+                    {shorten(addr)}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontFamily: "Inter_400Regular", color: addr.startsWith("0x") ? "#1D4ED8" : "#7C3AED", marginTop: 2 }}>
+                    {addr.startsWith("0x") ? "EVM 链" : "Solana 链"}
+                  </Text>
+                </View>
+                {isSelected && (
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#6366F1", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ color: "#fff", fontSize: 11, fontFamily: "Inter_700Bold" }}>✓</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {/* 粘贴新地址 */}
+      <View style={{ paddingHorizontal: 14, paddingTop: recent.length > 0 ? 4 : 12, paddingBottom: 12 }}>
+        {recent.length > 0 && (
+          <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: "#9CA3AF", letterSpacing: 0.5, textTransform: "uppercase", marginBottom: 8 }}>
+            粘贴新地址
+          </Text>
+        )}
+        <TextInput
+          value={pasteAddr}
+          onChangeText={(t) => { setPasteAddr(t); setSelectedAddr(""); }}
+          placeholder="0x... 或 Solana 地址"
+          placeholderTextColor="#C4C4C4"
+          multiline={false}
+          autoCorrect={false}
+          autoCapitalize="none"
+          style={{
+            borderWidth: 1.5,
+            borderColor: pasteAddr.trim().length >= 20 ? "#6366F1" : "#E5E7EB",
+            borderRadius: 12,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            fontSize: 13,
+            fontFamily: "JetBrainsMono_400Regular",
+            color: "#0F0F0F",
+            backgroundColor: "#FFFFFF",
+          }}
+        />
+        {pasteAddr.length > 0 && pasteAddr.length < 20 && (
+          <Text style={{ marginTop: 4, fontSize: 11, fontFamily: "Inter_400Regular", color: "#EF4444" }}>
+            地址过短，请检查是否完整
+          </Text>
+        )}
+      </View>
+
+      {/* 警告 */}
+      {chosenAddr && !isValid && (
+        <View style={{ marginHorizontal: 14, marginBottom: 10, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "#FEF3C7", borderRadius: 10, flexDirection: "row" }}>
+          <Text style={{ fontSize: 11, flex: 1, color: "#92400E", fontFamily: "Inter_400Regular" }}>
+            ⚠️ 请选择或完整粘贴收款地址后继续
+          </Text>
+        </View>
+      )}
+
+      {/* 操作按钮 */}
+      <View style={{ flexDirection: "row", gap: 8, borderTopWidth: 1, borderTopColor: "#F1F3F5", paddingHorizontal: 16, paddingVertical: 12 }}>
+        <Pressable
+          onPress={() => onCancel?.(card.id)}
+          style={{ flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FAFAFA" }}
+        >
+          <Text style={{ fontSize: 14, fontFamily: "Inter_500Medium", color: "#6B7280" }}>取消</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            if (!isValid) return;
+            onConfirmTransferSelect?.(card.id, chosenAddr, amount, symbol);
+          }}
+          style={{
+            flex: 2,
+            alignItems: "center",
+            paddingVertical: 10,
+            borderRadius: 10,
+            backgroundColor: isValid ? "#6366F1" : "#E5E7EB",
+          }}
+        >
+          <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: isValid ? "#FFFFFF" : "#9CA3AF" }}>
+            下一步 →
+          </Text>
+        </Pressable>
+      </View>
+    </CardShell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TransferCard — 转账确认卡片
+// ─────────────────────────────────────────────────────────────
+function TransferCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const interactive = card.status === "pending" || card.status === "preview";
+  const isKnown = card.isKnownAddress ?? false;
+  const addrShort = card.toAddress
+    ? `${card.toAddress.slice(0, 8)}...${card.toAddress.slice(-6)}`
+    : "—";
+  const chainLabel = card.transferChain === "evm" ? "EVM" : "Solana";
+  const chainColor = card.transferChain === "evm" ? "#1D4ED8" : "#7C3AED";
+  const chainBg = card.transferChain === "evm" ? "#DBEAFE" : "#EDE9FE";
+
+  return (
+    <CardShell
+      borderColor={isKnown ? "#A7F3D0" : "#FECACA"}
+      bg={isKnown ? "#F0FDF4" : "#FFF5F5"}
+      shadowColor={isKnown ? "#10B981" : "#EF4444"}
+    >
+      {/* Header */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: isKnown ? "#D1FAE5" : "#FEE2E2" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isKnown ? "#D1FAE5" : "#FEE2E2", alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 16 }}>📤</Text>
+            </View>
+            <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: "#0F0F0F" }}>
+              {isKnown ? "转账确认" : "⚠️ 陌生地址"}
+            </Text>
+          </View>
+          <StatusPill status={card.status} />
+        </View>
+      </View>
+
+      {/* Main amount */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+        <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#9CA3AF" }}>转出金额</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 }}>
+          {tokenBySymbol(card.symbol, 28)}
+          <Text style={{ fontSize: 30, fontFamily: "JetBrainsMono_700Bold", color: "#0F0F0F", letterSpacing: -0.5 }}>
+            {card.amount ?? 0}
+          </Text>
+          <Text style={{ fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#374151", marginBottom: 4 }}>
+            {card.symbol ?? "USDT"}
+          </Text>
+        </View>
+      </View>
+
+      {/* Address + chain */}
+      <View style={{ marginHorizontal: 14, marginBottom: 12, padding: 12, borderRadius: 12, backgroundColor: "#FAFAFA", borderWidth: 1, borderColor: "#F0F0F5" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#9CA3AF" }}>收款地址</Text>
+          <View style={{ backgroundColor: chainBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+            <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: chainColor }}>{chainLabel}</Text>
+          </View>
+        </View>
+        <Text style={{ fontSize: 14, fontFamily: "JetBrainsMono_400Regular", color: "#0F0F0F" }}>{addrShort}</Text>
+        {isKnown && (
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#10B981", marginTop: 3 }}>✓ 已转账过的地址</Text>
+        )}
+        {!isKnown && (
+          <Text style={{ fontSize: 11, fontFamily: "Inter_400Regular", color: "#EF4444", marginTop: 3 }}>首次转账，请仔细核对</Text>
+        )}
+      </View>
+
+      {/* Fee */}
+      {card.estimatedFee && (
+        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 16, marginBottom: 10 }}>
+          <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#9CA3AF" }}>网络费</Text>
+          <Text style={{ fontSize: 12, fontFamily: "JetBrainsMono_400Regular", color: "#374151" }}>{card.estimatedFee}</Text>
+        </View>
+      )}
+
+      {/* Warning */}
+      {card.warning && (
+        <View style={{ marginHorizontal: 14, marginBottom: 12, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: "#FFFBEB", borderRadius: 10, flexDirection: "row" }}>
+          <Text style={{ flex: 1, fontSize: 11, lineHeight: 15, color: "#92400E", fontFamily: "Inter_400Regular" }}>
+            {card.warning}
+          </Text>
+        </View>
+      )}
+
+      {/* Actions */}
+      {interactive && (
+        <View style={{ flexDirection: "row", gap: 8, borderTopWidth: 1, borderTopColor: "#F1F3F5", paddingHorizontal: 16, paddingVertical: 12 }}>
+          <Pressable
+            onPress={() => onCancel?.(card.id)}
+            style={{ flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FAFAFA" }}
+          >
+            <Text style={{ fontSize: 14, fontFamily: "Inter_500Medium", color: "#6B7280" }}>取消</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => onConfirm?.(card.id)}
+            style={{ flex: 2, alignItems: "center", paddingVertical: 10, borderRadius: 10, backgroundColor: isKnown ? "#10B981" : "#EF4444" }}
+          >
+            <Text style={{ fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#FFFFFF" }}>
+              确认转账
+            </Text>
+          </Pressable>
+        </View>
+      )}
+    </CardShell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // Public dispatcher
 // ─────────────────────────────────────────────────────────────
 
 export function TransactionCard(props: TransactionCardProps) {
   // 业务分发：优先按 cardType/module 判断
   const { card } = props;
+  // TransferSelectCard 地址选择卡片
+  if (card.transferSelectMode) {
+    return <TransferSelectCard {...props} />;
+  }
+  // TransferCard 转账确认卡片
+  if (card.toAddress && card.module === "wallet" && card.cardType === "wallet_action") {
+    return <TransferCard {...props} />;
+  }
   // PriceCard 行情价格卡片
   if (card.priceData && card.module === "market") {
     return <PriceCard {...props} />;

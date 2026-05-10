@@ -660,6 +660,11 @@ export function ChatScreen() {
                   avatarMood={i === lastAiTextIdx ? heroMood : "idle"}
                   onConfirmCard={confirmCard}
                   onCancelCard={cancelCard}
+                  onConfirmTransferSelect={(cardId, address, amount, symbol) => {
+                    cancelCard(cardId);
+                    const text = `转 ${amount} ${symbol} 到 ${address}`;
+                    sendMessage(text);
+                  }}
                 />
               );
             });

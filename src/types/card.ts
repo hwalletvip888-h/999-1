@@ -148,6 +148,9 @@ export type HWalletCard = {
   transferChain?: string;
   estimatedFee?: string;
   isKnownAddress?: boolean;
+  // TransferSelectCard 地址选择卡片（无地址时弹出）
+  recentAddresses?: string[];
+  transferSelectMode?: boolean;
   // ─── 卡库系统 / 会员等级 ────────────────────────────────
   rarity?: CardRarity;
   achievementHints?: string[];
