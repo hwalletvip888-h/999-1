@@ -1,6 +1,7 @@
 # H Wallet 仓库结构总览
 
-本文描述 **999-1** monorepo 内与「App / BFF / 域平台 / MCP / 运维」相关的目录与数据流，便于 onboarding 与扩展。产品级域模型与 REST 约定见同目录 **`H_WALLET_PRODUCT_DEV_REQUIREMENTS.md`**。
+本文描述 **999-1** monorepo 内与「App / BFF / 域平台 / MCP / 运维」相关的目录与数据流，便于 onboarding 与扩展。产品级域模型与 REST 约定见同目录 **`H_WALLET_PRODUCT_DEV_REQUIREMENTS.md`**。  
+**分阶段推进与跨会话备忘（钱包 BFF / 运维）**：见 **`WALLET_BFF_PHASE_PLAN.md`**。
 
 ---
 
