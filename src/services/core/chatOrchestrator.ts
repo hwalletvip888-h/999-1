@@ -464,42 +464,51 @@ export async function handleUserPrompt(
           ? `${(quoteData.priceImpactBps / 100).toFixed(2)}%`
           : '<0.01%';
 
-        const card: HWalletCard = {
-          id: makeId('card_swap'),
-          productLine: 'v6',
-          module: 'swap',
-          cardType: 'trade',
-          header: '交易卡片',
-          title: `${toSymbol} 链上兑换`,
-          riskLevel: '低',
-          status: 'preview',
-          simulationMode: false,
-          userPrompt: input,
-          aiSummary: `兑换 ${amount} ${fromSymbol} → ${toAmt > 0 ? toAmt.toFixed(6) : '?'} ${toSymbol}`,
-          createdAt: now,
-          fromAmount: amount,
-          fromSymbol,
-          toAmount: toAmt,
-          toSymbol,
-          swapChain,
-          rate: rate > 0 ? `1 ${toSymbol} ≈ ${(1 / rate).toFixed(4)} ${fromSymbol}` : '—',
-          slippage: `${(quoteData.slippageBps ?? 50) / 100}%`,
-          networkFee: gasFee,
-          rows: [
-            { label: '路由', value: routerLabel },
-            { label: '价格影响', value: impact },
-          ],
-          warning: '链上兑换受滑点影响，实际到账数量可能略有差异。',
-          primaryAction: '确认兑换',
-          secondaryAction: '取消',
-        };
         steps = advanceStep(steps, 's4', 'done', onStep);
+
+        const swapReply = `🔄 **链上兑换报价**\n\n` +
+          `${amount} ${fromSymbol} → **~${toAmt > 0 ? toAmt.toFixed(6) : '?'} ${toSymbol}**\n\n` +
+          `• 路由：${routerLabel}\n` +
+          `• 汇率：${rate > 0 ? `1 ${toSymbol} ≈ ${(1/rate).toFixed(4)} ${fromSymbol}` : '—'}\n` +
+          `• 滑点：${(quoteData.slippageBps ?? 50) / 100}%\n` +
+          `• 预估 Gas：${gasFee}\n` +
+          `• 价格影响：${impact}\n\n` +
+          `⚠️ 链上兑换受滑点影响，实际到账可能略有差异\n\n` +
+          `回复「**确认兑换**」即可发起链上交易`;
 
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `🔄 **链上兑换报价**\n\n${amount} ${fromSymbol} → **~${toAmt > 0 ? toAmt.toFixed(6) : '?'} ${toSymbol}**\n路由：${routerLabel} · 滑点 ${(quoteData.slippageBps ?? 50) / 100}% · Gas ${gasFee}\n\n确认后将发起链上交易 👇`,
-            card,
+            replyText: swapReply,
+            card: {
+              id: makeId('card_swap'),
+              productLine: 'v6',
+              module: 'swap',
+              cardType: 'trade',
+              header: '交易卡片',
+              title: `${toSymbol} 链上兑换`,
+              riskLevel: '低',
+              status: 'preview',
+              simulationMode: false,
+              userPrompt: input,
+              aiSummary: `兑换 ${amount} ${fromSymbol} → ${toAmt > 0 ? toAmt.toFixed(6) : '?'} ${toSymbol}`,
+              createdAt: now,
+              fromAmount: amount,
+              fromSymbol,
+              toAmount: toAmt,
+              toSymbol,
+              swapChain,
+              rate: rate > 0 ? `1 ${toSymbol} ≈ ${(1 / rate).toFixed(4)} ${fromSymbol}` : '—',
+              slippage: `${(quoteData.slippageBps ?? 50) / 100}%`,
+              networkFee: gasFee,
+              rows: [
+                { label: '路由', value: routerLabel },
+                { label: '价格影响', value: impact },
+              ],
+              warning: '链上兑换受滑点影响，实际到账数量可能略有差异。',
+              primaryAction: '确认兑换',
+              secondaryAction: '取消',
+            } as HWalletCard,
           },
           simulationMode: false,
         };
@@ -581,19 +590,21 @@ export async function handleUserPrompt(
         const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
         const addrData = await callBackend<any>('/api/wallet/addresses', { token: session.token });
         steps = advanceStep(steps, 's2', 'done', onStep);
-        await delay(150);
         steps = advanceStep(steps, 's3', 'active', onStep);
-        const card = buildAddressCard(
-          { evm: addrData?.evm ?? [], solana: addrData?.solana ?? [] },
-          input,
-        );
+
+        const evmAddr: string = addrData?.evm?.[0] ?? addrData?.evm ?? '';
+        const solAddr: string = addrData?.solana?.[0] ?? addrData?.solana ?? '';
+
+        let replyText = `📥 **充值地址**\n\n`;
+        if (evmAddr) replyText += `🔷 **EVM（ETH / BNB / OKX 链通用）**\n\`${evmAddr}\`\n\n`;
+        if (solAddr) replyText += `🟣 **Solana（SOL 链）**\n\`${solAddr}\`\n\n`;
+        if (!evmAddr && !solAddr) replyText += '⚠️ 暂时获取不到地址，请稍后再试。';
+        else replyText += `⚠️ 请确认链别，转错无法找回`;
+
         steps = advanceStep(steps, 's3', 'done', onStep);
         return {
           ok: true,
-          data: {
-            replyText: intent.reply || `📥 **充值地址已生成**\n\n复制对应地址，去交易所提币时粘贴即可\n\n⚠️ 请确认链别，转错无法找回`,
-            card,
-          },
+          data: { replyText },
           simulationMode: false,
         };
       }
@@ -716,8 +727,8 @@ export async function handleUserPrompt(
           ok: true,
           data: {
             replyText: isKnown
-              ? `📤 **转账确认**\n\n向 \`${toAddress.slice(0, 6)}...${toAddress.slice(-4)}\` 转出 **${amount} ${symbol}**\n\n点击确认后立即执行 👇`
-              : `⚠️ **陌生地址转账**\n\n该地址在本次对话中首次出现，请仔细核对地址后再确认\n\n点击【确认转账】执行 👇`,
+              ? `📤 **转账确认**\n\n• 接收地址：\`${toAddress.slice(0, 8)}...${toAddress.slice(-6)}\`\n• 金额：**${amount} ${symbol}**\n• 链：${chain}\n\n点击确认后立即执行 👇`
+              : `⚠️ **陌生地址转账**\n\n• 接收地址：\`${toAddress.slice(0, 8)}...${toAddress.slice(-6)}\`\n• 金额：**${amount} ${symbol}**\n• 链：${chain}\n\n该地址在本次对话中首次出现，请仔细核对后再确认 👇`,
             card,
           },
           simulationMode: false,
