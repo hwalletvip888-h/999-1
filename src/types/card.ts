@@ -143,6 +143,11 @@ export type HWalletCard = {
     label: string;
     address: string;
   }>;
+  // TransferCard 转账卡片
+  toAddress?: string;
+  transferChain?: string;
+  estimatedFee?: string;
+  isKnownAddress?: boolean;
   // ─── 卡库系统 / 会员等级 ────────────────────────────────
   rarity?: CardRarity;
   achievementHints?: string[];

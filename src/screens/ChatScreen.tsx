@@ -20,6 +20,8 @@ const initialMessages: import("../types").ChatMessage[] = [];
 import { handleUserPrompt } from "../services/core/chatOrchestrator";
 import { formatHwalletErrorForUser } from "../services/hwalletErrorUi";
 import { updateCardStatus } from "../services/core/cardsApi";
+import { loadSession } from "../services/walletApi";
+import { callBackend } from "../api/providers/okx/onchain/hwalletBackendFetch";
 import { cardLibrary } from "../services/cardLibrary";
 import { makeId } from "../utils/id";
 import { nowLabel } from "../utils/format";
@@ -84,6 +86,7 @@ export function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [aiTyping, setAiTyping] = useState(false);
+  const confirmedAddressesRef = useRef<Set<string>>(new Set());
   const [heroMood, setHeroMood] = useState<DolphinMood>("idle");
   const [easterTip, setEasterTip] = useState(0);
   const [easterShow, setEasterShow] = useState(false);
@@ -183,7 +186,7 @@ export function ChatScreen() {
     };
 
     try {
-      const result = await handleUserPrompt(trimmed, onStep, { chatHistory, abortSignal });
+      const result = await handleUserPrompt(trimmed, onStep, { chatHistory, abortSignal, confirmedAddresses: [...confirmedAddressesRef.current] });
 
       if (!result.ok || !result.data) {
         const errLine =
@@ -369,7 +372,81 @@ export function ChatScreen() {
       )
     );
     setHeroMood("thinking");
-    // 2) 显示"模拟执行中..."
+
+    // 找到当前卡片
+    const targetCard = messages.find((m) => m.card?.id === cardId)?.card;
+
+    // ─── 转账卡片：真实调用 BFF 发送 ───
+    if (targetCard?.toAddress && targetCard?.transferChain) {
+      setMessages((current) => [
+        ...current,
+        { id: makeId("msg_ai_executing"), role: "assistant", kind: "text", text: "发送中...", createdAt: nowLabel() }
+      ]);
+      scrollToEndSoon();
+
+      (async () => {
+        try {
+          const session = await loadSession();
+          if (!session?.token) throw new Error("未登录，请先在钱包页面完成登录");
+
+          const sendRes = await callBackend<any>('/api/v6/wallet/send', {
+            token: session.token,
+            body: {
+              chain: targetCard.transferChain,
+              symbol: targetCard.symbol ?? 'USDT',
+              toAddress: targetCard.toAddress,
+              amount: targetCard.amount ?? 0,
+            },
+          });
+
+          const txHash: string = sendRes?.txHash ?? sendRes?.orderId ?? '';
+          const finalStatus: import("../types/card").CardStatus = 'executed';
+
+          // 记录该地址为已确认
+          confirmedAddressesRef.current.add(targetCard.toAddress!);
+
+          setMessages((current) =>
+            current.map((m) =>
+              m.card?.id === cardId ? { ...m, card: { ...m.card!, status: finalStatus } } : m
+            )
+          );
+          updateCardStatus(cardId, finalStatus);
+          if (targetCard) {
+            const auditTrail = [
+              ...(targetCard.auditTrail ?? []),
+              { ts: Date.now(), actor: "user" as const, action: "confirm", detail: targetCard.aiSummary }
+            ];
+            cardLibrary.add({ ...targetCard, status: finalStatus, auditTrail });
+          }
+          setMessages((current) => [
+            ...current,
+            {
+              id: makeId("msg_ai_executed"),
+              role: "assistant",
+              kind: "text",
+              text: `✅ 转账成功！已向 \`${targetCard.toAddress!.slice(0, 6)}...${targetCard.toAddress!.slice(-4)}\` 转出 **${targetCard.amount ?? ''} ${targetCard.symbol ?? ''}**${txHash ? `\n交易哈希：\`${txHash.slice(0, 12)}...\`` : ''}`,
+              createdAt: nowLabel()
+            }
+          ]);
+        } catch (e: any) {
+          setMessages((current) =>
+            current.map((m) =>
+              m.card?.id === cardId ? { ...m, card: { ...m.card!, status: 'cancelled' as import("../types/card").CardStatus } } : m
+            )
+          );
+          setMessages((current) => [
+            ...current,
+            { id: makeId("msg_ai_err"), role: "assistant", kind: "text", text: `⚠️ 转账失败：${e?.message || '请重试'}`, createdAt: nowLabel() }
+          ]);
+        }
+        setHeroMood("celebrating");
+        scheduleMood(setHeroMood, "idle", 1500);
+        scrollToEndSoon();
+      })();
+      return;
+    }
+
+    // 2) 普通卡片：显示"模拟执行中..."
     setMessages((current) => [
       ...current,
       {
@@ -383,9 +460,7 @@ export function ChatScreen() {
     scrollToEndSoon();
     // 3) 约 1 秒后，根据卡片类型决定最终状态，归档到卡库
     setTimeout(() => {
-      // 找到当前卡片
-      const targetCard = messages.find((m) => m.card?.id === cardId)?.card;
-      const finalStatus: CardStatus = targetCard ? statusOnConfirm(targetCard) : "executed";
+      const finalStatus: import("../types/card").CardStatus = targetCard ? statusOnConfirm(targetCard) : "executed";
       setMessages((current) =>
         current.map((message) =>
           message.card?.id === cardId

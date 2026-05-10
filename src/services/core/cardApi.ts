@@ -271,7 +271,47 @@ export function buildAddressCard(
   };
 }
 
-// ─── 8. PortfolioCard 资产总览卡片 ─────────────────────────────
+// ─── 8. TransferCard 转账卡片 ──────────────────────────────────
+export function buildTransferCard(params: {
+  toAddress: string;
+  chain: string;
+  symbol: string;
+  amount: number;
+  isKnownAddress: boolean;
+  estimatedFee?: string;
+  userPrompt: string;
+}): HWalletCard {
+  const { toAddress, chain, symbol, amount, isKnownAddress, estimatedFee, userPrompt } = params;
+  const addrShort = toAddress.length > 12
+    ? `${toAddress.slice(0, 6)}...${toAddress.slice(-4)}`
+    : toAddress;
+  const chainLabel = chain === "evm" ? "EVM" : "Solana";
+  return {
+    id: makeId("card_transfer"),
+    productLine: "v6",
+    module: "wallet",
+    cardType: "wallet_action",
+    header: "钱包操作卡",
+    title: `📤 转出 ${amount} ${symbol}`,
+    riskLevel: isKnownAddress ? "低" : "高",
+    status: "pending",
+    simulationMode: false,
+    userPrompt,
+    aiSummary: `${chainLabel} · 向 ${addrShort} 转出 ${amount} ${symbol}`,
+    createdAt: now(),
+    toAddress,
+    transferChain: chain,
+    symbol,
+    amount,
+    estimatedFee: estimatedFee ?? "~",
+    isKnownAddress,
+    warning: isKnownAddress
+      ? undefined
+      : "⚠️ 该地址在本次对话中从未出现过，请仔细核对，转错无法找回！",
+  };
+}
+
+// ─── 9. PortfolioCard 资产总览卡片 ─────────────────────────────
 export async function buildPortfolioCard(userPrompt: string): Promise<HWalletCard> {
   const overview = await api.account.getOverview();
 

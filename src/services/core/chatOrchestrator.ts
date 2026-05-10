@@ -10,7 +10,7 @@ import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
 import type { AIStep } from '../../types';
 import { makeId } from '../../utils/id';
-import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard } from './cardApi';
+import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard, buildTransferCard } from './cardApi';
 import { loadSession } from '../walletApi';
 // V6 链上机会发现客户端
 import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
@@ -22,6 +22,8 @@ export type OnStepCallback = (steps: AIStep[]) => void;
 export type HandleUserPromptOptions = {
   chatHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   abortSignal?: AbortSignal;
+  /** 本次会话已确认过的转账地址（同地址自动执行，无需再次确认） */
+  confirmedAddresses?: string[];
 };
 
 /**
@@ -95,6 +97,13 @@ function buildSteps(action: ChatIntentAction): AIStep[] {
         ...base,
         { id: 's2', label: '读取链上地址', icon: '📬', status: 'pending' },
         { id: 's3', label: '生成地址卡片', icon: '🎴', status: 'pending' },
+      ];
+    case 'transfer':
+      return [
+        ...base,
+        { id: 's2', label: '校验转账地址', icon: '🔍', status: 'pending' },
+        safety,
+        { id: 's3', label: '生成转账卡片', icon: '🎴', status: 'pending' },
       ];
     case 'signal':
       return [
@@ -512,6 +521,112 @@ export async function handleUserPrompt(
           ok: true,
           data: {
             replyText: intent.reply || `📥 **充值地址已生成**\n\n复制对应地址，去交易所提币时粘贴即可\n\n⚠️ 请确认链别，转错无法找回`,
+            card,
+          },
+          simulationMode: false,
+        };
+      }
+
+      // ─── 转账 ───
+      case 'transfer': {
+        steps = advanceStep(steps, 's2', 'active', onStep);
+
+        // 登录校验
+        const session = await loadSession();
+        if (!session?.token) {
+          steps = advanceStep(steps, 's2', 'error' as any, onStep);
+          return {
+            ok: true,
+            data: { replyText: '💳 请先在**钱包页面**完成登录，登录后才能转账 👇' },
+            simulationMode: false,
+          };
+        }
+
+        // 提取地址：优先从意图识别结果，再从原文 regex
+        const addrFromIntent = intent.toAddress;
+        const addrFromText = input.match(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/)?.[0];
+        const toAddress = addrFromIntent || addrFromText || '';
+
+        if (!toAddress) {
+          steps = advanceStep(steps, 's2', 'done', onStep);
+          return {
+            ok: true,
+            data: { replyText: '📤 **转账**\n\n请告诉我转账地址，例如："转 10 USDT 到 0xAbc..."' },
+            simulationMode: false,
+          };
+        }
+
+        // 链别识别
+        const chain = intent.chain || (toAddress.startsWith('0x') ? 'evm' : 'solana');
+        const symbol = intent.symbol || 'USDT';
+        const amount = intent.amount || 0;
+        const isKnown = (options?.confirmedAddresses ?? []).includes(toAddress);
+
+        steps = advanceStep(steps, 's2', 'done', onStep);
+        await delay(150);
+
+        steps = await advanceSafety(steps, onStep);
+
+        steps = advanceStep(steps, 's3', 'active', onStep);
+
+        // 已确认地址：直接自动执行转账
+        if (isKnown && amount > 0) {
+          const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
+          try {
+            const sendRes = await callBackend<any>('/api/v6/wallet/send', {
+              token: session.token,
+              body: { chain, symbol, toAddress, amount },
+            });
+            const txHash: string = sendRes?.txHash ?? sendRes?.orderId ?? '';
+            const autoCard: HWalletCard = {
+              id: makeId('card_transfer_done'),
+              productLine: 'v6',
+              module: 'wallet',
+              cardType: 'info',
+              header: '信息卡片',
+              title: `已转出 ${amount} ${symbol}`,
+              riskLevel: '低',
+              status: 'executed',
+              simulationMode: false,
+              userPrompt: input,
+              aiSummary: `${chain.toUpperCase()} · 转出 ${amount} ${symbol} → ${toAddress.slice(0, 6)}...${toAddress.slice(-4)}`,
+              createdAt: now,
+              toAddress,
+              transferChain: chain,
+              symbol,
+              amount,
+              isKnownAddress: true,
+              ...(txHash ? { rows: [{ label: '交易哈希', value: txHash }] } : {}),
+            };
+            steps = advanceStep(steps, 's3', 'done', onStep);
+            return {
+              ok: true,
+              data: {
+                replyText: `✅ **自动转账成功**\n\n已向 \`${toAddress.slice(0, 6)}...${toAddress.slice(-4)}\` 转出 **${amount} ${symbol}**\n${txHash ? `交易哈希：\`${txHash.slice(0, 12)}...\`` : ''}`,
+                card: autoCard,
+              },
+              simulationMode: false,
+            };
+          } catch (e: any) {
+            steps = advanceStep(steps, 's3', 'error' as any, onStep);
+            return {
+              ok: false,
+              errorCode: 'H1.TRANSFER.SEND_FAILED',
+              errorMsg: e?.message || '转账失败',
+              simulationMode: false,
+            };
+          }
+        }
+
+        // 首次 / 未确认地址：生成预览卡等待用户确认
+        const card = buildTransferCard({ toAddress, chain, symbol, amount, isKnownAddress: isKnown, userPrompt: input });
+        steps = advanceStep(steps, 's3', 'done', onStep);
+        return {
+          ok: true,
+          data: {
+            replyText: isKnown
+              ? `📤 **转账确认**\n\n向 \`${toAddress.slice(0, 6)}...${toAddress.slice(-4)}\` 转出 **${amount} ${symbol}**\n\n点击确认后立即执行 👇`
+              : `⚠️ **陌生地址转账**\n\n该地址在本次对话中首次出现，请仔细核对地址后再确认\n\n点击【确认转账】执行 👇`,
             card,
           },
           simulationMode: false,

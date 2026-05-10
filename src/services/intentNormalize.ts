@@ -15,6 +15,7 @@ export const CHAT_INTENT_ACTIONS = [
   "position",
   "portfolio",
   "address",
+  "transfer",
   "signal",
   "chat",
 ] as const;
@@ -55,6 +56,9 @@ const ACTION_ALIASES: Record<string, ChatIntentAction> = {
   receive: "address",
   addresses: "address",
   recharge: "address",
+  withdraw: "transfer",
+  send: "transfer",
+  "transfer-token": "transfer",
 };
 
 function isNonProductionLog(): boolean {
@@ -88,6 +92,8 @@ export interface AIIntent {
   amount?: number;
   leverage?: number;
   protocol?: string;
+  toAddress?: string;
+  chain?: string;
   reply: string;
 }
 
@@ -131,6 +137,17 @@ export function sanitizeIntentPayload(raw: unknown): AIIntent {
     }
   }
 
+  let toAddress: string | undefined;
+  if (typeof base.toAddress === "string") {
+    const a = base.toAddress.trim();
+    if (a.length >= 20) toAddress = a;
+  }
+
+  let chain: string | undefined;
+  if (typeof base.chain === "string") {
+    chain = base.chain.trim().toLowerCase() || undefined;
+  }
+
   let reply = "";
   if (typeof base.reply === "string") {
     reply = base.reply;
@@ -138,7 +155,7 @@ export function sanitizeIntentPayload(raw: unknown): AIIntent {
     reply = String(base.reply);
   }
 
-  return { action, symbol, amount, leverage, protocol, reply };
+  return { action, symbol, amount, leverage, protocol, toAddress, chain, reply };
 }
 
 /**
@@ -160,6 +177,12 @@ export function buildLocalRuleIntentPayload(input: string): Record<string, unkno
 
   if (/充值|收款|我的地址|转入|存入|recharge|deposit|receive|收币|收款地址|充值地址/.test(lower)) {
     return { action: "address", reply: "" };
+  }
+  if (/提现|转账|转给|发送|send|withdraw|转出/.test(lower)) {
+    const addrMatch = input.match(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/);
+    const toAddress = addrMatch?.[0];
+    const chain = toAddress?.startsWith("0x") ? "evm" : toAddress ? "solana" : undefined;
+    return { action: "transfer", symbol: "USDT", amount, toAddress, chain, reply: "" };
   }
   if (/价格|行情|多少钱|今日|查一下/.test(lower)) {
     return { action: "price", symbol, reply: "" };
