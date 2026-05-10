@@ -182,16 +182,7 @@ function trendDirSnapshot(): { dir: string; exists: boolean; reportFileCount: nu
 /** 对外 HTTP 路由清单（由 `buildBffHttpRouteCatalog()` 生成，与 H1 注册表一致） */
 export const HTTP_ROUTE_CATALOG = buildBffHttpRouteCatalog();
 
-/** 运维台 Admin API 文档行（与 `admin-routes` 同步，供 `/ops` 页面生成器注入） */
-export const ADMIN_OPS_API_DOCS: { path: string; note: string }[] = [
-  { path: "/api/admin/ping", note: "校验密钥" },
-  { path: "/api/admin/overview", note: "健康、沙箱列表、脱敏配置" },
-  { path: "/api/admin/system", note: "进程 uptime、Node 版本、内存" },
-  { path: "/api/admin/trend-status", note: "趋势磁盘报告摘要（无则 hasReport:false）" },
-  { path: "/api/admin/ai-limits", note: "AI 限流窗口与当前桶数量" },
-  { path: "/api/admin/diagnostics", note: "聚合只读诊断（进程、路由表、HTTP 常量等）" },
-  { path: "/api/admin/settings", note: "GET：运行时参数；POST：JSON 合并写入（见 ops-console/README）" },
-];
+export { ADMIN_OPS_API_DOCS } from "./admin-api-catalog";
 
 /**
  * 聚合只读诊断：进程、包版本、CLI、趋势目录、运行时文件、HTTP 常量、功能开关、路由表。

@@ -10,6 +10,7 @@
 - BFF 模块化路由、CORS、JSON 体上限、AI 限流、meta / trend / admin / auth / wallet / dex / ai / health。
 - 人类运维台：`/ops` **服务端组装 HTML**（模板 `ops-console/index.html` + 注入），Admin API，`runtime-settings` 热参数。
 - **`HTTP_ROUTE_CATALOG`** 由 **`h1-capabilities.buildBffHttpRouteCatalog()`** 从 **`H1_CAPABILITY_REGISTRY` + 固定端点** 生成，与 `/ops`、**`GET /api/admin/diagnostics`** 同源，减少双份维护。
+- **`/api/admin/*`** 路径与运维页 Admin 表由 **`admin-api-catalog.ADMIN_API_ROUTE_SPECS`** 单一维护，`admin-routes` 通过 **`matchAdminRoute`** 分发。
 - App 侧 `walletApi` / `hwalletBackendFetch` 与 BFF 路径对齐；`pingHwalletBackend` → `/health`。
 
 ---
@@ -20,7 +21,7 @@
 
 | 顺序 | 版块 | 内容摘要 | 状态 |
 |------|------|----------|------|
-| P1 | **Admin 文档与路由同源** | `ADMIN_OPS_API_DOCS` 仍手写；新加 `admin-routes` 时易漏。可选：从路由表常量生成、或 Vitest 断言「文档路径 ⊆ 实际分支」 | 待办 |
+| P1 | **Admin 文档与路由同源** | `admin-api-catalog.ts`：`ADMIN_API_ROUTE_SPECS` + `matchAdminRoute`；`admin-routes` 表驱动分发；`ADMIN_OPS_API_DOCS` 由同表生成 | **已完成** |
 | P2 | **运维台体验** | 例如：`/ops` 内一键打开「当前 origin + 常用 Admin URL」、错误态更友好、可选暗色外主题（非必须） | 待办 |
 | P3 | **可观测性（安全）** | 结构化日志、按路径计数（内存环缓冲）、**不落密钥**；与现有 `X-Request-Id` 对齐 | 待办 |
 | P4 | **BFF 集成测试** | 对关键路由做 `supertest` 式或 `node:http` 本机起服短测（鉴权、413、429、meta token） | 待办 |
@@ -42,7 +43,8 @@
 |------|------|
 | BFF 入口 | `src/services/walletBackend.ts` → `src/wallet-backend/http-server.ts` |
 | 能力表 / 路由表生成 | `src/wallet-backend/h1-capabilities.ts` |
-| Admin + 诊断 + 路由注入 | `src/wallet-backend/admin-ops.ts` |
+| Admin 路径与文档 | `src/wallet-backend/admin-api-catalog.ts` |
+| Admin + 诊断 + 公开路由聚合 | `src/wallet-backend/admin-ops.ts` |
 | `/ops` HTML 组装 | `src/wallet-backend/ops-console-html.ts` |
 | App 调 BFF | `src/api/providers/okx/onchain/hwalletBackendFetch.ts`、`src/services/walletApi*.ts` |
 | 仓库总览 | `docs/H_WALLET_REPO_STRUCTURE.md` |

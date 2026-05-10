@@ -13,6 +13,7 @@
 | `okx-http.ts` | `okxSignedRequest`（WaaS 聚合余额 fallback） |
 | `dex-tokens.ts` | `mapClientChainToCli`、`symbolToContract`、`pickSignerAddressForChain` |
 | `wallet-cli-handlers.ts` | 所有钱包/DEX CLI 业务 handler |
+| `admin-api-catalog.ts` | **`/api/admin/*` 路径 + 方法 + 文档** 单一表；`matchAdminRoute`、`ADMIN_OPS_API_DOCS`；`admin-routes` 分发须与此一致 |
 | `admin-ops.ts` | 运维台鉴权、`listCliSandboxes`、`adminOverviewPayload`、**`adminDiagnosticsPayload`**（聚合只读诊断） |
 | `runtime-settings.ts` | 工作台运行时 JSON 热覆盖：限流、JSON 体、CORS、trend、LLM 模型与 token、**externalLlmFetchTimeoutMs**；`aiChat` 每次请求读 `getEffective*` |
 | `ai-handlers.ts` | `/api/ai/chat`、`/api/ai/intent` 薄封装；`recognizeIntent` 出口已 sanitize（见 `src/services/intentNormalize.ts`） |
@@ -21,7 +22,7 @@
 | `schemas/walletDex.ts` | **Zod** 校验 `/api/v6/dex/*`、`/api/v6/wallet/send`、`/api/wallet/accounts/switch` 请求体 |
 | `http-server.ts` | CORS、请求日志、`/ops` 与 `dispatchJsonRoutes` 编排 |
 | `h1-capabilities.ts` | **`H1.skill.*` ↔ BFF 路径** 单一注册表 + JSON Schema；**`buildBffHttpRouteCatalog()`** 生成运维/诊断用 HTTP 路由表（与注册表 + 固定端点一致） |
-| `ops-console-html.ts` | **`GET /ops` HTML 生成**：读取 `ops-console/index.html` 模板，注入 `ADMIN_OPS_API_DOCS`、公开 `HTTP_ROUTE_CATALOG` 与 `ops-bootstrap` JSON |
+| `ops-console-html.ts` | **`GET /ops` HTML 生成**：读取 `ops-console/index.html` 模板，注入 `admin-api-catalog` 的 `ADMIN_OPS_API_DOCS`、`HTTP_ROUTE_CATALOG` 与 `ops-bootstrap` JSON |
 | `routes/` | 按域拆分：`meta-routes`（`GET /api/meta/capabilities`）、`ops-console-route`、`admin-routes`、`auth-routes`、`wallet-routes`、`dex-routes`、`ai-routes`、`health-route`、`index` 分发 |
 
 ## AI 对话 / 意图识别（服务端环境变量，勿写入 Expo）

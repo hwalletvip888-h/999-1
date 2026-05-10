@@ -1,10 +1,11 @@
 /**
  * 运维页 HTML：读取 `ops-console/index.html` 模板，注入与后端一致的路由表与元数据。
- * 单一事实来源：`admin-ops` 中 `ADMIN_OPS_API_DOCS`、`HTTP_ROUTE_CATALOG`。
+ * 单一事实来源：`admin-api-catalog` 中 `ADMIN_OPS_API_DOCS`、`admin-ops` 中 `HTTP_ROUTE_CATALOG`。
  */
 import * as fs from "fs";
 import * as nodePath from "path";
-import { ADMIN_OPS_API_DOCS, HTTP_ROUTE_CATALOG } from "./admin-ops";
+import { ADMIN_OPS_API_DOCS } from "./admin-api-catalog";
+import { HTTP_ROUTE_CATALOG } from "./admin-ops";
 import { WALLET_PORT } from "./config";
 
 function escapeHtml(s: string): string {

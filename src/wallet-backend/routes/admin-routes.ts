@@ -1,4 +1,5 @@
 import * as http from "http";
+import { matchAdminRoute, type AdminOp } from "../admin-api-catalog";
 import {
   adminAiLimitsPayload,
   adminDiagnosticsPayload,
@@ -11,6 +12,61 @@ import { OPS_ADMIN_TOKEN } from "../config";
 import { parseBody } from "../http-utils";
 import { applyRuntimeSettingsPatch, buildRuntimeSettingsPayload } from "../runtime-settings";
 
+function json(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status);
+  res.end(JSON.stringify(body));
+}
+
+async function dispatchAdminOp(
+  op: AdminOp,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  switch (op) {
+    case "ping":
+      json(res, 200, { ok: true, message: "ops-authorized" });
+      return;
+    case "overview":
+      json(res, 200, adminOverviewPayload());
+      return;
+    case "system":
+      json(res, 200, adminSystemPayload());
+      return;
+    case "trendStatus":
+      json(res, 200, adminTrendStatusPayload());
+      return;
+    case "aiLimits":
+      json(res, 200, adminAiLimitsPayload());
+      return;
+    case "diagnostics":
+      json(res, 200, adminDiagnosticsPayload());
+      return;
+    case "settingsGet":
+      json(res, 200, buildRuntimeSettingsPayload());
+      return;
+    case "settingsPost": {
+      let body: unknown;
+      try {
+        body = await parseBody(req);
+      } catch (e: any) {
+        if (e?.message === "PAYLOAD_TOO_LARGE") {
+          json(res, 413, { ok: false, error: "Request body too large" });
+          return;
+        }
+        json(res, 400, { ok: false, error: "Invalid JSON body" });
+        return;
+      }
+      const out = applyRuntimeSettingsPatch(body);
+      if (!out.ok) {
+        json(res, 400, { ok: false, error: out.error });
+        return;
+      }
+      json(res, 200, out.payload);
+      return;
+    }
+  }
+}
+
 export async function tryAdminRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -20,85 +76,27 @@ export async function tryAdminRoutes(
   if (!url.startsWith("/api/admin/")) return false;
 
   if (method !== "GET" && method !== "POST") {
-    res.writeHead(405);
-    res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+    json(res, 405, { ok: false, error: "Method Not Allowed" });
     return true;
   }
   if (!OPS_ADMIN_TOKEN) {
-    res.writeHead(503);
-    res.end(
-      JSON.stringify({
-        ok: false,
-        error: "Admin API disabled: set HWALLET_OPS_ADMIN_TOKEN on the server",
-      }),
-    );
+    json(res, 503, {
+      ok: false,
+      error: "Admin API disabled: set HWALLET_OPS_ADMIN_TOKEN on the server",
+    });
     return true;
   }
   if (!assertOpsAuthorized(req)) {
-    res.writeHead(401);
-    res.end(JSON.stringify({ ok: false, error: "Unauthorized" }));
+    json(res, 401, { ok: false, error: "Unauthorized" });
     return true;
   }
-  if (url === "/api/admin/overview" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify(adminOverviewPayload()));
+
+  const op = matchAdminRoute(url, method);
+  if (!op) {
+    json(res, 404, { ok: false, error: "Unknown admin route" });
     return true;
   }
-  if (url === "/api/admin/system" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify(adminSystemPayload()));
-    return true;
-  }
-  if (url === "/api/admin/trend-status" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify(adminTrendStatusPayload()));
-    return true;
-  }
-  if (url === "/api/admin/ai-limits" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify(adminAiLimitsPayload()));
-    return true;
-  }
-  if (url === "/api/admin/diagnostics" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify(adminDiagnosticsPayload()));
-    return true;
-  }
-  if (url === "/api/admin/settings" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify(buildRuntimeSettingsPayload()));
-    return true;
-  }
-  if (url === "/api/admin/settings" && method === "POST") {
-    let body: unknown;
-    try {
-      body = await parseBody(req);
-    } catch (e: any) {
-      if (e?.message === "PAYLOAD_TOO_LARGE") {
-        res.writeHead(413);
-        res.end(JSON.stringify({ ok: false, error: "Request body too large" }));
-        return true;
-      }
-      res.writeHead(400);
-      res.end(JSON.stringify({ ok: false, error: "Invalid JSON body" }));
-      return true;
-    }
-    const out = applyRuntimeSettingsPatch(body);
-    if (!out.ok) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ ok: false, error: out.error }));
-      return true;
-    }
-    res.writeHead(200);
-    res.end(JSON.stringify(out.payload));
-    return true;
-  }
-  if (url === "/api/admin/ping" && method === "GET") {
-    res.writeHead(200);
-    res.end(JSON.stringify({ ok: true, message: "ops-authorized" }));
-    return true;
-  }
-  res.writeHead(404);
-  res.end(JSON.stringify({ ok: false, error: "Unknown admin route" }));
+
+  await dispatchAdminOp(op, req, res);
   return true;
 }
