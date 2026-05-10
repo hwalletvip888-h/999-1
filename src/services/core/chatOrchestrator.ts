@@ -529,7 +529,7 @@ export async function handleUserPrompt(
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `🏦 **资产总览**\n\n账户总权益 **$${(card.totalEquity ?? 0).toLocaleString()}**\n\n详细资产分布请查看下方卡片 👇`,
+            replyText: intent.reply || `🏦 **链上钱包资产**\n\n链上合计约 **$${(card.totalEquity ?? 0).toLocaleString()}**\n\n各链代币明细请查看下方卡片 👇`,
             card
           },
           simulationMode: false
