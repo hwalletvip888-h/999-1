@@ -2,9 +2,13 @@
  * marketFeed.ts — 行情订阅接口层
  *
  * ⚠️ 默认走 MockMarketFeed（前端自生成假行情）。
- *    要切到真实交易所，请在应用启动时调用 setMarketFeed(new BinanceMarketFeed({apiKey,...}))。
- *    真实模式仍只读，不会涉及下单 / 资金。
+ *    切到 OKX：`setMarketFeed(new OKXMarketFeed())`（公开 WS + REST，与 OKX 文档一致）。
+ *    切到 Binance：`setMarketFeed(new BinanceMarketFeed())`（公开 trade 流 + REST K 线，无需 key）。
+ *    真实模式只读，不涉及下单 / 资金。
  */
+import { getCandles, type OkxBar } from "./okxApi";
+import { fetchWithDeadline } from "./fetchWithDeadline";
+import { FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
 
 export type Interval = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
 
@@ -87,8 +91,6 @@ export class MockMarketFeed implements MarketFeed {
 /* ─────────────────────────────────────────
    OKXMarketFeed —— 公开 WS + REST K 线
    ───────────────────────────────────────── */
-
-import { getCandles, type OkxBar } from "./okxApi";
 
 const OKX_INTERVAL_MAP: Record<Interval, OkxBar> = {
   "1m": "1m",
@@ -224,32 +226,182 @@ export class OKXMarketFeed implements MarketFeed {
 }
 
 /* ─────────────────────────────────────────
-   BinanceMarketFeed —— 真实 WS 占位实现（默认不启用）
+   BinanceMarketFeed —— 公开 combined stream + REST K 线（仅公共接口）
    ───────────────────────────────────────── */
 
+const BINANCE_INTERVAL: Record<Interval, string> = {
+  "1m": "1m",
+  "5m": "5m",
+  "15m": "15m",
+  "1h": "1h",
+  "4h": "4h",
+  "1d": "1d",
+};
+
 export type BinanceConfig = {
-  /** 公开行情不需要 key；保留字段以便后续扩展私有数据 */
+  /** 公开行情不需要 key；保留字段以便后续扩展 listenKey 等私有流 */
   apiKey?: string;
   apiSecret?: string;
-  /** wss URL，默认 wss://stream.binance.com:9443 */
+  /** Spot 行情流 host，默认 `wss://stream.binance.com:9443`（Binance 公开文档） */
   wsBase?: string;
 };
 
 export class BinanceMarketFeed implements MarketFeed {
+  private ws: WebSocket | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** key = BTCUSDT（大写、无横杠） */
+  private tickSubs = new Map<string, Set<(t: Tick) => void>>();
+
   constructor(private cfg: BinanceConfig = {}) {
-    // TODO: 在用户提供凭证后接入。
-    // 公开行情：wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}@kline_1m
-    // 私有数据（账户余额、订单）需 listenKey + 签名。
-    if (__DEV__) {
-      console.info("[BinanceMarketFeed] stub created — 仍未连接真实 WebSocket");
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      console.info("[BinanceMarketFeed] 公开 trade 合并流 + REST /api/v3/klines（无 listenKey）");
     }
   }
 
-  subscribeTicks(_symbol: string, _cb: (tick: Tick) => void): () => void {
-    // TODO: new WebSocket(`${this.cfg.wsBase ?? "wss://stream.binance.com:9443"}/ws/${_symbol.toLowerCase()}@trade`)
-    // 解析 e.data → { p: price, T: ts }
+  private wsBaseUrl(): string {
+    return (this.cfg.wsBase ?? "wss://stream.binance.com:9443").replace(/\/$/, "");
+  }
+
+  private normalizeSymbol(symbol: string): string {
+    return symbol.toUpperCase().replace(/-/g, "").replace(/\s+/g, "");
+  }
+
+  private streamFragmentForKey(key: string): string {
+    return `${key.toLowerCase()}@trade`;
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private detachWs() {
+    if (!this.ws) return;
+    try {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      this.ws.close();
+    } catch {
+      /* ignore */
+    }
+    this.ws = null;
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer || this.tickSubs.size === 0) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.openCombinedWs();
+    }, 2500);
+  }
+
+  /** 按当前 tickSubs 重建 combined stream（Binance: `/stream?streams=a@trade/b@trade`） */
+  private openCombinedWs() {
+    this.clearReconnectTimer();
+    this.detachWs();
+    if (this.tickSubs.size === 0) return;
+
+    const streams = [...this.tickSubs.keys()].map((k) => this.streamFragmentForKey(k)).join("/");
+    const url = `${this.wsBaseUrl()}/stream?streams=${encodeURIComponent(streams)}`;
+
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
+    this.ws = socket;
+
+    socket.onmessage = (ev) => {
+      try {
+        const outer = JSON.parse(typeof ev.data === "string" ? ev.data : "") as {
+          stream?: string;
+          data?: { e?: string; s?: string; p?: string; T?: number };
+        };
+        const d = outer.data;
+        if (!d || d.e !== "trade" || !d.s || d.p == null) return;
+        const sym = this.normalizeSymbol(d.s);
+        const subs = this.tickSubs.get(sym);
+        if (!subs) return;
+        const tick: Tick = {
+          symbol: sym,
+          price: parseFloat(String(d.p)),
+          ts: Number(d.T) || Date.now(),
+        };
+        subs.forEach((fn) => fn(tick));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    socket.onerror = () => {};
+    socket.onclose = () => {
+      this.ws = null;
+      if (this.tickSubs.size > 0) this.scheduleReconnect();
+    };
+  }
+
+  async fetchKlines(symbol: string, interval: Interval, limit = 100): Promise<Candle[]> {
+    const sym = this.normalizeSymbol(symbol);
+    const iv = BINANCE_INTERVAL[interval] ?? "1m";
+    const lim = Math.min(Math.max(limit, 1), 1000);
+    const url = `https://api.binance.com/api/v3/klines?symbol=${encodeURIComponent(sym)}&interval=${encodeURIComponent(iv)}&limit=${encodeURIComponent(String(lim))}`;
+    try {
+      const res = await fetchWithDeadline(
+        url,
+        { method: "GET", headers: { Accept: "application/json" } },
+        FETCH_TIMEOUT_MS,
+      );
+      if (!res.ok) return [];
+      const rows = (await res.json()) as unknown[];
+      if (!Array.isArray(rows)) return [];
+      return rows.map((row) => {
+        const r = row as unknown[];
+        return {
+          t: Math.floor(Number(r[0]) / 1000),
+          o: parseFloat(String(r[1])),
+          h: parseFloat(String(r[2])),
+          l: parseFloat(String(r[3])),
+          c: parseFloat(String(r[4])),
+          v: parseFloat(String(r[5])),
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  subscribeTicks(symbol: string, cb: (tick: Tick) => void): () => void {
+    const key = this.normalizeSymbol(symbol);
+    const isNewInst = !this.tickSubs.has(key);
+    let set = this.tickSubs.get(key);
+    if (!set) {
+      set = new Set();
+      this.tickSubs.set(key, set);
+    }
+    set.add(cb);
+    if (isNewInst) this.openCombinedWs();
+
     return () => {
-      /* noop */
+      const cur = this.tickSubs.get(key);
+      if (!cur) return;
+      cur.delete(cb);
+      let streamsChanged = false;
+      if (cur.size === 0) {
+        this.tickSubs.delete(key);
+        streamsChanged = true;
+      }
+      if (this.tickSubs.size === 0) {
+        this.clearReconnectTimer();
+        this.detachWs();
+      } else if (streamsChanged) {
+        this.openCombinedWs();
+      }
     };
   }
 }

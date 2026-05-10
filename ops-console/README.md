@@ -9,6 +9,10 @@
 3. 在服务器上设置环境变量 **`HWALLET_OPS_ADMIN_TOKEN`**（强随机字符串），重启后端。
 4. 在运营页输入该密钥 → **保存到浏览器** → **加载数据**。
 
+## 请求超时
+
+页面向同源 `/api/admin/*` 的 `fetch` 使用 **28s** 超时（与仓库 `src/services/hwalletHttpConstants.ts` 中 `FETCH_TIMEOUT_MS` 对齐）；超时将提示检查后端是否可达。
+
 ## API（需 `X-Ops-Key: <token>`）
 
 | 方法 | 路径 | 说明 |

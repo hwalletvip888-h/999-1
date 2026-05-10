@@ -138,6 +138,8 @@
   </main>
   <script>
     const STORAGE_KEY = "hwallet_ops_admin_key";
+    /** 与主仓 `src/services/hwalletHttpConstants.ts` 中 `FETCH_TIMEOUT_MS` 对齐 */
+    const OPS_FETCH_MS = 28000;
     document.getElementById("origin").textContent = location.origin;
 
     function getKey() {
@@ -160,14 +162,26 @@
     async function api(path) {
       const key = getKey();
       if (!key) throw new Error("请填写运维密钥或先保存到浏览器");
-      const r = await fetch(path, {
-        headers: { "X-Ops-Key": key, "Accept": "application/json" },
-      });
-      const text = await r.text();
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 200) || r.statusText); }
-      if (!r.ok) throw new Error(data.error || data.msg || "HTTP " + r.status);
-      return data;
+      const ctrl = new AbortController();
+      const tid = setTimeout(function () { ctrl.abort(); }, OPS_FETCH_MS);
+      try {
+        const r = await fetch(path, {
+          headers: { "X-Ops-Key": key, "Accept": "application/json" },
+          signal: ctrl.signal,
+        });
+        const text = await r.text();
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error(text.slice(0, 200) || r.statusText); }
+        if (!r.ok) throw new Error(data.error || data.msg || "HTTP " + r.status);
+        return data;
+      } catch (e) {
+        if (e && e.name === "AbortError") {
+          throw new Error("请求超时（" + OPS_FETCH_MS + " ms），请检查钱包后端是否可达");
+        }
+        throw e;
+      } finally {
+        clearTimeout(tid);
+      }
     }
 
     function fmtTime(ms) {
