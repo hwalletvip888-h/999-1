@@ -9,7 +9,7 @@
  *   - `dex-tokens.ts` — 链映射与合约表、签名地址选取
  *   - `wallet-cli-handlers.ts` — OTP / 账户 / 余额 / swap / send
  *   - `admin-ops.ts` — 人类运营台 Admin API 数据
- *   - `http-server.ts` — HTTP 路由与 /ops 静态页
+ *   - `http-server.ts` — HTTP 路由与 `/ops`（服务端组装运维 HTML）
  *
  * 启动：`npm run dev:wallet-backend`（`npx tsx src/services/walletBackend.ts`）
  */

@@ -86,7 +86,7 @@
   <header>
     <div>
       <h1>H Wallet 运维台</h1>
-      <div class="sub">监控、运行时参数、聚合诊断（路由/常量/只读数据）· 需 <code>HWALLET_OPS_ADMIN_TOKEN</code></div>
+      <div class="sub">监控、运行时参数、聚合诊断 · 需 <code>HWALLET_OPS_ADMIN_TOKEN</code> · <span id="ops-gen-meta"><!--OPS_PAGE_META--></span></div>
     </div>
     <div class="auth-bar">
       <input type="password" id="opsKey" placeholder="X-Ops-Key" autocomplete="off" />
@@ -267,17 +267,21 @@
           <h2>Admin API（均需 <code>X-Ops-Key</code>）</h2>
           <table>
             <thead><tr><th>路径</th><th>说明</th></tr></thead>
-            <tbody>
-              <tr><td><code>/api/admin/ping</code></td><td>校验密钥</td></tr>
-              <tr><td><code>/api/admin/overview</code></td><td>健康、沙箱列表、脱敏配置</td></tr>
-              <tr><td><code>/api/admin/system</code></td><td>进程 uptime、Node 版本、内存</td></tr>
-              <tr><td><code>/api/admin/trend-status</code></td><td>趋势磁盘报告摘要（无则 hasReport:false）</td></tr>
-              <tr><td><code>/api/admin/ai-limits</code></td><td>AI 限流窗口与当前桶数量</td></tr>
-              <tr><td><code>/api/admin/diagnostics</code></td><td>聚合只读诊断（进程、路由表、HTTP 常量等）</td></tr>
-              <tr><td><code>/api/admin/settings</code></td><td>GET：运行时参数快照；POST：JSON 合并写入（字段见 README）</td></tr>
+            <tbody id="adminApiTbody">
+              <!--OPS_ADMIN_TBODY-->
             </tbody>
           </table>
-          <p class="hint">未设置 <code>HWALLET_OPS_ADMIN_TOKEN</code> 时上述接口返回 503。除 <code>GET /api/admin/settings</code> 外，<code>POST /api/admin/settings</code> 亦需同一密钥。</p>
+          <p class="hint">未设置 <code>HWALLET_OPS_ADMIN_TOKEN</code> 时上述接口返回 503。Admin 的 GET/POST 均须同一密钥。</p>
+        </div>
+        <div class="card" style="max-width:960px;">
+          <h2>业务与公开 HTTP 路由（与诊断接口路由表同源）</h2>
+          <table>
+            <thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead>
+            <tbody id="publicRoutesTbody">
+              <!--OPS_PUBLIC_ROUTES_TBODY-->
+            </tbody>
+          </table>
+          <p class="hint">上表由<strong>服务端</strong>在返回本页时从代码清单注入；与 <code>GET /api/admin/diagnostics</code> 中的 <code>routeCatalog</code> 一致。</p>
         </div>
       </section>
     </main>

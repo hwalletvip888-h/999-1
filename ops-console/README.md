@@ -1,6 +1,6 @@
 # H Wallet 运维台（人类操作）
 
-由 **`walletBackend`** 托管，与 App API 同进程、同端口。
+由 **`walletBackend`** 托管，与 App API 同进程、同端口。浏览器访问的 **`/ops` HTML 由后端在响应时生成**：读取仓库内 `ops-console/index.html` 作为模板，注入与 `admin-ops` 中 **`ADMIN_OPS_API_DOCS` / `HTTP_ROUTE_CATALOG`** 一致的路由表及 `<script type="application/json" id="ops-bootstrap">`（便于后续前端扩展）；模板缺失时返回简短降级页。
 
 ## 访问方式
 
