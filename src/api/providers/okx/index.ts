@@ -39,7 +39,7 @@ export { OkxH_NotifyApi } from './H_NotifyApi.okx';
 export type { OkxCredentials, OkxResponse } from './okxHttpCore';
 export { OkxApiError, request as okxRequest, sign as okxSign, OKX_BASE_URL } from './okxHttpCore';
 
-// ─── V6 链上专用客户端（hvip.io 后端代理 onchainos CLI） ────────
+// ─── V6 链上专用客户端（钱包 BFF 代理 onchainos CLI） ────────
 export { okxOnchainClient } from './okxOnchainClient';
 export type {
   ChainId,

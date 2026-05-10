@@ -14,10 +14,7 @@
         "buildType": "apk"
       },
       "distribution": "internal",
-      "channel": "preview",
-      "env": {
-        "EXPO_PUBLIC_HWALLET_API_BASE": "https://api.hvip.io"
-      }
+      "channel": "preview"
     },
     "production": {
       "channel": "production",
