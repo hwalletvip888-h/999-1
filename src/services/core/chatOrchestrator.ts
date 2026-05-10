@@ -395,15 +395,48 @@ export async function handleUserPrompt(
         const toSymbol = intent.symbol || 'ETH';
         const fromSymbol = (intent as any).fromSymbol || 'USDT';
         const amount = intent.amount || 100;
-        const instId = `${toSymbol}-USDT`;
+        // 默认链：SOL 代币用 solana，其他用 eth
+        const swapChain = ['SOL', 'RAY', 'BONK', 'JTO', 'PYTH'].includes(toSymbol.toUpperCase())
+          ? 'solana'
+          : 'eth';
 
         steps = advanceStep(steps, 's2', 'active', onStep);
-        const ticker = await api.market.getTicker(instId);
+
+        // 登录校验
+        const session = await loadSession();
+        if (!session?.token) {
+          steps = advanceStep(steps, 's2', 'error' as any, onStep);
+          return {
+            ok: true,
+            data: { replyText: '🔄 请先在**钱包页面**完成登录，登录后才能兑换 👇' },
+            simulationMode: false,
+          };
+        }
+
+        // 调真实报价
+        const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
+        let quoteData: any = null;
+        let quoteError = '';
+        try {
+          quoteData = await callBackend<any>('/api/v6/dex/swap-quote', {
+            token: session.token,
+            body: {
+              fromChain: swapChain,
+              fromSymbol,
+              fromAmount: String(amount),
+              toChain: swapChain,
+              toSymbol,
+              slippageBps: 50,
+            },
+          });
+        } catch (e: any) {
+          quoteError = e?.message || '报价失败';
+        }
+
         steps = advanceStep(steps, 's2', 'done', onStep);
         await delay(150);
 
         steps = advanceStep(steps, 's3', 'active', onStep);
-        const estimatedAmount = amount / ticker.last;
         await delay(200);
         steps = advanceStep(steps, 's3', 'done', onStep);
         await delay(150);
@@ -411,6 +444,26 @@ export async function handleUserPrompt(
         steps = await advanceSafety(steps, onStep);
 
         steps = advanceStep(steps, 's4', 'active', onStep);
+
+        if (quoteError || !quoteData?.ok) {
+          steps = advanceStep(steps, 's4', 'done', onStep);
+          return {
+            ok: true,
+            data: {
+              replyText: `🔄 **兑换报价失败**\n\n${quoteError || quoteData?.error || '暂时无法获取报价，请稍后重试'}\n\n常见原因：该链暂不支持此交易对，或余额不足`,
+            },
+            simulationMode: false,
+          };
+        }
+
+        const toAmt = Number(quoteData.toAmount || 0);
+        const rate = Number(quoteData.rate || 0);
+        const routerLabel: string = quoteData.routerLabel || 'OKX DEX Aggregator';
+        const gasFee: string = quoteData.estimatedGasUsd ? `~$${Number(quoteData.estimatedGasUsd).toFixed(4)}` : '—';
+        const impact = quoteData.priceImpactBps
+          ? `${(quoteData.priceImpactBps / 100).toFixed(2)}%`
+          : '<0.01%';
+
         const card: HWalletCard = {
           id: makeId('card_swap'),
           productLine: 'v6',
@@ -422,28 +475,33 @@ export async function handleUserPrompt(
           status: 'preview',
           simulationMode: false,
           userPrompt: input,
-          aiSummary: intent.reply || `兑换 ${amount} USDT → ${estimatedAmount.toFixed(6)} ${toSymbol}`,
+          aiSummary: `兑换 ${amount} ${fromSymbol} → ${toAmt > 0 ? toAmt.toFixed(6) : '?'} ${toSymbol}`,
           createdAt: now,
           fromAmount: amount,
           fromSymbol,
-          toAmount: estimatedAmount,
+          toAmount: toAmt,
           toSymbol,
-          rate: `1 ${toSymbol} ≈ $${ticker.last.toLocaleString()}`,
-          slippage: '0.5%',
-          networkFee: '~$0.50',
+          swapChain,
+          rate: rate > 0 ? `1 ${toSymbol} ≈ ${(1 / rate).toFixed(4)} ${fromSymbol}` : '—',
+          slippage: `${(quoteData.slippageBps ?? 50) / 100}%`,
+          networkFee: gasFee,
+          rows: [
+            { label: '路由', value: routerLabel },
+            { label: '价格影响', value: impact },
+          ],
           warning: '链上兑换受滑点影响，实际到账数量可能略有差异。',
           primaryAction: '确认兑换',
-          secondaryAction: '换一个'
+          secondaryAction: '取消',
         };
         steps = advanceStep(steps, 's4', 'done', onStep);
 
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `🔄 为你生成 **链上兑换** 卡片\n\n${amount} USDT → **~${estimatedAmount.toFixed(6)} ${toSymbol}**\n参考汇率 1 ${toSymbol} ≈ $${ticker.last.toLocaleString()}\n滑点 0.5% · 预估 Gas ~$0.50\n\n确认后将发起链上交易 👇`,
-            card
+            replyText: intent.reply || `🔄 **链上兑换报价**\n\n${amount} ${fromSymbol} → **~${toAmt > 0 ? toAmt.toFixed(6) : '?'} ${toSymbol}**\n路由：${routerLabel} · 滑点 ${(quoteData.slippageBps ?? 50) / 100}% · Gas ${gasFee}\n\n确认后将发起链上交易 👇`,
+            card,
           },
-          simulationMode: false
+          simulationMode: false,
         };
       }
 

@@ -376,9 +376,79 @@ export function ChatScreen() {
     // 找到当前卡片
     const targetCard = messages.find((m) => m.card?.id === cardId)?.card;
 
-    // ─── 转账卡片：真实调用 BFF 发送 ───
-    if (targetCard?.toAddress && targetCard?.transferChain) {
+    // ─── Swap 卡片：调真实 BFF 执行兑换 ───
+    if (targetCard?.module === 'swap' && targetCard?.fromSymbol && targetCard?.toSymbol) {
       setMessages((current) => [
+        ...current,
+        { id: makeId("msg_ai_executing"), role: "assistant", kind: "text", text: "兑换中，等待链上确认...", createdAt: nowLabel() }
+      ]);
+      scrollToEndSoon();
+
+      (async () => {
+        try {
+          const session = await loadSession();
+          if (!session?.token) throw new Error("未登录，请先在钱包页面完成登录");
+
+          const execRes = await callBackend<any>('/api/v6/dex/swap-execute', {
+            token: session.token,
+            body: {
+              fromChain: targetCard.swapChain || 'eth',
+              fromSymbol: targetCard.fromSymbol,
+              fromAmount: String(targetCard.fromAmount ?? 0),
+              toChain: targetCard.swapChain || 'eth',
+              toSymbol: targetCard.toSymbol,
+              slippageBps: 50,
+            },
+          });
+
+          if (!execRes?.ok) throw new Error(execRes?.error || '兑换提交失败');
+
+          const txHash: string = execRes?.txHash ?? '';
+          const finalStatus: import("../types/card").CardStatus = 'executed';
+
+          setMessages((current) =>
+            current.map((m) =>
+              m.card?.id === cardId ? { ...m, card: { ...m.card!, status: finalStatus } } : m
+            )
+          );
+          updateCardStatus(cardId, finalStatus);
+          if (targetCard) {
+            const auditTrail = [
+              ...(targetCard.auditTrail ?? []),
+              { ts: Date.now(), actor: "user" as const, action: "confirm", detail: targetCard.aiSummary }
+            ];
+            cardLibrary.add({ ...targetCard, status: finalStatus, auditTrail });
+          }
+          setMessages((current) => [
+            ...current,
+            {
+              id: makeId("msg_ai_executed"),
+              role: "assistant",
+              kind: "text",
+              text: `✅ **兑换成功！**\n\n已将 **${targetCard.fromAmount} ${targetCard.fromSymbol}** 兑换为 **${targetCard.toAmount?.toFixed ? targetCard.toAmount.toFixed(6) : targetCard.toAmount} ${targetCard.toSymbol}**${txHash ? `\n交易哈希：\`${txHash.slice(0, 12)}...\`` : ''}`,
+              createdAt: nowLabel()
+            }
+          ]);
+        } catch (e: any) {
+          setMessages((current) =>
+            current.map((m) =>
+              m.card?.id === cardId ? { ...m, card: { ...m.card!, status: 'failed' as import("../types/card").CardStatus } } : m
+            )
+          );
+          setMessages((current) => [
+            ...current,
+            { id: makeId("msg_ai_err"), role: "assistant", kind: "text", text: `⚠️ 兑换失败：${e?.message || '请重试'}`, createdAt: nowLabel() }
+          ]);
+        }
+        setHeroMood("celebrating");
+        scheduleMood(setHeroMood, "idle", 1500);
+        scrollToEndSoon();
+      })();
+      return;
+    }
+
+    // ─── 转账卡片：真实调用 BFF 发送 ───
+    if (targetCard?.toAddress && targetCard?.transferChain) {      setMessages((current) => [
         ...current,
         { id: makeId("msg_ai_executing"), role: "assistant", kind: "text", text: "发送中...", createdAt: nowLabel() }
       ]);

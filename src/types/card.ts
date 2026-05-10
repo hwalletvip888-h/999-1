@@ -148,6 +148,8 @@ export type HWalletCard = {
   transferChain?: string;
   estimatedFee?: string;
   isKnownAddress?: boolean;
+  // SwapCard 兑换卡片链别（执行时需要）
+  swapChain?: string;
   // TransferSelectCard 地址选择卡片（无地址时弹出）
   recentAddresses?: string[];
   transferSelectMode?: boolean;
