@@ -17,6 +17,7 @@ import {
 } from "./config";
 import { getAiRateLimitStats } from "./ai-rate-limit";
 import { ensureCliHomeRoot } from "./cli-home";
+import { buildBffHttpRouteCatalog } from "./h1-capabilities";
 import { isOnchainosCliAvailable } from "./onchainos-cli";
 import { readLatestTrendReportFromDisk } from "./trend-from-disk";
 import {
@@ -178,6 +179,9 @@ function trendDirSnapshot(): { dir: string; exists: boolean; reportFileCount: nu
   }
 }
 
+/** 对外 HTTP 路由清单（由 `buildBffHttpRouteCatalog()` 生成，与 H1 注册表一致） */
+export const HTTP_ROUTE_CATALOG = buildBffHttpRouteCatalog();
+
 /** 运维台 Admin API 文档行（与 `admin-routes` 同步，供 `/ops` 页面生成器注入） */
 export const ADMIN_OPS_API_DOCS: { path: string; note: string }[] = [
   { path: "/api/admin/ping", note: "校验密钥" },
@@ -187,31 +191,6 @@ export const ADMIN_OPS_API_DOCS: { path: string; note: string }[] = [
   { path: "/api/admin/ai-limits", note: "AI 限流窗口与当前桶数量" },
   { path: "/api/admin/diagnostics", note: "聚合只读诊断（进程、路由表、HTTP 常量等）" },
   { path: "/api/admin/settings", note: "GET：运行时参数；POST：JSON 合并写入（见 ops-console/README）" },
-];
-
-/** 只读：对外 HTTP 路由清单（与 diagnostics.routeCatalog 同源） */
-export const HTTP_ROUTE_CATALOG: { method: string; path: string; note: string }[] = [
-  { method: "GET", path: "/health", note: "健康检查 JSON" },
-  { method: "GET", path: "/ops", note: "运维操作页（本页，服务端生成 HTML）" },
-  { method: "GET", path: "/api/meta/capabilities", note: "能力发现；可配置 X-Hwallet-Meta-Token" },
-  { method: "GET", path: "/api/trend", note: "趋势摘要（磁盘 report）" },
-  { method: "GET", path: "/api/admin/*", note: "运维 Admin（X-Ops-Key）" },
-  { method: "POST", path: "/api/auth/send-otp", note: "发送 OTP（别名 /api/agent-wallet/send-code）" },
-  { method: "POST", path: "/api/auth/verify-otp", note: "校验 OTP（别名 /api/agent-wallet/verify）" },
-  { method: "GET", path: "/api/wallet/addresses", note: "地址（别名 /api/agent-wallet/addresses）" },
-  { method: "GET", path: "/api/wallet/accounts", note: "账户列表" },
-  { method: "POST", path: "/api/wallet/accounts/switch", note: "切换账户" },
-  { method: "POST", path: "/api/wallet/accounts/add", note: "添加账户" },
-  {
-    method: "GET",
-    path: "/api/v6/wallet/portfolio",
-    note: "资产组合（别名 /api/agent-wallet/balance、/api/wallet/balance）",
-  },
-  { method: "POST", path: "/api/v6/wallet/send", note: "发送交易" },
-  { method: "POST", path: "/api/v6/dex/swap-quote", note: "DEX 询价" },
-  { method: "POST", path: "/api/v6/dex/swap-execute", note: "DEX 执行" },
-  { method: "POST", path: "/api/ai/chat", note: "闲聊（DeepSeek）" },
-  { method: "POST", path: "/api/ai/intent", note: "意图（Claude / fallback）" },
 ];
 
 /**

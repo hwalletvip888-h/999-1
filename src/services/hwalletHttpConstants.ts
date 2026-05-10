@@ -13,7 +13,7 @@
  *
  * **MCP 子包**（`mcp-hwallet-server/src/fetch-timeout.ts`）默认 28s，由 `HWALLET_MCP_FETCH_TIMEOUT_MS` 覆盖（10s–120s clamp），**不 import 本文件**，数值上刻意与 `FETCH_TIMEOUT_MS` 对齐；改 BFF 默认超时时请顺手核对 MCP 文档或该 env。
  *
- * **运营台**（`ops-console/index.html`）内联 `OPS_FETCH_MS = 28000`（静态页不 import 本文件），与 `FETCH_TIMEOUT_MS` 对齐。
+ * **运营台**（`ops-console/index.html` 为模板；`/ops` 由 BFF 注入路由表）内联 `OPS_FETCH_MS = 28000`（静态页不 import 本文件），与 `FETCH_TIMEOUT_MS` 对齐。
  */
 
 export const FETCH_TIMEOUT_MS = 28_000;

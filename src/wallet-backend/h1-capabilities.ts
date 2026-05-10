@@ -196,3 +196,38 @@ export function toMcpToolShapes(
     },
   }));
 }
+
+/** 运维台 / diagnostics 用：公开 HTTP 路由一行 */
+export type BffHttpRouteCatalogRow = { method: HttpMethod; path: string; note: string };
+
+/**
+ * 与 `H1_CAPABILITY_REGISTRY` 及固定 BFF 端点一致的路由表（单一事实来源）。
+ * 含主路径与各 `pathAliases`，供 `/ops` 注入与 `GET /api/admin/diagnostics`。
+ */
+export function buildBffHttpRouteCatalog(): BffHttpRouteCatalogRow[] {
+  const rows: BffHttpRouteCatalogRow[] = [
+    { method: "GET", path: "/health", note: "健康检查 JSON" },
+    { method: "GET", path: "/ops", note: "运维操作页（服务端生成 HTML）" },
+    { method: "GET", path: "/api/meta/capabilities", note: "能力发现；可配置 X-Hwallet-Meta-Token" },
+    { method: "GET", path: "/api/trend", note: "趋势摘要（磁盘 report）" },
+    { method: "GET", path: "/api/admin/*", note: "运维 Admin（X-Ops-Key）" },
+  ];
+  const seen = new Set<string>();
+  const key = (method: string, path: string) => `${method} ${path}`;
+  const push = (method: HttpMethod, path: string, note: string) => {
+    const kk = key(method, path);
+    if (seen.has(kk)) return;
+    seen.add(kk);
+    rows.push({ method, path, note });
+  };
+  for (const r of rows) seen.add(key(r.method, r.path));
+
+  for (const cap of H1_CAPABILITY_REGISTRY) {
+    const baseNote = `${cap.description}（${cap.skillId}）`;
+    push(cap.http.method, cap.http.path, baseNote);
+    for (const a of cap.pathAliases ?? []) {
+      push(cap.http.method, a, `${baseNote} · 别名`);
+    }
+  }
+  return rows;
+}

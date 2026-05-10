@@ -46,7 +46,7 @@ flowchart TB
 | **BFF** | `src/wallet-backend/`、`src/services/walletBackend.ts` | HTTP：鉴权、钱包/DEX/AI/运维；`h1-capabilities.ts` 定义 **`H1.skill.*`** |
 | **MCP 适配** | `mcp-hwallet-server/` | stdio MCP：启动时拉 **`GET /api/meta/capabilities`**，工具调用 **HTTP 代理**到 BFF |
 | **域平台（与 RN 解耦）** | `h1-platform/` | integration / orchestration 等；Vitest；**尚未**与 BFF 全量硬绑 |
-| **人类运维台** | `ops-console/`、`/ops`、`/api/admin/*` | 静态页 + Admin API（`HWALLET_OPS_ADMIN_TOKEN`） |
+| **人类运维台** | `ops-console/`（HTML 模板）、`/ops`（**服务端组装**）、`/api/admin/*` | 模板 + Admin API（`HWALLET_OPS_ADMIN_TOKEN`） |
 | **Agent 技能说明** | `.agents/skills/` | Cursor Agent 路由与 OKX 能力说明（非 MCP 协议本身） |
 
 ---
@@ -60,7 +60,7 @@ flowchart TB
 │   └── H_WALLET_REPO_STRUCTURE.md             # 本文件
 ├── h1-platform/                 # @hwallet/h1-platform — 域逻辑与测试
 ├── mcp-hwallet-server/          # @hwallet/mcp-hwallet-server — MCP stdio 服务
-├── ops-console/                 # 运维台静态资源
+├── ops-console/                 # 运维台 HTML 模板（由 BFF 注入路由表后输出 /ops）
 ├── src/
 │   ├── api/
 │   │   ├── contracts/           # IH_* 网关契约
