@@ -1,4 +1,18 @@
-/** H Wallet 移动端 HTTP 超时常量（无 RN / Expo 依赖，供单测与 walletApiHttp 共用） */
+/**
+ * H Wallet 出站 HTTP 超时常量（无 RN / Expo 依赖，供 `walletApiHttp`、单测、`okxHttpCore` 等共用）。
+ *
+ * 谁用哪一项（对接层索引，避免各处再写魔数）：
+ *
+ * | 常量 | 典型调用方 | 对接对象 |
+ * |------|------------|----------|
+ * | `FETCH_TIMEOUT_MS` | `walletApiHttp.fetchWithTimeout` / `getWithTimeout`；`api/providers/okx/okxHttpCore.request` | 自家 BFF（`EXPO_PUBLIC_HWALLET_API_BASE`）；**OKX V5 REST**（`https://www.okx.com`，官方签名头，无自研协议） |
+ * | `OTP_POST_DEADLINE_MS` | `walletApiHttp.raceOtpPost` | 同上 BFF，OTP 相关 POST 与 UI 层竞态上限 |
+ * | `OKX_AGENTIC_FETCH_TIMEOUT_MS` | `agentWalletProviders` → `fetchWithDeadline` | **OKX Web3 Agentic priapi**（`web3.okx.com`，官方路径与头；仍非自研栈） |
+ * | `EXTERNAL_LLM_FETCH_TIMEOUT_MS` | `aiChat` → `fetchWithDeadline`；`HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS` 可调 | Claude / DeepSeek 等**第三方 LLM HTTP**（与 OKX 无关） |
+ *
+ * **MCP 子包**（`mcp-hwallet-server/src/fetch-timeout.ts`）默认 28s，由 `HWALLET_MCP_FETCH_TIMEOUT_MS` 覆盖（10s–120s clamp），**不 import 本文件**，数值上刻意与 `FETCH_TIMEOUT_MS` 对齐；改 BFF 默认超时时请顺手核对 MCP 文档或该 env。
+ */
+
 export const FETCH_TIMEOUT_MS = 28_000;
 export const OTP_POST_DEADLINE_MS = 32_000;
 
