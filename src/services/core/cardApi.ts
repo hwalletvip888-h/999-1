@@ -237,7 +237,41 @@ export async function buildPositionCard(userPrompt: string): Promise<HWalletCard
   };
 }
 
-// ─── 7. PortfolioCard 资产总览卡片 ─────────────────────────────
+// ─── 7. AddressCard 充值地址卡片 ──────────────────────────────
+export function buildAddressCard(
+  addresses: { evm: any[]; solana: any[] },
+  userPrompt: string,
+): HWalletCard {
+  const evmAddr: string = addresses.evm?.[0]?.address ?? "";
+  const solAddr: string = addresses.solana?.[0]?.address ?? "";
+
+  const depositAddresses = [];
+  if (evmAddr) {
+    depositAddresses.push({ chain: "evm", label: "EVM 通用（ETH / BNB / Base / OKX）", address: evmAddr });
+  }
+  if (solAddr) {
+    depositAddresses.push({ chain: "solana", label: "Solana", address: solAddr });
+  }
+
+  return {
+    id: makeId("card_address"),
+    productLine: "v6",
+    module: "wallet",
+    cardType: "info",
+    header: "信息卡片",
+    title: "📥 充值地址",
+    riskLevel: "低",
+    status: "executed",
+    simulationMode: false,
+    userPrompt,
+    aiSummary: `EVM: ${evmAddr ? evmAddr.slice(0, 8) + "..." : "无"}  SOL: ${solAddr ? solAddr.slice(0, 8) + "..." : "无"}`,
+    createdAt: now(),
+    depositAddresses,
+    warning: "转账前请确认链别，转错链无法找回",
+  };
+}
+
+// ─── 8. PortfolioCard 资产总览卡片 ─────────────────────────────
 export async function buildPortfolioCard(userPrompt: string): Promise<HWalletCard> {
   const overview = await api.account.getOverview();
 
@@ -264,7 +298,7 @@ export async function buildPortfolioCard(userPrompt: string): Promise<HWalletCar
   };
 }
 
-// ─── 8. TradeResultCard 交易结果卡片 ───────────────────────────
+// ─── 9. TradeResultCard 交易结果卡片 ───────────────────────────
 export function buildTradeResultCard(
   success: boolean,
   symbol: string,

@@ -10,7 +10,8 @@ import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
 import type { AIStep } from '../../types';
 import { makeId } from '../../utils/id';
-import { buildPriceCard, buildPositionCard, buildPortfolioCard } from './cardApi';
+import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard } from './cardApi';
+import { loadSession } from '../walletApi';
 // V6 链上机会发现客户端
 import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
 
@@ -88,6 +89,12 @@ function buildSteps(action: ChatIntentAction): AIStep[] {
         { id: 's2', label: '汇总账户资产', icon: '🏦', status: 'pending' },
         { id: 's3', label: '计算总权益', icon: '📊', status: 'pending' },
         { id: 's4', label: '生成资产报告', icon: '🎴', status: 'pending' },
+      ];
+    case 'address':
+      return [
+        ...base,
+        { id: 's2', label: '读取链上地址', icon: '📬', status: 'pending' },
+        { id: 's3', label: '生成地址卡片', icon: '🎴', status: 'pending' },
       ];
     case 'signal':
       return [
@@ -364,6 +371,7 @@ export async function handleUserPrompt(
       // ─── 兑换 ───
       case 'swap': {
         const toSymbol = intent.symbol || 'ETH';
+        const fromSymbol = (intent as any).fromSymbol || 'USDT';
         const amount = intent.amount || 100;
         const instId = `${toSymbol}-USDT`;
 
@@ -395,7 +403,7 @@ export async function handleUserPrompt(
           aiSummary: intent.reply || `兑换 ${amount} USDT → ${estimatedAmount.toFixed(6)} ${toSymbol}`,
           createdAt: now,
           fromAmount: amount,
-          fromSymbol: 'USDT',
+          fromSymbol,
           toAmount: estimatedAmount,
           toSymbol,
           rate: `1 ${toSymbol} ≈ $${ticker.last.toLocaleString()}`,
@@ -478,6 +486,38 @@ export async function handleUserPrompt(
         };
       }
 
+      // ─── 充值地址 ───
+      case 'address': {
+        steps = advanceStep(steps, 's2', 'active', onStep);
+        const session = await loadSession();
+        if (!session?.token) {
+          steps = advanceStep(steps, 's2', 'error' as any, onStep);
+          return {
+            ok: true,
+            data: { replyText: '📬 请先在**钱包页面**完成登录，登录后我可以直接给你显示充值地址 👇' },
+            simulationMode: false,
+          };
+        }
+        const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
+        const addrData = await callBackend<any>('/api/wallet/addresses', { token: session.token });
+        steps = advanceStep(steps, 's2', 'done', onStep);
+        await delay(150);
+        steps = advanceStep(steps, 's3', 'active', onStep);
+        const card = buildAddressCard(
+          { evm: addrData?.evm ?? [], solana: addrData?.solana ?? [] },
+          input,
+        );
+        steps = advanceStep(steps, 's3', 'done', onStep);
+        return {
+          ok: true,
+          data: {
+            replyText: intent.reply || `📥 **充值地址已生成**\n\n复制对应地址，去交易所提币时粘贴即可\n\n⚠️ 请确认链别，转错无法找回`,
+            card,
+          },
+          simulationMode: false,
+        };
+      }
+
       // ─── 持仓查询 ───
       case 'position': {
         steps = advanceStep(steps, 's2', 'active', onStep);
@@ -493,7 +533,17 @@ export async function handleUserPrompt(
         steps = await advanceSafety(steps, onStep);
 
         steps = advanceStep(steps, 's4', 'active', onStep);
-        const card = await buildPositionCard(input);
+        let card: HWalletCard;
+        try {
+          card = await buildPositionCard(input);
+        } catch (e: any) {
+          steps = advanceStep(steps, 's4', 'done', onStep);
+          return {
+            ok: true,
+            data: { replyText: '📋 **持仓查询**\n\n持仓功能需配置交易所账户（CEX API Key），当前为链上钱包模式\n\n如需开合约，请先在设置中绑定交易所账户' },
+            simulationMode: false,
+          };
+        }
         steps = advanceStep(steps, 's4', 'done', onStep);
 
         return {
@@ -523,14 +573,26 @@ export async function handleUserPrompt(
         steps = await advanceSafety(steps, onStep);
 
         steps = advanceStep(steps, 's4', 'active', onStep);
-        const card = await buildPortfolioCard(input);
+        let portfolioCard: HWalletCard;
+        try {
+          portfolioCard = await buildPortfolioCard(input);
+        } catch (e: any) {
+          steps = advanceStep(steps, 's4', 'done', onStep);
+          const msg = String(e?.message || "");
+          const tip = msg.includes("登录") || msg.includes("token")
+            ? "请先在**钱包页面**完成登录，登录后可查看链上资产 👇"
+            : msg.includes("EXPO_PUBLIC") || msg.includes("未配置")
+            ? "服务端地址未配置，请联系管理员"
+            : `链上资产暂时无法获取（${msg || "未知错误"}）`;
+          return { ok: true, data: { replyText: `🏦 **链上资产查询**\n\n${tip}` }, simulationMode: false };
+        }
         steps = advanceStep(steps, 's4', 'done', onStep);
 
         return {
           ok: true,
           data: {
-            replyText: intent.reply || `🏦 **链上钱包资产**\n\n链上合计约 **$${(card.totalEquity ?? 0).toLocaleString()}**\n\n各链代币明细请查看下方卡片 👇`,
-            card
+            replyText: intent.reply || `🏦 **链上钱包资产**\n\n链上合计约 **$${(portfolioCard.totalEquity ?? 0).toLocaleString()}**\n\n各链代币明细请查看下方卡片 👇`,
+            card: portfolioCard,
           },
           simulationMode: false
         };

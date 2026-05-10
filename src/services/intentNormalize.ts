@@ -14,6 +14,7 @@ export const CHAT_INTENT_ACTIONS = [
   "earn",
   "position",
   "portfolio",
+  "address",
   "signal",
   "chat",
 ] as const;
@@ -50,6 +51,10 @@ const ACTION_ALIASES: Record<string, ChatIntentAction> = {
   "trade-short": "trade_short",
   tradelong: "trade_long",
   tradeshort: "trade_short",
+  deposit: "address",
+  receive: "address",
+  addresses: "address",
+  recharge: "address",
 };
 
 function isNonProductionLog(): boolean {
@@ -153,6 +158,9 @@ export function buildLocalRuleIntentPayload(input: string): Record<string, unkno
   const levMatch = input.match(/(\d+)\s*[xX]/);
   const leverage = levMatch ? parseInt(levMatch[1], 10) : 10;
 
+  if (/充值|收款|我的地址|转入|存入|recharge|deposit|receive|收币|收款地址|充值地址/.test(lower)) {
+    return { action: "address", reply: "" };
+  }
   if (/价格|行情|多少钱|今日|查一下/.test(lower)) {
     return { action: "price", symbol, reply: "" };
   }

@@ -137,6 +137,12 @@ export type HWalletCard = {
     total: number;
     usdtValue: number;
   }>;
+  // AddressCard 充值地址卡片
+  depositAddresses?: Array<{
+    chain: string;
+    label: string;
+    address: string;
+  }>;
   // ─── 卡库系统 / 会员等级 ────────────────────────────────
   rarity?: CardRarity;
   achievementHints?: string[];
