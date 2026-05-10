@@ -247,7 +247,7 @@ export async function buildPortfolioCard(userPrompt: string): Promise<HWalletCar
     module: 'account',
     cardType: 'info',
     header: '信息卡片',
-    title: '资产总览',
+    title: '链上钱包资产',
     riskLevel: '低',
     status: 'executed',
     simulationMode: false,

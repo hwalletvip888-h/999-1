@@ -74,13 +74,6 @@ export const H1_CAPABILITY_REGISTRY: readonly H1CapabilityRecord[] = [
     requiresSession: true,
   },
   {
-    skillId: "H1.skill.cex.v5_account_balance",
-    description: "OKX V5 交易账户余额（服务器 OKX 密钥签名，App 仅 Bearer）",
-    http: { method: "GET", path: "/api/cex/v5/account/balance" },
-    inputSchema: { type: "object", properties: {} },
-    requiresSession: true,
-  },
-  {
     skillId: "H1.skill.wallet.accounts_list",
     description: "列出已绑定账户",
     http: { method: "GET", path: "/api/wallet/accounts" },
