@@ -20,6 +20,16 @@ export type RuntimeOverridesStored = {
   maxJsonBodyBytes?: number;
   corsAllowedOrigins?: string;
   trendOutputDir?: string;
+  /** 与 `HWALLET_CLAUDE_INTENT_MODEL` 一致，Anthropic model id */
+  claudeIntentModel?: string;
+  /** 与 `HWALLET_DEEPSEEK_CHAT_MODEL` 一致 */
+  deepseekChatModel?: string;
+  /** 与 `HWALLET_DEEPSEEK_INTENT_MODEL` 一致；未覆盖时回退 env 再回退闲聊模型 */
+  deepseekIntentModel?: string;
+  /** 与 `HWALLET_DEEPSEEK_CHAT_MAX_TOKENS` 一致（256–8192） */
+  deepseekChatMaxTokens?: number;
+  /** 与 `HWALLET_INTENT_MAX_TOKENS` 一致（128–4096） */
+  intentMaxTokens?: number;
   updatedAt?: string;
 };
 
@@ -30,6 +40,11 @@ const storedShape = z.object({
   maxJsonBodyBytes: z.number().finite().optional(),
   corsAllowedOrigins: z.string().optional(),
   trendOutputDir: z.string().optional(),
+  claudeIntentModel: z.string().optional(),
+  deepseekChatModel: z.string().optional(),
+  deepseekIntentModel: z.string().optional(),
+  deepseekChatMaxTokens: z.number().finite().optional(),
+  intentMaxTokens: z.number().finite().optional(),
   updatedAt: z.string().optional(),
 });
 
@@ -40,6 +55,11 @@ const patchSchema = z
     maxJsonBodyBytes: z.union([z.number().finite(), z.null()]).optional(),
     corsAllowedOrigins: z.union([z.string(), z.null()]).optional(),
     trendOutputDir: z.union([z.string(), z.null()]).optional(),
+    claudeIntentModel: z.union([z.string(), z.null()]).optional(),
+    deepseekChatModel: z.union([z.string(), z.null()]).optional(),
+    deepseekIntentModel: z.union([z.string(), z.null()]).optional(),
+    deepseekChatMaxTokens: z.union([z.number().finite(), z.null()]).optional(),
+    intentMaxTokens: z.union([z.number().finite(), z.null()]).optional(),
   })
   .strict();
 
@@ -81,6 +101,11 @@ export function invalidateRuntimeSettingsCache(): void {
   cachedOverrides = null;
 }
 
+function clampInt(n: number, min: number, max: number): number {
+  const x = Math.floor(n);
+  return Math.min(max, Math.max(min, x));
+}
+
 function defaultTrendDirFromEnv(): string {
   const fromEnv = (process.env.HWALLET_TREND_OUTPUT_DIR || "").trim();
   if (fromEnv) return fromEnv;
@@ -117,6 +142,66 @@ export function getEffectiveTrendOutputDir(): string {
   return defaultTrendDirFromEnv();
 }
 
+function envClaudeIntentModel(): string {
+  return (process.env.HWALLET_CLAUDE_INTENT_MODEL || "claude-sonnet-4-20250514").trim();
+}
+
+function envDeepseekChatModel(): string {
+  return (process.env.HWALLET_DEEPSEEK_CHAT_MODEL || "deepseek-chat").trim();
+}
+
+/** env 意图模型；空则与闲聊模型 env 一致 */
+function envDeepseekIntentModel(): string {
+  return (process.env.HWALLET_DEEPSEEK_INTENT_MODEL || "").trim() || envDeepseekChatModel();
+}
+
+function envDeepseekChatMaxTokens(): number {
+  const n = parseInt(process.env.HWALLET_DEEPSEEK_CHAT_MAX_TOKENS || "1024", 10);
+  return clampInt(Number.isFinite(n) ? n : 1024, 256, 8192);
+}
+
+function envIntentMaxTokens(): number {
+  const n = parseInt(process.env.HWALLET_INTENT_MAX_TOKENS || "512", 10);
+  return clampInt(Number.isFinite(n) ? n : 512, 128, 4096);
+}
+
+function isSafeModelId(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 1 || t.length > 160) return false;
+  if (/[\x00-\x1f\x7f]/.test(t)) return false;
+  return true;
+}
+
+export function getEffectiveClaudeIntentModel(): string {
+  const o = getRuntimeOverrides().claudeIntentModel;
+  if (typeof o === "string" && isSafeModelId(o)) return o.trim();
+  return envClaudeIntentModel();
+}
+
+export function getEffectiveDeepseekChatModel(): string {
+  const o = getRuntimeOverrides().deepseekChatModel;
+  if (typeof o === "string" && isSafeModelId(o)) return o.trim();
+  return envDeepseekChatModel();
+}
+
+export function getEffectiveDeepseekIntentModel(): string {
+  const o = getRuntimeOverrides().deepseekIntentModel;
+  if (typeof o === "string" && isSafeModelId(o)) return o.trim();
+  return (process.env.HWALLET_DEEPSEEK_INTENT_MODEL || "").trim() || getEffectiveDeepseekChatModel();
+}
+
+export function getEffectiveDeepseekChatMaxTokens(): number {
+  const o = getRuntimeOverrides().deepseekChatMaxTokens;
+  if (typeof o === "number" && Number.isFinite(o)) return clampInt(Math.floor(o), 256, 8192);
+  return envDeepseekChatMaxTokens();
+}
+
+export function getEffectiveIntentMaxTokens(): number {
+  const o = getRuntimeOverrides().intentMaxTokens;
+  if (typeof o === "number" && Number.isFinite(o)) return clampInt(Math.floor(o), 128, 4096);
+  return envIntentMaxTokens();
+}
+
 export type RuntimeSettingsPayload = {
   ok: true;
   filePath: string;
@@ -127,6 +212,11 @@ export type RuntimeSettingsPayload = {
     maxJsonBodyBytes: number;
     corsAllowedOrigins: string;
     trendOutputDir: string;
+    claudeIntentModel: string;
+    deepseekChatModel: string;
+    deepseekIntentModel: string;
+    deepseekChatMaxTokens: number;
+    intentMaxTokens: number;
   };
   effective: {
     aiRateLimitMax: number;
@@ -134,6 +224,11 @@ export type RuntimeSettingsPayload = {
     maxJsonBodyBytes: number;
     corsAllowedOrigins: string;
     trendOutputDir: string;
+    claudeIntentModel: string;
+    deepseekChatModel: string;
+    deepseekIntentModel: string;
+    deepseekChatMaxTokens: number;
+    intentMaxTokens: number;
   };
 };
 
@@ -150,6 +245,11 @@ export function buildRuntimeSettingsPayload(): RuntimeSettingsPayload {
       maxJsonBodyBytes: MAX_JSON_BODY_BYTES,
       corsAllowedOrigins: CORS_ALLOWED_ORIGINS,
       trendOutputDir: defaultTrendDirFromEnv(),
+      claudeIntentModel: envClaudeIntentModel(),
+      deepseekChatModel: envDeepseekChatModel(),
+      deepseekIntentModel: envDeepseekIntentModel(),
+      deepseekChatMaxTokens: envDeepseekChatMaxTokens(),
+      intentMaxTokens: envIntentMaxTokens(),
     },
     effective: {
       aiRateLimitMax: getEffectiveAiRateLimitMax(),
@@ -157,13 +257,13 @@ export function buildRuntimeSettingsPayload(): RuntimeSettingsPayload {
       maxJsonBodyBytes: getEffectiveMaxJsonBodyBytes(),
       corsAllowedOrigins: getEffectiveCorsAllowedOrigins(),
       trendOutputDir: getEffectiveTrendOutputDir(),
+      claudeIntentModel: getEffectiveClaudeIntentModel(),
+      deepseekChatModel: getEffectiveDeepseekChatModel(),
+      deepseekIntentModel: getEffectiveDeepseekIntentModel(),
+      deepseekChatMaxTokens: getEffectiveDeepseekChatMaxTokens(),
+      intentMaxTokens: getEffectiveIntentMaxTokens(),
     },
   };
-}
-
-function clampInt(n: number, min: number, max: number): number {
-  const x = Math.floor(n);
-  return Math.min(max, Math.max(min, x));
 }
 
 function validatePatchNumbers(patch: Record<string, unknown>): string | null {
@@ -188,6 +288,23 @@ function validatePatchNumbers(patch: Record<string, unknown>): string | null {
     if (s.length === 0) return "trendOutputDir 不能为空";
     if (s.length > 512) return "trendOutputDir 过长";
     if (s.includes("\0")) return "trendOutputDir 含非法字符";
+  }
+  if ("claudeIntentModel" in patch && patch.claudeIntentModel !== null) {
+    if (!isSafeModelId(String(patch.claudeIntentModel))) return "claudeIntentModel 格式无效";
+  }
+  if ("deepseekChatModel" in patch && patch.deepseekChatModel !== null) {
+    if (!isSafeModelId(String(patch.deepseekChatModel))) return "deepseekChatModel 格式无效";
+  }
+  if ("deepseekIntentModel" in patch && patch.deepseekIntentModel !== null) {
+    if (!isSafeModelId(String(patch.deepseekIntentModel))) return "deepseekIntentModel 格式无效";
+  }
+  if ("deepseekChatMaxTokens" in patch && patch.deepseekChatMaxTokens !== null) {
+    const v = Number(patch.deepseekChatMaxTokens);
+    if (!Number.isFinite(v) || v < 256 || v > 8192) return "deepseekChatMaxTokens 须在 256～8192";
+  }
+  if ("intentMaxTokens" in patch && patch.intentMaxTokens !== null) {
+    const v = Number(patch.intentMaxTokens);
+    if (!Number.isFinite(v) || v < 128 || v > 4096) return "intentMaxTokens 须在 128～4096";
   }
   return null;
 }
@@ -223,6 +340,16 @@ export function applyRuntimeSettingsPatch(
       cur.corsAllowedOrigins = String(v).trim();
     } else if (key === "trendOutputDir") {
       cur.trendOutputDir = String(v).trim();
+    } else if (key === "claudeIntentModel") {
+      cur.claudeIntentModel = String(v).trim();
+    } else if (key === "deepseekChatModel") {
+      cur.deepseekChatModel = String(v).trim();
+    } else if (key === "deepseekIntentModel") {
+      cur.deepseekIntentModel = String(v).trim();
+    } else if (key === "deepseekChatMaxTokens") {
+      cur.deepseekChatMaxTokens = clampInt(v as number, 256, 8192);
+    } else if (key === "intentMaxTokens") {
+      cur.intentMaxTokens = clampInt(v as number, 128, 4096);
     }
   }
 
@@ -235,6 +362,12 @@ export function applyRuntimeSettingsPatch(
   if (typeof cur.corsAllowedOrigins === "string" && cur.corsAllowedOrigins)
     persist.corsAllowedOrigins = cur.corsAllowedOrigins;
   if (typeof cur.trendOutputDir === "string" && cur.trendOutputDir) persist.trendOutputDir = cur.trendOutputDir;
+  if (typeof cur.claudeIntentModel === "string" && cur.claudeIntentModel) persist.claudeIntentModel = cur.claudeIntentModel;
+  if (typeof cur.deepseekChatModel === "string" && cur.deepseekChatModel) persist.deepseekChatModel = cur.deepseekChatModel;
+  if (typeof cur.deepseekIntentModel === "string" && cur.deepseekIntentModel)
+    persist.deepseekIntentModel = cur.deepseekIntentModel;
+  if (typeof cur.deepseekChatMaxTokens === "number") persist.deepseekChatMaxTokens = cur.deepseekChatMaxTokens;
+  if (typeof cur.intentMaxTokens === "number") persist.intentMaxTokens = cur.intentMaxTokens;
   persist.updatedAt = cur.updatedAt;
 
   ensureCliHomeRoot();

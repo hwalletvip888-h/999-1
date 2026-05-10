@@ -154,6 +154,7 @@
           </div>
           <div class="card" style="grid-column:1/-1;">
             <h2>可热替换项（保存后立即对进程生效）</h2>
+            <p class="hint" style="margin-top:0">模型名与 max_tokens 可在此改；<code>CLAUDE_API_KEY</code> / <code>DEEPSEEK_API_KEY</code> 仍只在服务器环境变量中配置。</p>
             <div class="field">
               <label class="lbl2">aiRateLimitMax（每 IP / 窗；0=关闭）</label>
               <div class="field-row">
@@ -182,6 +183,36 @@
               <label class="lbl2">trendOutputDir（report_*.json 目录）</label>
               <div class="field-row">
                 <input type="text" id="inTrendDir" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">claudeIntentModel（意图 · Anthropic）</label>
+              <div class="field-row">
+                <input type="text" id="inClaudeModel" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">deepseekChatModel（闲聊）</label>
+              <div class="field-row">
+                <input type="text" id="inDsChatModel" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">deepseekIntentModel（意图 fallback）</label>
+              <div class="field-row">
+                <input type="text" id="inDsIntentModel" spellcheck="false" autocomplete="off" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">deepseekChatMaxTokens（256–8192）</label>
+              <div class="field-row">
+                <input type="number" id="inDsChatTok" min="256" max="8192" step="64" />
+              </div>
+            </div>
+            <div class="field">
+              <label class="lbl2">intentMaxTokens（128–4096）</label>
+              <div class="field-row">
+                <input type="number" id="inIntentTok" min="128" max="4096" step="32" />
               </div>
             </div>
           </div>
@@ -289,6 +320,16 @@
       document.getElementById("inMaxBody").value = eff.maxJsonBodyBytes != null ? String(eff.maxJsonBodyBytes) : "";
       document.getElementById("inCors").value = eff.corsAllowedOrigins != null ? String(eff.corsAllowedOrigins) : "";
       document.getElementById("inTrendDir").value = eff.trendOutputDir != null ? String(eff.trendOutputDir) : "";
+      document.getElementById("inClaudeModel").value =
+        eff.claudeIntentModel != null ? String(eff.claudeIntentModel) : "";
+      document.getElementById("inDsChatModel").value =
+        eff.deepseekChatModel != null ? String(eff.deepseekChatModel) : "";
+      document.getElementById("inDsIntentModel").value =
+        eff.deepseekIntentModel != null ? String(eff.deepseekIntentModel) : "";
+      document.getElementById("inDsChatTok").value =
+        eff.deepseekChatMaxTokens != null ? String(eff.deepseekChatMaxTokens) : "";
+      document.getElementById("inIntentTok").value =
+        eff.intentMaxTokens != null ? String(eff.intentMaxTokens) : "";
       document.getElementById("setPath").innerHTML =
         '<div><span class="lbl">路径</span> <code>' + (d.filePath || "—") + "</code></div>";
       document.getElementById("setRaw").textContent = JSON.stringify(d, null, 2);
@@ -313,10 +354,17 @@
           maxJsonBodyBytes: parseInt(document.getElementById("inMaxBody").value, 10),
           corsAllowedOrigins: document.getElementById("inCors").value,
           trendOutputDir: document.getElementById("inTrendDir").value.trim(),
+          claudeIntentModel: document.getElementById("inClaudeModel").value.trim(),
+          deepseekChatModel: document.getElementById("inDsChatModel").value.trim(),
+          deepseekIntentModel: document.getElementById("inDsIntentModel").value.trim(),
+          deepseekChatMaxTokens: parseInt(document.getElementById("inDsChatTok").value, 10),
+          intentMaxTokens: parseInt(document.getElementById("inIntentTok").value, 10),
         };
         if (!Number.isFinite(body.aiRateLimitMax)) throw new Error("aiRateLimitMax 无效");
         if (!Number.isFinite(body.aiRateLimitWindowMs)) throw new Error("aiRateLimitWindowMs 无效");
         if (!Number.isFinite(body.maxJsonBodyBytes)) throw new Error("maxJsonBodyBytes 无效");
+        if (!Number.isFinite(body.deepseekChatMaxTokens)) throw new Error("deepseekChatMaxTokens 无效");
+        if (!Number.isFinite(body.intentMaxTokens)) throw new Error("intentMaxTokens 无效");
         var d = await apiPost("/api/admin/settings", body);
         fillSettingsForm(d);
       } catch (e) {
@@ -333,6 +381,11 @@
           maxJsonBodyBytes: null,
           corsAllowedOrigins: null,
           trendOutputDir: null,
+          claudeIntentModel: null,
+          deepseekChatModel: null,
+          deepseekIntentModel: null,
+          deepseekChatMaxTokens: null,
+          intentMaxTokens: null,
         });
         fillSettingsForm(d);
       } catch (e) {

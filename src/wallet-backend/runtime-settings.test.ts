@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyRuntimeSettingsPatch,
   getEffectiveAiRateLimitMax,
+  getEffectiveClaudeIntentModel,
   invalidateRuntimeSettingsCache,
 } from "./runtime-settings";
 import { AI_RATE_LIMIT_MAX } from "./config";
@@ -51,6 +52,15 @@ describe("runtime-settings", () => {
     const b = applyRuntimeSettingsPatch({ aiRateLimitMax: null });
     expect(b.ok).toBe(true);
     expect(getEffectiveAiRateLimitMax()).toBe(base);
+  });
+
+  it("applies claudeIntentModel override", () => {
+    const before = getEffectiveClaudeIntentModel();
+    const a = applyRuntimeSettingsPatch({ claudeIntentModel: "claude-3-5-haiku-20241022" });
+    expect(a.ok).toBe(true);
+    expect(getEffectiveClaudeIntentModel()).toBe("claude-3-5-haiku-20241022");
+    applyRuntimeSettingsPatch({ claudeIntentModel: null });
+    expect(getEffectiveClaudeIntentModel()).toBe(before);
   });
 
   it("rejects out-of-range aiRateLimitMax", () => {

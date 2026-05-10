@@ -32,6 +32,11 @@
 - `maxJsonBodyBytes`：`1024`～`10485760`
 - `corsAllowedOrigins`：字符串，与 `HWALLET_CORS_ORIGINS` 同格式（`*` 或逗号分隔 Origin）
 - `trendOutputDir`：趋势 `report_*.json` 所在目录绝对路径
+- `claudeIntentModel` / `deepseekChatModel` / `deepseekIntentModel`：模型 id 字符串（≤160 字符、无控制字符），对应 `HWALLET_CLAUDE_INTENT_MODEL`、`HWALLET_DEEPSEEK_CHAT_MODEL`、`HWALLET_DEEPSEEK_INTENT_MODEL`
+- `deepseekChatMaxTokens`：`256`～`8192`（闲聊 `max_tokens`）
+- `intentMaxTokens`：`128`～`4096`（意图 Claude / DeepSeek 的 `max_tokens`）
+
+**API Key**（`CLAUDE_API_KEY`、`DEEPSEEK_API_KEY`）不能通过此接口写入，仍须在服务器环境中配置；换 key 或换供应商通常需重启进程。
 
 未设置 `HWALLET_OPS_ADMIN_TOKEN` 时，Admin API 返回 **503**；`/ops` 页面仍可打开，但无法拉取数据。
 

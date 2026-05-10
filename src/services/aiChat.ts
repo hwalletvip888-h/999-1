@@ -3,7 +3,7 @@
  * Claude: 意图识别（精准判断用户操作意图）
  * DeepSeek: 聊天对话（回答问题、分析行情）
  *
- * 模型名与部分参数可通过环境变量覆盖（与 `src/wallet-backend/README.md` 一致）。
+ * 模型名与 max_tokens 可由环境变量设置，并由钱包后端 **`runtime-settings.json`** 在进程内热覆盖（见 `getEffective*`）。
  */
 
 import {
@@ -14,23 +14,18 @@ import {
 } from "./intentNormalize";
 import { fetchWithDeadline } from "./fetchWithDeadline";
 import { EXTERNAL_LLM_FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
+import {
+  getEffectiveClaudeIntentModel,
+  getEffectiveDeepseekChatMaxTokens,
+  getEffectiveDeepseekChatModel,
+  getEffectiveDeepseekIntentModel,
+  getEffectiveIntentMaxTokens,
+} from "../wallet-backend/runtime-settings";
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || "";
 const DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions";
 const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-
-const CLAUDE_INTENT_MODEL = (process.env.HWALLET_CLAUDE_INTENT_MODEL || "claude-sonnet-4-20250514").trim();
-const DEEPSEEK_CHAT_MODEL = (process.env.HWALLET_DEEPSEEK_CHAT_MODEL || "deepseek-chat").trim();
-const DEEPSEEK_INTENT_MODEL = (process.env.HWALLET_DEEPSEEK_INTENT_MODEL || DEEPSEEK_CHAT_MODEL).trim();
-
-function clampInt(n: number, lo: number, hi: number): number {
-  if (!Number.isFinite(n)) return lo;
-  return Math.min(hi, Math.max(lo, n));
-}
-
-const CHAT_MAX_TOKENS = clampInt(parseInt(process.env.HWALLET_DEEPSEEK_CHAT_MAX_TOKENS || "1024", 10), 256, 8192);
-const INTENT_MAX_TOKENS = clampInt(parseInt(process.env.HWALLET_INTENT_MAX_TOKENS || "512", 10), 128, 4096);
 
 const CHAT_SYSTEM_PROMPT = `你是 H Wallet 的 AI 助手，名字叫「H」，性格像一只聪明友善的海豚。
 你是一位专业的加密货币交易顾问，帮助用户进行交易决策和市场分析。
@@ -124,9 +119,9 @@ export async function chatWithAI(
           Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
         },
         body: JSON.stringify({
-          model: DEEPSEEK_CHAT_MODEL,
+          model: getEffectiveDeepseekChatModel(),
           messages: allMessages,
-          max_tokens: CHAT_MAX_TOKENS,
+          max_tokens: getEffectiveDeepseekChatMaxTokens(),
           temperature: 0.7,
           top_p: 0.9,
         }),
@@ -192,8 +187,8 @@ export async function recognizeIntent(userMessage: string, signal?: AbortSignal)
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: CLAUDE_INTENT_MODEL,
-          max_tokens: INTENT_MAX_TOKENS,
+          model: getEffectiveClaudeIntentModel(),
+          max_tokens: getEffectiveIntentMaxTokens(),
           system: INTENT_SYSTEM_PROMPT,
           messages: [{ role: "user", content: userMessage }],
         }),
@@ -238,12 +233,12 @@ async function recognizeIntentFallback(userMessage: string, signal?: AbortSignal
           Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
         },
         body: JSON.stringify({
-          model: DEEPSEEK_INTENT_MODEL,
+          model: getEffectiveDeepseekIntentModel(),
           messages: [
             { role: "system", content: INTENT_SYSTEM_PROMPT },
             { role: "user", content: userMessage },
           ],
-          max_tokens: INTENT_MAX_TOKENS,
+          max_tokens: getEffectiveIntentMaxTokens(),
           temperature: 0.3,
         }),
         signal,
