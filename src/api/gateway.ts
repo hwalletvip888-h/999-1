@@ -46,24 +46,11 @@ import { OkxH_NotifyApi } from './providers/okx/H_NotifyApi.okx';
 import { OkxH_AlgoApi } from './providers/okx/H_AlgoApi.okx';
 import { OkxH_BotApi } from './providers/okx/H_BotApi.okx';
 import type { OkxCredentials } from './providers/okx/okxClient';
+import { getOkxGatewayCredentials, isOkxGatewayConfigured } from '../config/okxGatewayCreds';
 
-let okxCreds: OkxCredentials = {
-  apiKey: '',
-  secretKey: '',
-  passphrase: '',
-};
-
-try {
-  const localConfig = require('../../config/okx.local');
-  if (localConfig?.OKX_CONFIG) {
-    okxCreds = {
-      apiKey: localConfig.OKX_CONFIG.apiKey || '',
-      secretKey: localConfig.OKX_CONFIG.secretKey || '',
-      passphrase: localConfig.OKX_CONFIG.passphrase || '',
-    };
-  }
-} catch {
-  console.warn('[H_Gateway] okx.local.ts 未找到，OKX 私有接口将不可用');
+let okxCreds: OkxCredentials = getOkxGatewayCredentials();
+if (!isOkxGatewayConfigured(okxCreds)) {
+  console.warn('[H_Gateway] OKX 凭证未配置（无 okx.local 且 okx.ts 未启用），OKX 私有接口将不可用');
 }
 
 export interface H_ApiGateway {

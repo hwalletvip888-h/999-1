@@ -1,5 +1,7 @@
 /** 与 BFF `GET /api/meta/capabilities` 响应对齐 */
 
+import { fetchWithTimeout } from "./fetch-timeout.js";
+
 export type CapabilityToolMeta = {
   method: string;
   path: string;
@@ -48,7 +50,7 @@ export async function fetchCapabilities(
       if (meta) {
         headers["X-Hwallet-Meta-Token"] = meta;
       }
-      const res = await fetch(url, { headers });
+      const res = await fetchWithTimeout(url, { headers });
       if (!res.ok) {
         const t = await res.text();
         throw new Error(`GET /api/meta/capabilities failed: ${res.status} ${t.slice(0, 500)}`);

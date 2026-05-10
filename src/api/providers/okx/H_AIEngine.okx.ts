@@ -17,6 +17,7 @@ import type { HWalletCard } from '../../../types/card';
 import { makeId } from '../../../utils/id';
 // V5 流程（合约下单 / 行情）— 走 V5 业务客户端
 import * as okxClient from './okxClient';
+import { getOkxGatewayCredentials, isOkxGatewayConfigured } from '../../../config/okxGatewayCreds';
 import { getTrendSummary } from '../../../services/trendEngine';
 
 // ─── 意图关键词映射 ─────────────────────────────────────────────
@@ -176,12 +177,10 @@ export class OkxH_AIEngine implements IH_AIEngine {
   // ─── 真实余额查询 ─────────────────────────────────────────────
   private async _fetchRealBalance(): Promise<string> {
     try {
-      const localConfig = require('../../../config/okx.local');
-      const creds = {
-        apiKey: localConfig.OKX_CONFIG.apiKey,
-        secretKey: localConfig.OKX_CONFIG.secretKey,
-        passphrase: localConfig.OKX_CONFIG.passphrase,
-      };
+      const creds = getOkxGatewayCredentials();
+      if (!isOkxGatewayConfigured(creds)) {
+        return "⚠️ 无法获取账户余额，请检查 API 配置";
+      }
       const res = await okxClient.getBalance(creds);
       if (res.code !== '0' || !res.data?.[0]) {
         return '⚠️ 无法获取账户余额，请检查 API 配置';

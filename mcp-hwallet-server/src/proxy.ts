@@ -1,4 +1,5 @@
 import type { CapabilityToolMeta } from "./capabilities.js";
+import { fetchWithTimeout } from "./fetch-timeout.js";
 
 const META_KEYS = new Set(["hwallet_session", "hwallet_idempotency_key", "hwallet_request_id"]);
 
@@ -60,7 +61,7 @@ export async function proxyToBff(
 
   try {
     if (method === "GET") {
-      const res = await fetch(url, { method: "GET", headers });
+      const res = await fetchWithTimeout(url, { method: "GET", headers });
       const text = await res.text();
       return {
         ok: true,
@@ -71,7 +72,7 @@ export async function proxyToBff(
     }
 
     headers["Content-Type"] = "application/json";
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),

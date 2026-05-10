@@ -20,6 +20,7 @@ import { OkxH_IntentRouter } from './H_IntentRouter.okx';
 import { makeId } from '../../../utils/id';
 // V5 流程（合约下单 / 网格 / 平仓）— 走 V5 业务客户端
 import * as okxClient from './okxClient';
+import { getOkxGatewayCredentials, isOkxGatewayConfigured } from '../../../config/okxGatewayCreds';
 
 interface PendingAction {
   cardId: string;
@@ -51,16 +52,8 @@ function toModule(type: string): ProductModule {
 }
 
 function getCredentials() {
-  try {
-    const localConfig = require('../../../config/okx.local');
-    return {
-      apiKey: localConfig.OKX_CONFIG.apiKey,
-      secretKey: localConfig.OKX_CONFIG.secretKey,
-      passphrase: localConfig.OKX_CONFIG.passphrase,
-    };
-  } catch {
-    return null;
-  }
+  const c = getOkxGatewayCredentials();
+  return isOkxGatewayConfigured(c) ? c : null;
 }
 
 export class OkxH_ChatOrchestrator implements IH_ChatOrchestrator {
