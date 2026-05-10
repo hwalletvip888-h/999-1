@@ -13,12 +13,12 @@ import {
   type AIIntent,
 } from "./intentNormalize";
 import { fetchWithDeadline } from "./fetchWithDeadline";
-import { EXTERNAL_LLM_FETCH_TIMEOUT_MS } from "./hwalletHttpConstants";
 import {
   getEffectiveClaudeIntentModel,
   getEffectiveDeepseekChatMaxTokens,
   getEffectiveDeepseekChatModel,
   getEffectiveDeepseekIntentModel,
+  getEffectiveExternalLlmFetchTimeoutMs,
   getEffectiveIntentMaxTokens,
 } from "../wallet-backend/runtime-settings";
 
@@ -127,7 +127,7 @@ export async function chatWithAI(
         }),
         signal: abortSignal,
       },
-      EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+        getEffectiveExternalLlmFetchTimeoutMs(),
     );
 
     if (!response.ok) {
@@ -194,7 +194,7 @@ export async function recognizeIntent(userMessage: string, signal?: AbortSignal)
         }),
         signal,
       },
-      EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+        getEffectiveExternalLlmFetchTimeoutMs(),
     );
 
     if (!response.ok) {
@@ -243,7 +243,7 @@ async function recognizeIntentFallback(userMessage: string, signal?: AbortSignal
         }),
         signal,
       },
-      EXTERNAL_LLM_FETCH_TIMEOUT_MS,
+        getEffectiveExternalLlmFetchTimeoutMs(),
     );
 
     if (!response.ok) {

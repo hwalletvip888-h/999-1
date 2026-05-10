@@ -86,7 +86,7 @@
   <header>
     <div>
       <h1>H Wallet 运维台</h1>
-      <div class="sub">监控 + 运行时参数（持久化 JSON，热生效）· 需 <code>HWALLET_OPS_ADMIN_TOKEN</code></div>
+      <div class="sub">监控、运行时参数、聚合诊断（路由/常量/只读数据）· 需 <code>HWALLET_OPS_ADMIN_TOKEN</code></div>
     </div>
     <div class="auth-bar">
       <input type="password" id="opsKey" placeholder="X-Ops-Key" autocomplete="off" />
@@ -100,6 +100,7 @@
       <button type="button" class="nav" data-view="system">系统</button>
       <button type="button" class="nav" data-view="trend">趋势引擎</button>
       <button type="button" class="nav" data-view="settings">运行时参数</button>
+      <button type="button" class="nav" data-view="diag">数据诊断</button>
       <button type="button" class="nav" data-view="api">Admin API</button>
     </nav>
     <main>
@@ -215,6 +216,12 @@
                 <input type="number" id="inIntentTok" min="128" max="4096" step="32" />
               </div>
             </div>
+            <div class="field">
+              <label class="lbl2">externalLlmFetchTimeoutMs（Claude/DeepSeek HTTP 超时，30000–300000）</label>
+              <div class="field-row">
+                <input type="number" id="inExtLlmMs" min="30000" max="300000" step="5000" />
+              </div>
+            </div>
           </div>
           <div class="card" style="grid-column:1/-1;">
             <h2>GET 响应 JSON</h2>
@@ -236,6 +243,25 @@
         </div>
       </section>
 
+      <section id="view-diag" class="view">
+        <div class="toolbar">
+          <button type="button" id="btnLoadDiag">加载聚合诊断</button>
+        </div>
+        <div class="grid">
+          <div class="card" style="grid-column:1/-1;">
+            <h2>说明</h2>
+            <p class="hint" style="margin-top:0">
+              进程、包版本、onchainos CLI、趋势目录、运行时 JSON 文件、HTTP 超时常量、功能开关（仅是否已配置）、公开路由表。
+              不包含任何密钥原文。
+            </p>
+          </div>
+          <div class="card" style="grid-column:1/-1;">
+            <h2><code>GET /api/admin/diagnostics</code></h2>
+            <pre class="raw" id="diagRaw">{}</pre>
+          </div>
+        </div>
+      </section>
+
       <section id="view-api" class="view">
         <div class="card" style="max-width:720px;">
           <h2>Admin API（均需 <code>X-Ops-Key</code>）</h2>
@@ -247,6 +273,7 @@
               <tr><td><code>/api/admin/system</code></td><td>进程 uptime、Node 版本、内存</td></tr>
               <tr><td><code>/api/admin/trend-status</code></td><td>趋势磁盘报告摘要（无则 hasReport:false）</td></tr>
               <tr><td><code>/api/admin/ai-limits</code></td><td>AI 限流窗口与当前桶数量</td></tr>
+              <tr><td><code>/api/admin/diagnostics</code></td><td>聚合只读诊断（进程、路由表、HTTP 常量等）</td></tr>
               <tr><td><code>/api/admin/settings</code></td><td>GET：运行时参数快照；POST：JSON 合并写入（字段见 README）</td></tr>
             </tbody>
           </table>
@@ -330,6 +357,8 @@
         eff.deepseekChatMaxTokens != null ? String(eff.deepseekChatMaxTokens) : "";
       document.getElementById("inIntentTok").value =
         eff.intentMaxTokens != null ? String(eff.intentMaxTokens) : "";
+      document.getElementById("inExtLlmMs").value =
+        eff.externalLlmFetchTimeoutMs != null ? String(eff.externalLlmFetchTimeoutMs) : "";
       document.getElementById("setPath").innerHTML =
         '<div><span class="lbl">路径</span> <code>' + (d.filePath || "—") + "</code></div>";
       document.getElementById("setRaw").textContent = JSON.stringify(d, null, 2);
@@ -359,12 +388,14 @@
           deepseekIntentModel: document.getElementById("inDsIntentModel").value.trim(),
           deepseekChatMaxTokens: parseInt(document.getElementById("inDsChatTok").value, 10),
           intentMaxTokens: parseInt(document.getElementById("inIntentTok").value, 10),
+          externalLlmFetchTimeoutMs: parseInt(document.getElementById("inExtLlmMs").value, 10),
         };
         if (!Number.isFinite(body.aiRateLimitMax)) throw new Error("aiRateLimitMax 无效");
         if (!Number.isFinite(body.aiRateLimitWindowMs)) throw new Error("aiRateLimitWindowMs 无效");
         if (!Number.isFinite(body.maxJsonBodyBytes)) throw new Error("maxJsonBodyBytes 无效");
         if (!Number.isFinite(body.deepseekChatMaxTokens)) throw new Error("deepseekChatMaxTokens 无效");
         if (!Number.isFinite(body.intentMaxTokens)) throw new Error("intentMaxTokens 无效");
+        if (!Number.isFinite(body.externalLlmFetchTimeoutMs)) throw new Error("externalLlmFetchTimeoutMs 无效");
         var d = await apiPost("/api/admin/settings", body);
         fillSettingsForm(d);
       } catch (e) {
@@ -386,6 +417,7 @@
           deepseekIntentModel: null,
           deepseekChatMaxTokens: null,
           intentMaxTokens: null,
+          externalLlmFetchTimeoutMs: null,
         });
         fillSettingsForm(d);
       } catch (e) {
@@ -464,6 +496,8 @@
           '<div><span class="lbl">端口</span> ' + (cfg.walletPort ?? "—") + "</div>" +
           '<div><span class="lbl">CLI_HOME_ROOT</span> <code>' + (cfg.cliHomeRoot || "—") + "</code></div>" +
           '<div><span class="lbl">OKX Key</span> ' + (cfg.okxApiKeyConfigured ? "已配置" : "未配置") + "</div>" +
+          '<div><span class="lbl">OKX Project</span> ' + (cfg.okxProjectIdConfigured ? "已配置" : "未配置") + "</div>" +
+          '<div><span class="lbl">能力表需 Token</span> ' + (cfg.metaCapabilitiesEnforced ? "是" : "否") + "</div>" +
           '<div><span class="lbl">运维 Token</span> ' + (cfg.opsAdminConfigured ? "已启用" : "未启用") + "</div>";
         var boxes = o.cliSandboxes || [];
         document.getElementById("dashSbCount").innerHTML = '<span class="lbl">数量</span> <strong>' + boxes.length + "</strong>";
@@ -496,6 +530,16 @@
       } catch (e) { setErr(e.message || String(e)); }
     };
 
+    document.getElementById("btnLoadDiag").onclick = async function () {
+      setErr("");
+      try {
+        var d = await api("/api/admin/diagnostics");
+        document.getElementById("diagRaw").textContent = JSON.stringify(d, null, 2);
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    };
+
     document.getElementById("btnLoadTrend").onclick = async function () {
       setErr("");
       try {
@@ -523,6 +567,7 @@
       if (id === "view-dash") document.getElementById("btnLoadDash").click();
       else if (id === "view-system") document.getElementById("btnLoadSys").click();
       else if (id === "view-settings") document.getElementById("btnLoadSettings").click();
+      else if (id === "view-diag") document.getElementById("btnLoadDiag").click();
       else if (id === "view-trend") document.getElementById("btnLoadTrend").click();
     };
 

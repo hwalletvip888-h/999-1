@@ -21,7 +21,7 @@
 | GET | `/api/admin/overview` | 健康检查、CLI 沙箱列表、脱敏配置快照 |
 | GET | `/api/admin/system` | 进程 uptime、Node 版本、内存占用 |
 | GET | `/api/admin/trend-status` | 趋势磁盘报告摘要（无数据时 `hasReport: false`） |
-| GET | `/api/admin/ai-limits` | AI 限流窗口、每 IP 上限、当前内存桶数量 |
+| GET | `/api/admin/diagnostics` | 聚合只读诊断：包版本、进程与内存、onchainos、CLI 沙箱数、趋势目录、运行时 JSON 文件元数据、HTTP 超时常量、功能开关、公开路由表（无密钥） |
 | GET | `/api/admin/settings` | 运行时参数：文件路径、env 基线、当前生效值、已存覆盖项 |
 | POST | `/api/admin/settings` | JSON body 合并写入运行时文件（字段见下）；`null` 清除该项覆盖 |
 
@@ -35,6 +35,7 @@
 - `claudeIntentModel` / `deepseekChatModel` / `deepseekIntentModel`：模型 id 字符串（≤160 字符、无控制字符），对应 `HWALLET_CLAUDE_INTENT_MODEL`、`HWALLET_DEEPSEEK_CHAT_MODEL`、`HWALLET_DEEPSEEK_INTENT_MODEL`
 - `deepseekChatMaxTokens`：`256`～`8192`（闲聊 `max_tokens`）
 - `intentMaxTokens`：`128`～`4096`（意图 Claude / DeepSeek 的 `max_tokens`）
+- `externalLlmFetchTimeoutMs`：`30000`～`300000`（`HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS`，第三方 LLM HTTP 超时）
 
 **API Key**（`CLAUDE_API_KEY`、`DEEPSEEK_API_KEY`）不能通过此接口写入，仍须在服务器环境中配置；换 key 或换供应商通常需重启进程。
 

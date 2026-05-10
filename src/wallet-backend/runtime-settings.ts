@@ -30,6 +30,8 @@ export type RuntimeOverridesStored = {
   deepseekChatMaxTokens?: number;
   /** 与 `HWALLET_INTENT_MAX_TOKENS` 一致（128–4096） */
   intentMaxTokens?: number;
+  /** 与 `HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS` 一致（30s–300s，毫秒） */
+  externalLlmFetchTimeoutMs?: number;
   updatedAt?: string;
 };
 
@@ -45,6 +47,7 @@ const storedShape = z.object({
   deepseekIntentModel: z.string().optional(),
   deepseekChatMaxTokens: z.number().finite().optional(),
   intentMaxTokens: z.number().finite().optional(),
+  externalLlmFetchTimeoutMs: z.number().finite().optional(),
   updatedAt: z.string().optional(),
 });
 
@@ -60,6 +63,7 @@ const patchSchema = z
     deepseekIntentModel: z.union([z.string(), z.null()]).optional(),
     deepseekChatMaxTokens: z.union([z.number().finite(), z.null()]).optional(),
     intentMaxTokens: z.union([z.number().finite(), z.null()]).optional(),
+    externalLlmFetchTimeoutMs: z.union([z.number().finite(), z.null()]).optional(),
   })
   .strict();
 
@@ -202,6 +206,18 @@ export function getEffectiveIntentMaxTokens(): number {
   return envIntentMaxTokens();
 }
 
+/** 未应用 runtime 覆盖时，与 `hwalletHttpConstants.EXTERNAL_LLM_FETCH_TIMEOUT_MS` 同源 clamp */
+export function getExternalLlmFetchTimeoutEnvBaseline(): number {
+  const n = parseInt(process.env.HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS || "120000", 10);
+  return Math.min(300_000, Math.max(30_000, Number.isFinite(n) ? n : 120_000));
+}
+
+export function getEffectiveExternalLlmFetchTimeoutMs(): number {
+  const o = getRuntimeOverrides().externalLlmFetchTimeoutMs;
+  if (typeof o === "number" && Number.isFinite(o)) return clampInt(Math.floor(o), 30_000, 300_000);
+  return getExternalLlmFetchTimeoutEnvBaseline();
+}
+
 export type RuntimeSettingsPayload = {
   ok: true;
   filePath: string;
@@ -217,6 +233,7 @@ export type RuntimeSettingsPayload = {
     deepseekIntentModel: string;
     deepseekChatMaxTokens: number;
     intentMaxTokens: number;
+    externalLlmFetchTimeoutMs: number;
   };
   effective: {
     aiRateLimitMax: number;
@@ -229,6 +246,7 @@ export type RuntimeSettingsPayload = {
     deepseekIntentModel: string;
     deepseekChatMaxTokens: number;
     intentMaxTokens: number;
+    externalLlmFetchTimeoutMs: number;
   };
 };
 
@@ -250,6 +268,7 @@ export function buildRuntimeSettingsPayload(): RuntimeSettingsPayload {
       deepseekIntentModel: envDeepseekIntentModel(),
       deepseekChatMaxTokens: envDeepseekChatMaxTokens(),
       intentMaxTokens: envIntentMaxTokens(),
+      externalLlmFetchTimeoutMs: getExternalLlmFetchTimeoutEnvBaseline(),
     },
     effective: {
       aiRateLimitMax: getEffectiveAiRateLimitMax(),
@@ -262,6 +281,7 @@ export function buildRuntimeSettingsPayload(): RuntimeSettingsPayload {
       deepseekIntentModel: getEffectiveDeepseekIntentModel(),
       deepseekChatMaxTokens: getEffectiveDeepseekChatMaxTokens(),
       intentMaxTokens: getEffectiveIntentMaxTokens(),
+      externalLlmFetchTimeoutMs: getEffectiveExternalLlmFetchTimeoutMs(),
     },
   };
 }
@@ -305,6 +325,10 @@ function validatePatchNumbers(patch: Record<string, unknown>): string | null {
   if ("intentMaxTokens" in patch && patch.intentMaxTokens !== null) {
     const v = Number(patch.intentMaxTokens);
     if (!Number.isFinite(v) || v < 128 || v > 4096) return "intentMaxTokens 须在 128～4096";
+  }
+  if ("externalLlmFetchTimeoutMs" in patch && patch.externalLlmFetchTimeoutMs !== null) {
+    const v = Number(patch.externalLlmFetchTimeoutMs);
+    if (!Number.isFinite(v) || v < 30_000 || v > 300_000) return "externalLlmFetchTimeoutMs 须在 30000～300000";
   }
   return null;
 }
@@ -350,6 +374,8 @@ export function applyRuntimeSettingsPatch(
       cur.deepseekChatMaxTokens = clampInt(v as number, 256, 8192);
     } else if (key === "intentMaxTokens") {
       cur.intentMaxTokens = clampInt(v as number, 128, 4096);
+    } else if (key === "externalLlmFetchTimeoutMs") {
+      cur.externalLlmFetchTimeoutMs = clampInt(v as number, 30_000, 300_000);
     }
   }
 
@@ -368,6 +394,7 @@ export function applyRuntimeSettingsPatch(
     persist.deepseekIntentModel = cur.deepseekIntentModel;
   if (typeof cur.deepseekChatMaxTokens === "number") persist.deepseekChatMaxTokens = cur.deepseekChatMaxTokens;
   if (typeof cur.intentMaxTokens === "number") persist.intentMaxTokens = cur.intentMaxTokens;
+  if (typeof cur.externalLlmFetchTimeoutMs === "number") persist.externalLlmFetchTimeoutMs = cur.externalLlmFetchTimeoutMs;
   persist.updatedAt = cur.updatedAt;
 
   ensureCliHomeRoot();

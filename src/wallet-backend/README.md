@@ -13,8 +13,8 @@
 | `okx-http.ts` | `okxSignedRequest`（WaaS 聚合余额 fallback） |
 | `dex-tokens.ts` | `mapClientChainToCli`、`symbolToContract`、`pickSignerAddressForChain` |
 | `wallet-cli-handlers.ts` | 所有钱包/DEX CLI 业务 handler |
-| `admin-ops.ts` | 运维台鉴权、`listCliSandboxes`、`adminOverviewPayload` |
-| `runtime-settings.ts` | 工作台运行时 JSON（`HWALLET_RUNTIME_SETTINGS_PATH` 或 `CLI_HOME_ROOT/runtime-settings.json`）热覆盖：限流、JSON 体、CORS、trend 目录、**Claude/DeepSeek 模型 id 与 intent/chat max_tokens**；`aiChat` 每次请求读 `getEffective*` |
+| `admin-ops.ts` | 运维台鉴权、`listCliSandboxes`、`adminOverviewPayload`、**`adminDiagnosticsPayload`**（聚合只读诊断） |
+| `runtime-settings.ts` | 工作台运行时 JSON 热覆盖：限流、JSON 体、CORS、trend、LLM 模型与 token、**externalLlmFetchTimeoutMs**；`aiChat` 每次请求读 `getEffective*` |
 | `ai-handlers.ts` | `/api/ai/chat`、`/api/ai/intent` 薄封装；`recognizeIntent` 出口已 sanitize（见 `src/services/intentNormalize.ts`） |
 | `http-utils.ts` | `parseBody` |
 | `schemas/ai.ts`、`schemas/auth.ts` | **Zod** 校验 `/api/ai/*`、登录 OTP 请求体；路由层 400 返回结构化错误 |
@@ -53,7 +53,8 @@
 | `HWALLET_MAX_JSON_BODY_BYTES` | `262144` | `parseBody` 拒绝超限 JSON，返回 **413** |
 | `HWALLET_AI_RATE_LIMIT_MAX` | `120` | 每 IP 每窗口内允许 `/api/ai/*` **POST** 次数；`0` 关闭 |
 | `HWALLET_AI_RATE_LIMIT_WINDOW_MS` | `60000` | 限流窗口毫秒 |
-| `HWALLET_RUNTIME_SETTINGS_PATH` | （默认 `CLI_HOME_ROOT/runtime-settings.json`） | 持久化**运行时覆盖**；`GET/POST /api/admin/settings`；可覆盖 AI 限流、JSON 体、CORS、trend 目录、**`claudeIntentModel` / `deepseekChatModel` / `deepseekIntentModel` / `deepseekChatMaxTokens` / `intentMaxTokens`**（与下方 `HWALLET_*` 同源，热生效）。**API 密钥**（`CLAUDE_API_KEY` / `DEEPSEEK_API_KEY`）仍须只在环境变量中配置 |
+| `HWALLET_RUNTIME_SETTINGS_PATH` | （默认 `CLI_HOME_ROOT/runtime-settings.json`） | 持久化**运行时覆盖**；`GET/POST /api/admin/settings`；可覆盖 AI 限流、JSON 体、CORS、trend 目录、LLM 模型与 token、**`externalLlmFetchTimeoutMs`**（与 `HWALLET_EXTERNAL_LLM_FETCH_TIMEOUT_MS` 同源，热生效）。**API 密钥**（`CLAUDE_API_KEY` / `DEEPSEEK_API_KEY`）仍须只在环境变量中配置 |
+| `HWALLET_BUILD_REVISION` | 空 | 可选；`GET /api/admin/diagnostics` 的 `buildRevision` 字段（镜像/部署注入 commit 或版本号） |
 | `HWALLET_META_CAPABILITIES_TOKEN` | 空 | 若设置，拉能力表须带 **`X-Hwallet-Meta-Token`**（MCP 子进程设同名变量即可） |
 
 BFF 访问日志会打印 **`X-Request-Id`**（若客户端传入）。

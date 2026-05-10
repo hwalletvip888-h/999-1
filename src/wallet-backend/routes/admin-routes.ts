@@ -1,6 +1,7 @@
 import * as http from "http";
 import {
   adminAiLimitsPayload,
+  adminDiagnosticsPayload,
   adminOverviewPayload,
   adminSystemPayload,
   adminTrendStatusPayload,
@@ -56,6 +57,11 @@ export async function tryAdminRoutes(
   if (url === "/api/admin/ai-limits" && method === "GET") {
     res.writeHead(200);
     res.end(JSON.stringify(adminAiLimitsPayload()));
+    return true;
+  }
+  if (url === "/api/admin/diagnostics" && method === "GET") {
+    res.writeHead(200);
+    res.end(JSON.stringify(adminDiagnosticsPayload()));
     return true;
   }
   if (url === "/api/admin/settings" && method === "GET") {
