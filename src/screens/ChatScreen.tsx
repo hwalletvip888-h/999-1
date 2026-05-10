@@ -189,12 +189,11 @@ export function ChatScreen() {
       const result = await handleUserPrompt(trimmed, onStep, { chatHistory, abortSignal, confirmedAddresses: [...confirmedAddressesRef.current] });
 
       if (!result.ok || !result.data) {
-        const errLine =
-          result.errorMsg ||
-          (!result.data
-            ? "服务暂时不可用。请确认本机/服务器已启动钱包后端，且 App 中 EXPO_PUBLIC_HWALLET_API_BASE 指向该地址。"
-            : "处理失败，请稍后重试。");
-        const codePart = result.errorCode ? `（${result.errorCode}）` : "";
+        const errLine = result.errorMsg
+          ? formatHwalletErrorForUser(new Error(result.errorMsg))
+          : !result.data
+          ? "服务暂时不可用，请稍后重试。"
+          : "处理失败，请稍后重试。";
         setMessages((current) =>
           current.map((m) =>
             m.id === stepsMessageId && m.kind === "steps"
@@ -215,7 +214,7 @@ export function ChatScreen() {
             id: makeId("msg_ai_err"),
             role: "assistant",
             kind: "text",
-            text: `⚠️ ${errLine}${codePart}`,
+            text: `⚠️ ${errLine}`,
             createdAt: nowLabel(),
           },
         ]);
@@ -295,7 +294,7 @@ export function ChatScreen() {
           id: makeId("msg_ai_err"),
           role: "assistant",
           kind: "text",
-          text: `⚠️ 出了点问题：${errLine}`,
+          text: `⚠️ ${formatHwalletErrorForUser(e)}`,
           createdAt: nowLabel(),
         },
       ]);
@@ -437,7 +436,7 @@ export function ChatScreen() {
           );
           setMessages((current) => [
             ...current,
-            { id: makeId("msg_ai_err"), role: "assistant", kind: "text", text: `⚠️ 兑换失败：${e?.message || '请重试'}`, createdAt: nowLabel() }
+            { id: makeId("msg_ai_err"), role: "assistant", kind: "text", text: `⚠️ ${formatHwalletErrorForUser(e)}`, createdAt: nowLabel() }
           ]);
         }
         setHeroMood("celebrating");
@@ -506,7 +505,7 @@ export function ChatScreen() {
           );
           setMessages((current) => [
             ...current,
-            { id: makeId("msg_ai_err"), role: "assistant", kind: "text", text: `⚠️ 转账失败：${e?.message || '请重试'}`, createdAt: nowLabel() }
+            { id: makeId("msg_ai_err"), role: "assistant", kind: "text", text: `⚠️ ${formatHwalletErrorForUser(e)}`, createdAt: nowLabel() }
           ]);
         }
         setHeroMood("celebrating");

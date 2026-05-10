@@ -695,10 +695,15 @@ export async function handleUserPrompt(
             };
           } catch (e: any) {
             steps = advanceStep(steps, 's3', 'error' as any, onStep);
+            const raw: string = e?.message || '';
+            let errorMsg = '转账失败，请稍后重试。';
+            if (/余额不足|insufficient/i.test(raw)) errorMsg = '余额不足，请先充值后再操作。';
+            else if (/token|未登录|auth/i.test(raw)) errorMsg = '登录已过期，请重新登录后再试。';
+            else if (/参数|missing/i.test(raw)) errorMsg = '转账参数不完整，请确认地址和金额。';
+            else if (raw && raw.length < 60 && /[\u4e00-\u9fa5]/.test(raw)) errorMsg = raw;
             return {
               ok: false,
-              errorCode: 'H1.TRANSFER.SEND_FAILED',
-              errorMsg: e?.message || '转账失败',
+              errorMsg,
               simulationMode: false,
             };
           }
@@ -970,11 +975,19 @@ export async function handleUserPrompt(
     );
     onStep?.(errorSteps);
 
-    const msg = err?.message || "网络错误";
+    const raw: string = err?.message || "";
+    // 对常见错误给友好中文提示
+    let errorMsg = "出了点问题，请稍后重试。";
+    if (/token|未登录|auth/i.test(raw)) errorMsg = "登录已过期，请重新登录后操作。";
+    else if (/timeout|超时/i.test(raw)) errorMsg = "连接超时，请检查网络后重试。";
+    else if (/network|fetch|ECONN/i.test(raw)) errorMsg = "网络连接失败，请检查网络后重试。";
+    else if (/onchainos.*未就绪|CLI.*未就绪/i.test(raw)) errorMsg = "链上通道暂未就绪，请稍候片刻再试。";
+    else if (/余额不足|insufficient/i.test(raw)) errorMsg = "余额不足，请先充值后再操作。";
+    else if (raw && raw.length < 60 && /[\u4e00-\u9fa5]/.test(raw)) errorMsg = raw;
+
     return {
       ok: false,
-      errorCode: "H1.ORC.HANDLE_PROMPT_FAILED",
-      errorMsg: msg,
+      errorMsg,
       simulationMode: false,
     };
   }
