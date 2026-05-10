@@ -6,6 +6,7 @@ import { resolveCorsAllowOrigin } from "./cors";
 import { isAiRouteRateLimited } from "./ai-rate-limit";
 import { dispatchJsonRoutes } from "./routes/index";
 import { tryServeOpsConsole } from "./routes/ops-console-route";
+import { INVALID_JSON_BODY } from "./http-utils";
 
 export { parseBody } from "./http-utils";
 
@@ -68,6 +69,11 @@ export function startWalletBackendHttpServer(): void {
         res.end(JSON.stringify({ ok: false, error: "Request body too large" }));
         return;
       }
+      if (err?.message === INVALID_JSON_BODY) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ ok: false, error: "Invalid JSON body" }));
+        return;
+      }
       res.writeHead(500);
       res.end(JSON.stringify({ error: err.message || "Internal error" }));
     }
@@ -77,6 +83,7 @@ export function startWalletBackendHttpServer(): void {
     console.log(`[WalletBackend] 🚀 服务已启动: http://0.0.0.0:${WALLET_PORT}`);
     console.log(`[WalletBackend] 运营台: http://localhost:${WALLET_PORT}/ops`);
     console.log(`[WalletBackend] AI Chat: /api/ai/chat | Intent: /api/ai/intent`);
+    console.log(`[WalletBackend] Trend: GET /api/trend`);
     console.log(`[WalletBackend] 能力发现(MCP 对齐): GET http://localhost:${WALLET_PORT}/api/meta/capabilities`);
     console.log(`[WalletBackend] 健康检查: http://localhost:${WALLET_PORT}/health`);
     ensureCliHomeRoot();

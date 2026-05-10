@@ -1,6 +1,9 @@
 import * as http from "http";
 import { MAX_JSON_BODY_BYTES } from "./config";
 
+/** 与 http-server 约定：非法 JSON 请求体须返回 400 */
+export const INVALID_JSON_BODY = "INVALID_JSON_BODY";
+
 export function parseBody(req: http.IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -28,7 +31,7 @@ export function parseBody(req: http.IncomingMessage): Promise<any> {
         }
         resolve(JSON.parse(body));
       } catch {
-        resolve({});
+        reject(new Error(INVALID_JSON_BODY));
       }
     });
     req.on("error", reject);

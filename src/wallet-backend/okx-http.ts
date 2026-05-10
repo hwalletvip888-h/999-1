@@ -3,6 +3,7 @@
  */
 import * as crypto from "crypto";
 import { OKX_API_KEY, OKX_BASE_URL, OKX_PASSPHRASE, OKX_PROJECT_ID, OKX_SECRET_KEY } from "./config";
+import { fetchWithServerTimeout } from "./server-fetch";
 
 function signRequest(timestamp: string, method: string, path: string, body: string): string {
   const signStr = `${timestamp}${method}${path}${body}`;
@@ -22,7 +23,7 @@ export async function okxSignedRequest(method: string, path: string, body?: any)
     "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
     "OK-ACCESS-PROJECT": OKX_PROJECT_ID,
   };
-  const response = await fetch(url, {
+  const response = await fetchWithServerTimeout(url, {
     method,
     headers,
     body: bodyStr || undefined,

@@ -1,5 +1,5 @@
 /**
- * 移动端 H Wallet 后端 HTTP 工具（超时、POST JSON、与调用方 AbortSignal 合并）
+ * 移动端 H Wallet 后端 HTTP 工具（超时、GET/POST JSON、与调用方 AbortSignal 合并）
  */
 import { hwalletAbsoluteUrl } from "./walletApiCore";
 import { mergeUserSignalWithTimeout } from "./mergeUserSignalWithTimeout";
@@ -38,6 +38,20 @@ export function raceOtpPost<T extends { ok: boolean; error?: string }>(p: Promis
     setTimeout(() => resolve({ ok: false, error: "请求超时，请检查网络后重试" } as T), OTP_POST_DEADLINE_MS),
   );
   return Promise.race([p, timeout]);
+}
+
+/** GET JSON（与 POST 同源 base、超时、X-Request-Id）；未配置 base 时返回 null */
+export async function getWithTimeout(
+  path: string,
+  opts?: { signal?: AbortSignal },
+): Promise<Response | null> {
+  const url = hwalletAbsoluteUrl(path);
+  if (!url) return null;
+  return fetchWithTimeout(url, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    signal: opts?.signal,
+  });
 }
 
 export async function postJson<T = any>(

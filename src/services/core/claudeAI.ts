@@ -5,7 +5,8 @@
  *
  * 不再在前端直接调用 AI API，统一走后端（同源 `EXPO_PUBLIC_HWALLET_API_BASE`）。
  */
-import { getHwalletApiBase } from "../walletApiCore";
+import { hwalletAbsoluteUrl } from "../walletApiCore";
+import { fetchWithTimeout } from "../walletApiHttp";
 import { localRuleIntent, sanitizeIntentPayload, type AIIntent } from "../intentNormalize";
 
 export type { AIIntent };
@@ -14,14 +15,14 @@ export type { AIIntent };
  * 意图识别 — 调用后端 /api/ai/intent (Claude)
  */
 export async function askClaude(userMessage: string, abortSignal?: AbortSignal): Promise<AIIntent> {
-  const base = getHwalletApiBase();
-  if (!base) {
+  const url = hwalletAbsoluteUrl("/api/ai/intent");
+  if (!url) {
     console.warn("[AI] EXPO_PUBLIC_HWALLET_API_BASE 未配置，使用本地意图规则");
     return localRuleIntent(userMessage);
   }
 
   try {
-    const response = await fetch(`${base}/api/ai/intent`, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: userMessage }),
@@ -60,13 +61,13 @@ export async function chatWithAI(
   userMessage: string,
   abortSignal?: AbortSignal,
 ): Promise<string> {
-  const base = getHwalletApiBase();
-  if (!base) {
+  const url = hwalletAbsoluteUrl("/api/ai/chat");
+  if (!url) {
     return "⚠️ 未配置服务端地址（EXPO_PUBLIC_HWALLET_API_BASE），无法在客户端连接 AI 网关。";
   }
 
   try {
-    const response = await fetch(`${base}/api/ai/chat`, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, message: userMessage }),
