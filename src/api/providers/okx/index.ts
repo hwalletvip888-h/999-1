@@ -37,7 +37,7 @@ export { OkxH_NotifyApi } from './H_NotifyApi.okx';
 
 // ─── 底层（中性传输 + 凭证类型） ────────────────────────────────
 export type { OkxCredentials, OkxResponse } from './okxHttpCore';
-export { request as okxRequest, sign as okxSign, OKX_BASE_URL } from './okxHttpCore';
+export { OkxApiError, request as okxRequest, sign as okxSign, OKX_BASE_URL } from './okxHttpCore';
 
 // ─── V6 链上专用客户端（hvip.io 后端代理 onchainos CLI） ────────
 export { okxOnchainClient } from './okxOnchainClient';

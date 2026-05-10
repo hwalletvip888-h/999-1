@@ -14,10 +14,11 @@
  */
 
 // 传输层 + 签名 / 类型 → 都来自中性 core，V5/V6 共享同一份实现，不互相依赖
-import { request as coreRequest, type OkxCredentials, type OkxResponse } from './okxHttpCore';
+import { OkxApiError, request as coreRequest, type OkxCredentials, type OkxResponse } from './okxHttpCore';
 
 // re-export 给现有 V5 服务（H_PerpetualApi / H_GridApi / H_AlgoApi / H_BotApi 等）使用
 export type { OkxCredentials, OkxResponse };
+export { OkxApiError };
 export const request = coreRequest;
 
 // ─── 公开接口（无需签名） ──────────────────────────────────────
