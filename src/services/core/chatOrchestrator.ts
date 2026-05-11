@@ -1059,10 +1059,11 @@ export async function handleUserPrompt(
 
         const replyText =
           intent.reply ||
-          (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal));        return {
+          (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal));
+        return {
           ok: true,
           data: { replyText },
-          simulationMode: false
+          simulationMode: false,
         };
       }
     }
