@@ -73,6 +73,27 @@ const quickPrompts: {
     iconColor: "#15803D"
   },
   {
+    text: "看看热门代币榜单",
+    Icon: SparkIcon,
+    bg: "#FFF7ED",
+    ring: "#FDBA74",
+    iconColor: "#C2410C"
+  },
+  {
+    text: "聪明钱最近在买什么",
+    Icon: TrendUpIcon,
+    bg: "#EFF6FF",
+    ring: "#BFDBFE",
+    iconColor: "#1D4ED8"
+  },
+  {
+    text: "信号追踪：大户最新成交",
+    Icon: TrendUpIcon,
+    bg: "#F5F3FF",
+    ring: "#DDD6FE",
+    iconColor: "#5B21B6"
+  },
+  {
     text: "跑一个 BTC 网格 Agent",
     Icon: SparkIcon,
     bg: "#F3E8FF",

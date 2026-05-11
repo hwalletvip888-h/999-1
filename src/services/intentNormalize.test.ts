@@ -42,9 +42,8 @@ describe("sanitizeIntentPayload", () => {
 });
 
 describe("localRuleIntent", () => {
-  it("matches signal before earn", () => {
-    const i = localRuleIntent("看看聪明钱最近在买什么");
-    expect(i.action).toBe("signal");
+  it("matches hot tokens phrase as signal", () => {
+    expect(localRuleIntent("看看热门代币榜单").action).toBe("signal");
   });
 
   it("portfolio 总资产", () => {

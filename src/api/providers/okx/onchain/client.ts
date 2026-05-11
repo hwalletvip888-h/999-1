@@ -9,6 +9,8 @@ import type {
   DexSignal,
   DexSwapExecuteResult,
   DexSwapQuote,
+  DexTrackerActivity,
+  HotTokenRow,
   WalletPortfolio,
   WalletSendResult,
 } from "./types";
@@ -134,6 +136,34 @@ export const okxOnchainClient = {
     opts?: OnchainRequestOpts,
   ): Promise<{ data: DexSignal[]; simulationMode: boolean }> {
     const data = await callBackend<DexSignal[]>("/api/v6/dex/signal", {
+      method: "POST",
+      body: filter,
+      token,
+      signal: opts?.signal,
+    });
+    return { data: Array.isArray(data) ? data : [], simulationMode: false };
+  },
+
+  async fetchHotTokens(
+    filter: { chain?: ChainId; limit?: number } = {},
+    token?: string,
+    opts?: OnchainRequestOpts,
+  ): Promise<{ data: HotTokenRow[]; simulationMode: boolean }> {
+    const data = await callBackend<HotTokenRow[]>("/api/v6/dex/hot-tokens", {
+      method: "POST",
+      body: filter,
+      token,
+      signal: opts?.signal,
+    });
+    return { data: Array.isArray(data) ? data : [], simulationMode: false };
+  },
+
+  async fetchTrackerActivities(
+    filter: { trackerType?: "smart_money" | "kol"; chain?: ChainId; limit?: number } = {},
+    token?: string,
+    opts?: OnchainRequestOpts,
+  ): Promise<{ data: DexTrackerActivity[]; simulationMode: boolean }> {
+    const data = await callBackend<DexTrackerActivity[]>("/api/v6/dex/tracker", {
       method: "POST",
       body: filter,
       token,

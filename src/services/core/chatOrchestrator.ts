@@ -17,7 +17,7 @@ import { loadSession } from '../walletApi';
 import { formatHwalletErrorForUser } from '../hwalletErrorUi';
 import { saveConversation, appendConversationMessage, saveCard, trackEventQuick } from './dataApi';
 // V6 链上机会发现客户端
-import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
+import { okxOnchainClient, type DefiOpportunity, type DexSignal, type DexTrackerActivity, type HotTokenRow } from '../../api/providers/okx/okxOnchainClient';
 
 /** 步骤回调类型 */
 export type OnStepCallback = (steps: AIStep[]) => void;
@@ -843,20 +843,27 @@ export async function handleUserPrompt(
         };
       }
 
-      // ─── 链上机会 / 信号发现（V6 链上赚币） ───
+      // ─── 链上机会 / 信号发现（V6：赚币发现 + 聪明钱信号 + 热门代币 + 追踪动态） ───
       case 'signal': {
         steps = advanceStep(steps, 's2', 'active', onStep);
         let opps: DefiOpportunity[] = [];
         let signals: DexSignal[] = [];
+        let hotTokens: HotTokenRow[] = [];
+        let tracker: DexTrackerActivity[] = [];
         try {
-          const [oppRes, sigRes] = await Promise.all([
-            okxOnchainClient.discoverOpportunities({ minApr: 3 }, undefined, { signal: options?.abortSignal }),
-            okxOnchainClient.fetchSignals({}, undefined, { signal: options?.abortSignal }),
+          const sig = { signal: options?.abortSignal };
+          const [oppRes, sigRes, hotRes, trRes] = await Promise.all([
+            okxOnchainClient.discoverOpportunities({ minApr: 3 }, undefined, sig),
+            okxOnchainClient.fetchSignals({}, undefined, sig),
+            okxOnchainClient.fetchHotTokens({ limit: 20 }, undefined, sig),
+            okxOnchainClient.fetchTrackerActivities({ trackerType: "smart_money", limit: 12 }, undefined, sig),
           ]);
           opps = (oppRes.data || []).filter((o) => o.securityScore >= 70).slice(0, 5);
-          signals = (sigRes.data || []).slice(0, 5);
+          signals = (sigRes.data || []).slice(0, 6);
+          hotTokens = (hotRes.data || []).slice(0, 8);
+          tracker = (trRes.data || []).slice(0, 8);
         } catch {
-          /** 数据源不可用则不生成演示卡片 */
+          /** 数据源不可用 */
         }
         steps = advanceStep(steps, 's2', 'done', onStep);
         await delay(150);
@@ -867,6 +874,15 @@ export async function handleUserPrompt(
         await delay(150);
 
         steps = advanceStep(steps, 's4', 'active', onStep);
+
+        const hotRows = hotTokens.map((h) => ({
+          label: `🔥 ${h.symbol}`,
+          value: `${h.chain.toUpperCase()} · 24h ${h.changePct24h}`,
+        }));
+        const trRows = tracker.map((t) => ({
+          label: `📡 ${t.symbol}`,
+          value: `${t.side} · ${t.amountUsd ?? "—"}`,
+        }));
 
         let card: HWalletCard;
         if (opps.length > 0) {
@@ -890,13 +906,17 @@ export async function handleUserPrompt(
             protocolTvl: best.tvlUsd,
             securityScore: best.securityScore,
             expectedReturn: `年化 ${best.apr}%`,
-            rows: opps.slice(0, 4).map((o) => ({
-              label: o.protocol,
-              value: `${o.apr}% · ${o.chain}`
-            })),
+            rows: [
+              ...opps.slice(0, 4).map((o) => ({
+                label: o.protocol,
+                value: `${o.apr}% · ${o.chain}`,
+              })),
+              ...hotRows.slice(0, 2),
+              ...trRows.slice(0, 2),
+            ].slice(0, 8),
             warning: '链上机会受合约风险与市场波动影响，建议小额试水。',
             primaryAction: '一键进入',
-            secondaryAction: '换一个'
+            secondaryAction: '换一个',
           };
         } else if (signals.length > 0) {
           const top = signals[0];
@@ -921,11 +941,34 @@ export async function handleUserPrompt(
               { label: '价格', value: `$${top.priceUsd}` },
               { label: '24h', value: top.changePct24h },
               { label: '市值', value: top.marketCapUsd },
-              { label: '来源', value: top.source }
-            ],
+              { label: '来源', value: top.source },
+              ...hotRows.slice(0, 3),
+              ...trRows.slice(0, 3),
+            ].slice(0, 10),
             warning: '新币 / Meme 风险极大，请确认合约安全后再小额买入。',
             primaryAction: '查看详情',
-            secondaryAction: '换一个'
+            secondaryAction: '换一个',
+          };
+        } else if (hotTokens.length > 0 || tracker.length > 0) {
+          card = {
+            id: makeId('card_signal_radar'),
+            productLine: 'v6',
+            module: 'wallet',
+            cardType: 'signal',
+            header: '机会卡片',
+            title: '热门代币 · 聪明钱追踪',
+            subtitle: `热门 ${hotTokens.length} · 追踪动态 ${tracker.length}`,
+            riskLevel: '中',
+            status: 'preview',
+            simulationMode: false,
+            userPrompt: input,
+            aiSummary: '聚合热门榜与聪明钱地址的近期成交快照。',
+            createdAt: now,
+            signalSource: 'smart_money',
+            rows: [...hotRows, ...trRows].slice(0, 10),
+            warning: '数据来自公开市场接口，不构成投资建议。',
+            primaryAction: '知道了',
+            secondaryAction: '换一批',
           };
         } else {
           steps = advanceStep(steps, 's4', 'done', onStep);
@@ -934,23 +977,31 @@ export async function handleUserPrompt(
             data: {
               replyText: intent.reply || '🌑 暂未发现符合条件的链上机会。',
             },
-            simulationMode: false
+            simulationMode: false,
           };
         }
 
         steps = advanceStep(steps, 's4', 'done', onStep);
 
+        const summaryBits: string[] = [];
+        if (opps.length) summaryBits.push(`赚币机会 ${opps.length}`);
+        if (signals.length) summaryBits.push(`聚合信号 ${signals.length}`);
+        if (hotTokens.length) summaryBits.push(`热门 ${hotTokens.length}`);
+        if (tracker.length) summaryBits.push(`追踪 ${tracker.length}`);
+
         return {
           ok: true,
           data: {
-            replyText: intent.reply || (
-              opps.length > 0
-                ? `🛰️ 已为你扫描 **${opps.length}** 个链上赚币机会\n\n最佳：**${opps[0].protocol}** 年化 **${opps[0].apr}%** · 安全分 ${opps[0].securityScore}/100\n\n点开卡片查看详情 👇`
-                : `📡 链上信号已就绪：${signals[0]?.symbol}\n\n点击卡片查看详情 👇`
-            ),
-            card
+            replyText:
+              intent.reply ||
+              (opps.length > 0
+                ? `🛰️ 已为你扫描 **${opps.length}** 个链上赚币机会\n\n最佳：**${opps[0].protocol}** 年化 **${opps[0].apr}%** · 安全分 ${opps[0].securityScore}/100\n\n${summaryBits.length > 1 ? `同步：${summaryBits.filter((b) => !b.startsWith('赚币')).join(' · ')}\n\n` : ''}点开卡片查看详情 👇`
+                : signals.length > 0
+                  ? `📡 **聪明钱 / KOL 聚合信号**已就绪：${signals[0]?.symbol}\n\n${summaryBits.filter((b) => !b.startsWith('聚合')).join(' · ') || ''}\n\n详情见卡片 👇`
+                  : `📊 **热门代币** 与 **信号追踪** 快照已就绪（${summaryBits.join(' · ')}）\n\n点开卡片查看 👇`),
+            card,
           },
-          simulationMode: false
+          simulationMode: false,
         };
       }
 

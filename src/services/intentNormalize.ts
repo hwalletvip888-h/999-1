@@ -248,7 +248,7 @@ export function buildLocalRuleIntentPayload(input: string): Record<string, unkno
     return { action: "swap", symbol, amount, reply: "" };
   }
   if (
-    /机会|信号|聪明钱|smart\s*money|链上(赚|赚币)?|发现|推荐|找(币|机会|项目)|kol|战壕|trenches/.test(lower)
+    /机会|信号|聪明钱|smart\s*money|链上(赚|赚币)?|发现|推荐|找(币|机会|项目)|kol|战壕|trenches|热门代币|代币榜单|热搜币|信号追踪|追踪聪明钱|大户信号/.test(lower)
   ) {
     return { action: "signal", reply: "" };
   }

@@ -13,6 +13,8 @@ export type {
   DefiOpportunity,
   DefiPosition,
   DexSignal,
+  DexTrackerActivity,
+  HotTokenRow,
 } from "./onchain/types";
 export type { OnchainRequestOpts } from "./onchain/client";
 export { okxOnchainClient } from "./onchain/client";

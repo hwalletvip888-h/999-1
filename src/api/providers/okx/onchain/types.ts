@@ -80,3 +80,28 @@ export type DexSignal = {
   source: string;
   capturedAt: string;
 };
+
+/** 热门代币榜（BFF `/api/v6/dex/hot-tokens`） */
+export type HotTokenRow = {
+  rank: number;
+  symbol: string;
+  chain: ChainId;
+  address?: string;
+  priceUsd?: string;
+  changePct24h?: string;
+  marketCapUsd?: string;
+  trendScore?: string;
+};
+
+/** 信号追踪 — 聪明钱/KOL 成交动态（BFF `/api/v6/dex/tracker`） */
+export type DexTrackerActivity = {
+  id: string;
+  trackerType: string;
+  side: string;
+  symbol: string;
+  chain: ChainId;
+  amountUsd?: string;
+  txHash?: string;
+  time?: string;
+  wallet?: string;
+};
