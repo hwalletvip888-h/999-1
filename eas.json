@@ -16,7 +16,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_HWALLET_API_BASE": "http://api.hvip.app:3100"
+        "EXPO_PUBLIC_HWALLET_API_BASE": "https://api.hvip.app"
       }
     },
     "preview-ios": {
@@ -26,7 +26,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_HWALLET_API_BASE": "http://api.hvip.app:3100"
+        "EXPO_PUBLIC_HWALLET_API_BASE": "https://api.hvip.app"
       }
     },
     "production": {
