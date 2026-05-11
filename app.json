@@ -2,7 +2,7 @@
   "expo": {
     "name": "H Wallet",
     "slug": "h-wallet-mvp",
-    "version": "0.2.0",
+    "version": "0.0.2",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "hwallet",
@@ -35,7 +35,7 @@
         }
       }
     },
-    "runtimeVersion": "0.2.0",
+    "runtimeVersion": "0.0.2",
     "updates": {
       "url": "https://u.expo.dev/738e0a95-9d15-4e1c-9bbd-2a8fc672e156"
     },
