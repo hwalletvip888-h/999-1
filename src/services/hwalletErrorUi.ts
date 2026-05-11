@@ -61,8 +61,8 @@ export function formatHwalletErrorForUser(e: unknown): string {
   if (/500|服务暂时不可用|server.*error|internal.*error/i.test(raw)) {
     return "服务暂时不可用，请稍后重试。";
   }
-  if (/429|频繁|rate.*limit/i.test(raw)) {
-    return "请求太频繁，请稍等几秒后再试。";
+  if (/429|频繁|rate.*limit|too frequent|too many/i.test(raw)) {
+    return "验证码发送太频繁，请等 10 分钟后再试。";
   }
 
   // ── HTTP 错误对象 ──────────────────────────────────────────

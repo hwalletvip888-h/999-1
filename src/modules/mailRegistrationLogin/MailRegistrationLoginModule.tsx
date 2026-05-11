@@ -64,12 +64,16 @@ export function MailRegistrationLoginModule({ onRegistrationLoginSuccess }: Mail
     try {
       const r = await sendOtp(email);
       if (!r.ok) {
+        const errMsg = r.error || "发送失败，请稍后重试";
+        const friendlyMsg = /too frequent|rate.?limit|too many/i.test(errMsg)
+          ? "验证码发送太频繁，请等 10 分钟后再试"
+          : errMsg.length < 80 ? errMsg : "发送失败，请检查网络后重试";
         toastBus.push({
           emoji: "⚠️",
           title: "发送失败",
-          subtitle: r.error,
+          subtitle: friendlyMsg,
           tone: "warn",
-          duration: 3000
+          duration: 4000
         });
         return;
       }
