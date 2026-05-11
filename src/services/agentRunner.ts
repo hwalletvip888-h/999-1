@@ -103,7 +103,7 @@ export class MockAgentRunner implements AgentRunner {
     this.agents.set(id, status);
     this.emit(status);
 
-    // 模拟运行：每 3s 出一次假数据
+    // 模拟运行：较快轮询更新假数据（演示用）
     const t = setInterval(() => {
       const cur = this.agents.get(id);
       if (!cur || cur.state !== "running") return;
@@ -117,7 +117,7 @@ export class MockAgentRunner implements AgentRunner {
           ? `+${delta} U · ${params.symbol} 平仓`
           : `${delta} U · 网格补单`;
       this.emit(cur);
-    }, 3000);
+    }, 1200);
     this.timers.set(id, t);
     return status;
   }

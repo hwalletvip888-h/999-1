@@ -5,7 +5,8 @@ import { appendLog, clearTimer, isRunning, setTimer } from "./runner";
 import { runOnchainosJson } from "../onchainos-cli";
 import { parseSwapQuoteResult, parseSwapExecuteResult } from "./strategySwapUtils";
 
-const CHECK_INTERVAL_MS = 30_000;
+/** 报价轮询：尽量快以触发阈值，注意 onchainos 负载 */
+const CHECK_INTERVAL_MS = 6_000;
 const ENTRY_THRESHOLD   = 0.01;
 const SWAP_AMOUNT_USDC  = "5";
 const SLIPPAGE_PCT      = "0.5"; // 50 bps

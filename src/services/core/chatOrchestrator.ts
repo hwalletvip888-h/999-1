@@ -145,9 +145,13 @@ function advanceStep(steps: AIStep[], stepId: string, status: AIStep['status'], 
   return updated;
 }
 
-/** 延迟工具 */
+/** 原多处 sleep 用于步骤动效；封顶后尽快完成编排，仅保留极短间隔给步骤条刷新 */
+const AI_ORCH_INTER_STEP_MS_CAP = 10;
+
 function delay(ms: number): Promise<void> {
-  return new Promise((res) => setTimeout(res, ms));
+  if (ms <= 0) return Promise.resolve();
+  const wait = Math.min(ms, AI_ORCH_INTER_STEP_MS_CAP);
+  return new Promise((res) => setTimeout(res, wait));
 }
 
 /** 推进风控预检步骤（仅当步骤列表里包含 s_safety 时生效） */

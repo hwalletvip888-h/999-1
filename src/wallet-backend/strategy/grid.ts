@@ -5,7 +5,7 @@ import { appendLog, clearTimer, isRunning, setTimer } from "./runner";
 import { runOnchainosJson } from "../onchainos-cli";
 import { parseSwapQuoteResult, parseSwapExecuteResult } from "./strategySwapUtils";
 
-const CHECK_INTERVAL_MS = 45_000;
+const CHECK_INTERVAL_MS = 8_000;
 const GRID_STEP_USDC    = "3";
 const SLIPPAGE_PCT      = "0.5"; // 50 bps
 

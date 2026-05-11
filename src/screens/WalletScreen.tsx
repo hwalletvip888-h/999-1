@@ -2286,7 +2286,7 @@ function StrategyControlCenter({ token }: { token?: string }) {
       }
     };
     tick();
-    const t = setInterval(tick, 3500);
+    const t = setInterval(tick, 1200);
     return () => clearInterval(t);
   }, [token]);
 

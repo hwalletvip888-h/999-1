@@ -572,7 +572,7 @@ export function ChatScreen({ prefill, onPrefillConsumed }: { prefill?: string; o
       }
     ]);
     scrollToEndSoon();
-    // 3) 约 1 秒后，根据卡片类型决定最终状态，归档到卡库
+    // 3) 尽快结束模拟态（短间隔轮询感，仍留一帧给 confirming UI）
     setTimeout(() => {
       const finalStatus: import("../types/card").CardStatus = targetCard ? statusOnConfirm(targetCard) : "executed";
       setMessages((current) =>
@@ -604,7 +604,7 @@ export function ChatScreen({ prefill, onPrefillConsumed }: { prefill?: string; o
       setHeroMood("celebrating");
       scheduleMood(setHeroMood, "idle", 1500);
       scrollToEndSoon();
-    }, 1000);
+    }, 120);
   }
 
   function cancelCard(cardId: string) {
