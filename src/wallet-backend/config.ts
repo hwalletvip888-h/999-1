@@ -24,6 +24,15 @@ export const MAX_JSON_BODY_BYTES = parseInt(
 );
 
 /**
+ * Session token 签名密钥（HMAC-SHA256）。
+ * 生产环境请通过环境变量 HWALLET_TOKEN_SECRET 设置强随机值。
+ */
+export const TOKEN_SECRET = (process.env.HWALLET_TOKEN_SECRET || "hwallet-dev-secret-change-in-prod").trim();
+
+/** Session token 有效期（毫秒），默认 30 天 */
+export const TOKEN_TTL_MS = parseInt(process.env.HWALLET_TOKEN_TTL_MS || String(30 * 24 * 60 * 60 * 1000), 10);
+
+/**
  * CORS：`*` 或逗号分隔的 Origin 白名单（须含协议，如 `https://app.example.com`）。
  * 未设置时等价 `*`（开发友好；生产建议显式白名单）。
  */

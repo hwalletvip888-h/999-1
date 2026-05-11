@@ -79,8 +79,14 @@ export default function App() {
     JetBrainsMono_700Bold,
   });
   const [activeView, setActiveView] = useState<AppView>("chat");
+  const [chatPrefill, setChatPrefill] = useState<string>("");
   const [hydrated, setHydrated] = useState(false);
   const session = useSession();
+
+  const handleCommunityNavigate = (view: string, prefill?: string) => {
+    if (prefill) setChatPrefill(prefill);
+    setActiveView(view as AppView);
+  };
 
   // 启动：还原本地 session
   useEffect(() => {
@@ -184,11 +190,11 @@ export default function App() {
             <View className="flex-1">
               <ErrorBoundary>
                 {tabView === "community" ? (
-                  <CommunityScreen />
+                  <CommunityScreen onChangeView={handleCommunityNavigate} />
                 ) : tabView === "agent" ? (
                   <AgentCenterScreen onChangeView={setActiveView} />
                 ) : (
-                  <ChatScreen />
+                  <ChatScreen prefill={chatPrefill} onPrefillConsumed={() => setChatPrefill("")} />
                 )}
               </ErrorBoundary>
             </View>

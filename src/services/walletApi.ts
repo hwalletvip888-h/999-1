@@ -232,7 +232,8 @@ export async function listAccounts(): Promise<{
       headers: { Authorization: `Bearer ${s.token}` },
     });
     const raw = await res.text();
-    const data = raw ? JSON.parse(raw) : {};
+    let data: any = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { /* ignore */ }
     if (!data?.ok) return { ok: false, accounts: [], error: data?.error || "拉取失败" };
     return {
       ok: true,
@@ -256,7 +257,8 @@ export async function switchAccount(accountId: string): Promise<{ ok: boolean; e
       body: JSON.stringify({ accountId }),
     });
     const raw = await res.text();
-    const data = raw ? JSON.parse(raw) : {};
+    let data: any = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { /* ignore */ }
     if (!data?.ok) return { ok: false, error: data?.error || "切换失败" };
     const next: Session = { ...s, accountId: String(data.currentAccountId || accountId) };
     await saveSession(next);
@@ -277,7 +279,8 @@ export async function addAccount(): Promise<{ ok: boolean; accountId?: string; a
       headers: { Authorization: `Bearer ${s.token}`, "Content-Type": "application/json" },
     });
     const raw = await res.text();
-    const data = raw ? JSON.parse(raw) : {};
+    let data: any = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch { /* ignore */ }
     if (!data?.ok) return { ok: false, error: data?.error || "新建账户失败" };
     return { ok: true, accountId: data.accountId, accountName: data.accountName };
   } catch (err: any) {

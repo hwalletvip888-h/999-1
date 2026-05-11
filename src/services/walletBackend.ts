@@ -15,4 +15,11 @@
  */
 import { startWalletBackendHttpServer } from "../wallet-backend/http-server";
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[WalletBackend] unhandledRejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[WalletBackend] uncaughtException:", err);
+});
+
 startWalletBackendHttpServer();

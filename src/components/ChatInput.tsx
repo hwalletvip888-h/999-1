@@ -3,6 +3,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightbulbIcon, MicIcon, PaperclipIcon, SendIcon } from "./ui/Icons";
 import { QuickActionBar } from "./QuickActionBar";
 import { uiShadow } from "../theme/uiSystem";
+import { toastBus } from "../services/toastBus";
 
 type ChatInputProps = {
   value: string;
@@ -68,6 +69,7 @@ export function ChatInput({ value, placeholder, onChangeText, onSubmit, onQuickA
               accessibilityRole="button"
               accessibilityLabel="附件"
               hitSlop={8}
+              onPress={() => toastBus.push({ emoji: "📎", title: "图片/文件", subtitle: "文件上传功能即将上线", tone: "info", duration: 2000 })}
               style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 }}
             >
               <PaperclipIcon size={18} />
@@ -76,6 +78,7 @@ export function ChatInput({ value, placeholder, onChangeText, onSubmit, onQuickA
               accessibilityRole="button"
               accessibilityLabel="模式"
               hitSlop={6}
+              onPress={() => toastBus.push({ emoji: "🧠", title: "Expert 模式", subtitle: "深度分析模式即将上线", tone: "info", duration: 2000 })}
               style={{ flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6 }}
             >
               <LightbulbIcon size={16} />
@@ -87,6 +90,7 @@ export function ChatInput({ value, placeholder, onChangeText, onSubmit, onQuickA
               accessibilityRole="button"
               accessibilityLabel="语音"
               hitSlop={8}
+              onPress={() => toastBus.push({ emoji: "🎙️", title: "语音输入", subtitle: "语音识别功能即将上线", tone: "info", duration: 2000 })}
               style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 16 }}
             >
               <MicIcon size={18} />

@@ -19,6 +19,7 @@ export async function dispatchJsonRoutes(
   res: http.ServerResponse,
   url: string,
   method: string,
+  rawUrl?: string,
 ): Promise<boolean> {
   if (tryMetaRoutes(req, res, url, method)) return true;
   if (await tryDataRoutes(req, res, url, method)) return true;
@@ -28,7 +29,7 @@ export async function dispatchJsonRoutes(
   if (await tryWalletRoutes(req, res, url, method)) return true;
   if (await tryDexRoutes(req, res, url, method)) return true;
   if (await tryAiRoutes(req, res, url, method)) return true;
-  if (await tryStrategyRoutes(req, res, url, method)) return true;
+  if (await tryStrategyRoutes(req, res, url, method, rawUrl)) return true;
   if (tryHealthRoute(req, res, url, method)) return true;
   return false;
 }

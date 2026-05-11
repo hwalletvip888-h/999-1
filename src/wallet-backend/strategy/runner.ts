@@ -7,6 +7,7 @@ export type LogLevel = "info" | "action" | "success" | "warn" | "error";
 
 export type StrategyLog = {
   ts: string;        // HH:MM:SS
+  tsMs: number;      // Unix ms，用于增量拉取
   level: LogLevel;
   msg: string;
 };
@@ -34,7 +35,7 @@ export function appendLog(userId: string, level: LogLevel, msg: string) {
   const st = store.get(userId) ?? defaultStatus();
   const now = new Date();
   const ts = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
-  st.logs.push({ ts, level, msg });
+  st.logs.push({ ts, tsMs: now.getTime(), level, msg });
   // 保留最近 200 条
   if (st.logs.length > 200) st.logs.splice(0, st.logs.length - 200);
   store.set(userId, st);

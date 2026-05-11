@@ -128,11 +128,17 @@ function CommunityRow({ message }: { message: CommunityMessage }) {
   );
 }
 
-export function CommunityScreen() {
+export function CommunityScreen({ onChangeView }: { onChangeView?: (view: string, prefill?: string) => void }) {
   const scrollRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState<CommunityMessage[]>(communityMessages);
   const [input, setInput] = useState("");
   const [tab, setTab] = useState<"feed" | "chat">("feed");
+
+  function handleCopyStrategy(title: string, author: string) {
+    if (onChangeView) {
+      onChangeView("chat", `帮我复制 @${author} 的策略「${title}」，分析适合我的参数并执行`);
+    }
+  }
 
   function sendMessage() {
     const trimmed = input.trim();
@@ -194,7 +200,7 @@ export function CommunityScreen() {
               contentContainerStyle={{ paddingHorizontal: uiSpace.pageX, gap: 12 }}
             >
               {strategies.map((s) => (
-                <StrategyCard key={s.id} s={s} />
+                <StrategyCard key={s.id} s={s} onCopy={handleCopyStrategy} />
               ))}
             </ScrollView>
           </View>
@@ -395,7 +401,8 @@ function KolCard({
 }
 
 function StrategyCard({
-  s
+  s,
+  onCopy
 }: {
   s: {
     id: string;
@@ -407,6 +414,7 @@ function StrategyCard({
     color: string;
     bg: [string, string];
   };
+  onCopy?: (title: string, author: string) => void;
 }) {
   return (
     <Pressable
@@ -454,12 +462,13 @@ function StrategyCard({
               {s.roi}
             </Text>
           </View>
-          <View
-            className="rounded-full px-3 py-1.5"
+          <Pressable
+            onPress={() => onCopy?.(s.title, s.author)}
+            className="rounded-full px-3 py-1.5 active:opacity-80"
             style={{ backgroundColor: s.color }}
           >
             <Text className="text-[11px] font-bold text-white">跟单</Text>
-          </View>
+          </Pressable>
         </View>
       </LinearGradient>
     </Pressable>

@@ -10,8 +10,14 @@ export const aiChatBodySchema = z.object({
   message: z.string().min(1).max(100_000),
 });
 
+const intentHistorySchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().max(50_000),
+});
+
 export const aiIntentBodySchema = z.object({
   message: z.string().min(1).max(50_000),
+  history: z.array(intentHistorySchema).max(20).optional(),
 });
 
 export function zodIssuesSummary(err: z.ZodError): string {

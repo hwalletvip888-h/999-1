@@ -10,6 +10,7 @@ export async function tryStrategyRoutes(
   res: http.ServerResponse,
   url: string,
   method: string,
+  rawUrl?: string,
 ): Promise<boolean> {
   if (!url.startsWith("/api/v6/strategy/")) return false;
 
@@ -41,12 +42,13 @@ export async function tryStrategyRoutes(
 
   // GET /api/v6/strategy/logs?since=<ts_ms>
   if (url.startsWith("/api/v6/strategy/logs") && method === "GET") {
-    const sinceParam = new URL(url, "http://x").searchParams.get("since");
+    const qs = (rawUrl ?? url).includes("?") ? (rawUrl ?? url).split("?")[1] : "";
+    const sinceParam = new URLSearchParams(qs).get("since");
     const since = sinceParam ? Number(sinceParam) : 0;
     const status = getStatus(userId);
     const logs = since > 0
-      ? status.logs.slice(-100)
-      : status.logs.slice(-50);
+      ? status.logs.filter((l: any) => (l.tsMs ?? 0) > since)
+      : status.logs.slice(-80);
     res.writeHead(200);
     res.end(JSON.stringify({ ok: true, logs, running: status.running, strategyId: status.strategyId }));
     return true;

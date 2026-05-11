@@ -3,7 +3,7 @@
  */
 import * as fs from "fs";
 import * as nodePath from "path";
-import { homeForEmail, homeFromToken } from "./cli-home";
+import { homeForEmail, homeFromToken, mintSessionToken } from "./cli-home";
 import {
   getCurrentWalletAddress,
   mapClientChainToCli,
@@ -66,13 +66,7 @@ export async function handleVerifyOtp(
       console.warn(`[WalletBackend] verify 后取地址表失败：`, (err as any)?.message);
     }
 
-    const token = Buffer.from(
-      JSON.stringify({
-        email: e,
-        accountId,
-        createdAt: Date.now(),
-      }),
-    ).toString("base64");
+    const token = mintSessionToken(e, accountId);
 
     return { ok: true, token, accountId, isNew, addresses };
   } catch (err: any) {

@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
@@ -15,8 +15,6 @@ type ProfileScreenProps = {
   onChangeView: (view: AppView) => void;
 };
 
-
-const stats = getProfileStats();
 
 const menu: {
   id: string;
@@ -35,6 +33,25 @@ const menu: {
 
 export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
   const session = useSession();
+  const [stats, setStats] = useState(() => getProfileStats());
+
+  useEffect(() => {
+    setStats(getProfileStats());
+  }, []);
+
+  const handleMenuPress = (id: string) => {
+    if (id === "notification") {
+      onChangeView("notifications" as any);
+    } else if (id === "security") {
+      toastBus.push({ emoji: "🔒", title: "安全中心", subtitle: "验证码登录已启用，设备管理即将上线", tone: "info", duration: 2500 });
+    } else if (id === "agents") {
+      onChangeView("agent");
+    } else if (id === "help") {
+      Linking.openURL("mailto:support@hvip.app").catch(() =>
+        toastBus.push({ emoji: "💬", title: "联系客服", subtitle: "support@hvip.app", tone: "info", duration: 3000 })
+      );
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("退出登录", "退出后需重新输入邮箱验证码，确定吗？", [
@@ -118,6 +135,7 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
               <Pressable
                 key={id}
                 accessibilityRole="button"
+                onPress={() => handleMenuPress(id)}
                 className={`flex-row items-center px-4 py-3.5 active:bg-surface ${
                   idx < menu.length - 1 ? "border-b border-line" : ""
                 }`}
@@ -153,7 +171,7 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
           </Pressable>
         </View>
 
-        <Text className="mt-5 text-center text-[11px] text-muted">v1.0.0 · H Wallet</Text>
+        <Text className="mt-5 text-center text-[11px] text-muted">v0.0.2 · H Wallet</Text>
       </ScrollView>
     </View>
   );

@@ -81,11 +81,18 @@ const quickPrompts: {
   }
 ];
 
-export function ChatScreen() {
+export function ChatScreen({ prefill, onPrefillConsumed }: { prefill?: string; onPrefillConsumed?: () => void } = {}) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
+
+  useEffect(() => {
+    if (prefill) {
+      setInput(prefill);
+      onPrefillConsumed?.();
+    }
+  }, [prefill]);
   const [aiTyping, setAiTyping] = useState(false);
   const confirmedAddressesRef = useRef<Set<string>>(new Set());
   const [heroMood, setHeroMood] = useState<DolphinMood>("idle");

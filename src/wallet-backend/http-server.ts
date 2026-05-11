@@ -58,7 +58,7 @@ export function startWalletBackendHttpServer(): void {
     }
 
     try {
-      const handled = await dispatchJsonRoutes(req, res, url, req.method || "GET");
+      const handled = await dispatchJsonRoutes(req, res, url, req.method || "GET", rawUrl);
       if (!handled) {
         res.writeHead(404);
         res.end(JSON.stringify({ error: "Not found" }));

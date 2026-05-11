@@ -3,9 +3,11 @@
  */
 import { appendLog, clearTimer, isRunning, setTimer } from "./runner";
 import { runOnchainosJson } from "../onchainos-cli";
+import { parseSwapQuoteResult, parseSwapExecuteResult } from "./strategySwapUtils";
 
 const CHECK_INTERVAL_MS = 45_000;
 const GRID_STEP_USDC    = "3";
+const SLIPPAGE_PCT      = "0.5"; // 50 bps
 
 const gridState: Record<string, { floor: number; ceil: number; step: number; last: number }> = {};
 
@@ -18,23 +20,22 @@ export function runGridStrategy(userId: string, home: string) {
     try {
       appendLog(userId, "info", "查询 ETH/USDC 网格报价...");
 
-      const result = runOnchainosJson(
+      const raw = runOnchainosJson(
         ["swap", "quote",
           "--from", "USDC", "--to", "ETH",
           "--readable-amount", GRID_STEP_USDC,
           "--chain", "eth"
         ],
         home, 20_000
-      ) as { ok?: boolean; toAmount?: string; rate?: number } | null;
+      );
 
-      if (!result?.ok || !result.toAmount) {
+      const quote = parseSwapQuoteResult(raw);
+      if (!quote) {
         appendLog(userId, "warn", "报价接口暂时无法返回，等待下次检查...");
         return;
       }
 
-      const rate = result.rate ?? 0;
-      const ethPrice = rate > 0 ? 1 / rate : (Number(GRID_STEP_USDC) / Number(result.toAmount));
-
+      const ethPrice = Number(GRID_STEP_USDC) / quote.toAmount;
       const gs = gridState[userId];
 
       // 首次运行：初始化网格区间（±5%，1% 一格）
@@ -64,19 +65,21 @@ export function runGridStrategy(userId: string, home: string) {
           `价格${dir}格线 $${ethPrice.toFixed(2)}（跨越 ${crossed} 格），触发 swap ${GRID_STEP_USDC} USDC → ETH`
         );
         try {
-          const exec = runOnchainosJson(
+          const execRaw = runOnchainosJson(
             ["swap", "execute",
               "--from", "USDC", "--to", "ETH",
               "--readable-amount", GRID_STEP_USDC,
-              "--chain", "eth", "--slippage", "80", "--force"
+              "--chain", "eth", "--slippage", SLIPPAGE_PCT, "--force"
             ],
             home, 120_000
-          ) as { ok?: boolean; txHash?: string; error?: string } | null;
+          );
 
-          if (exec?.ok && exec.txHash) {
-            appendLog(userId, "success", `网格成交 ✓  txHash: ${exec.txHash.slice(0, 14)}...`);
+          const txHash = parseSwapExecuteResult(execRaw);
+          if (txHash) {
+            appendLog(userId, "success", `网格成交 ✓  txHash: ${txHash.slice(0, 14)}...`);
           } else {
-            appendLog(userId, "error", `网格 swap 失败：${exec?.error ?? "未知错误"}`);
+            const errMsg = execRaw?.error ?? execRaw?.msg ?? "未知错误";
+            appendLog(userId, "error", `网格 swap 失败：${errMsg}`);
           }
         } catch (e: any) {
           appendLog(userId, "error", `网格执行异常：${e?.message ?? String(e)}`);
