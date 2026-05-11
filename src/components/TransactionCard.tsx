@@ -16,6 +16,7 @@ import { Candlestick } from "./Candlestick";
 import { TokenBTC, TokenETH, TokenUSDT } from "./ui/TokenIcons";
 import type { CardStatus, HWalletCard } from "../types";
 import { resolveCardTemplateId } from "../services/core/cardTemplates";
+import { uiColors } from "../theme/uiSystem";
 
 type TransactionCardProps = {
   card: HWalletCard;
@@ -765,12 +766,11 @@ function GenericCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const secondaryActionLabel = card.secondaryAction ?? "取消";
   const primaryActionLabel = card.primaryAction ?? "确认模拟执行";
   return (
-    <View className="mx-4 my-2">
-      <Surface padded={false}>
+    <CardShell bg="#FFFFFF" borderColor={uiColors.glassPurpleBorder} shadowColor={uiColors.purple}>
         <View className="flex-row items-center justify-between border-b border-line px-4 py-3">
           <View className="flex-row items-center gap-2.5">
             <View className="h-8 w-8 items-center justify-center rounded-full bg-surface">
-              <Text className="text-sm font-semibold text-ink">{card.icon}</Text>
+              <Text className="text-sm font-semibold text-ink">{card.icon ?? "📋"}</Text>
             </View>
             <View>
               <Text className="text-[17px] font-semibold text-ink">{card.title}</Text>
@@ -822,8 +822,7 @@ function GenericCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             />
           </View>
         ) : null}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
@@ -1589,8 +1588,7 @@ function AddressCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   }
 
   return (
-    <View className="my-2 px-4">
-      <Surface className="overflow-hidden rounded-2xl">
+    <CardShell bg="#FFFFFF" borderColor={uiColors.cardBorder} shadowColor={uiColors.purple}>
         <LinearGradient
           colors={["#F5F3FF", "#EDE9FE"]}
           start={{ x: 0, y: 0 }}
@@ -1695,8 +1693,7 @@ function AddressCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             </Text>
           </View>
         )}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
@@ -1707,8 +1704,7 @@ function AddressCard({ card, onConfirm, onCancel }: TransactionCardProps) {
 function TransferDoneCard({ card }: TransactionCardProps) {
   const hasRows = (card.rows ?? []).length > 0;
   return (
-    <View className="my-2 px-4">
-      <Surface className="overflow-hidden rounded-2xl">
+    <CardShell bg="#FAFFFE" borderColor="#A7F3D0" shadowColor="#10B981">
         <LinearGradient
           colors={["#ECFDF5", "#D1FAE5"]}
           start={{ x: 0, y: 0 }}
@@ -1772,8 +1768,7 @@ function TransferDoneCard({ card }: TransactionCardProps) {
             ))}
           </View>
         ) : null}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
@@ -1788,8 +1783,11 @@ function TradeResultCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const pair = card.pair || (symbol ? `${symbol}/USDT` : '');
 
   return (
-    <View className="my-2 px-4">
-      <Surface className="overflow-hidden rounded-2xl">
+    <CardShell
+      bg={isSuccess ? "#FAFFFE" : "#FFFBFB"}
+      borderColor={isSuccess ? "#A7F3D0" : "#FECACA"}
+      shadowColor={isSuccess ? "#10B981" : "#EF4444"}
+    >
         <LinearGradient
           colors={isSuccess ? ["#ECFDF5", "#D1FAE5"] : ["#FEF2F2", "#FEE2E2"]}
           start={{ x: 0, y: 0 }}
@@ -1855,8 +1853,7 @@ function TradeResultCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             ))}
           </View>
         )}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
@@ -1924,8 +1921,7 @@ function SignalCard({ card, onConfirm, onCancel }: TransactionCardProps) {
     : { fg: "#B45309", bg: "#FEF3C7", label: "需注意" };
 
   return (
-    <View className="mx-4 my-2">
-      <Surface padded={false}>
+    <CardShell bg="#FFFFFF" borderColor={uiColors.glassPurpleBorder} shadowColor={uiColors.purple}>
         {/* 顶部：渐变带 + 信号源标签 */}
         <View
           style={{
@@ -2086,7 +2082,6 @@ function SignalCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             />
           </View>
         ) : null}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
