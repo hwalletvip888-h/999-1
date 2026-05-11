@@ -57,6 +57,7 @@ describe("CHAT_INTENT_ACTIONS", () => {
   it("includes signal and chat", () => {
     expect(CHAT_INTENT_ACTIONS).toContain("signal");
     expect(CHAT_INTENT_ACTIONS).toContain("chat");
+    expect(CHAT_INTENT_ACTIONS).toContain("strategy");
   });
 });
 
@@ -64,5 +65,18 @@ describe("buildLocalRuleIntentPayload", () => {
   it("永续 命中 trade_long", () => {
     const raw = buildLocalRuleIntentPayload("开永续多 100U");
     expect(raw.action).toBe("trade_long");
+  });
+
+  it("开启趋势策略 命中 strategy start trend", () => {
+    const raw = buildLocalRuleIntentPayload("开启趋势策略帮我自动做单");
+    expect(raw.action).toBe("strategy");
+    expect(raw.strategyOp).toBe("start");
+    expect(raw.strategyId).toBe("trend");
+  });
+
+  it("停止策略 命中 strategy stop", () => {
+    const raw = buildLocalRuleIntentPayload("停止自动做单");
+    expect(raw.action).toBe("strategy");
+    expect(raw.strategyOp).toBe("stop");
   });
 });

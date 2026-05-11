@@ -67,20 +67,27 @@ JSON 格式：
   "protocol": "Lido",
   "toAddress": "0xAbc...",
   "chain": "evm",
+  "strategyId": "trend",
+  "strategyOp": "start",
   "reply": "简短确认语（1~2行，不得包含地址/余额/价格等真实数据，这些由系统从 API 获取）"
 }
 
 **字段规则：**
+- action 必须为上述枚举之一（勿发明新值）；各 action 含义见下列对照
 - symbol: BTC/ETH/SOL/DOGE/USDT 等（英文大写）
 - amount: 数量（USDT 或目标币种），默认 100
 - leverage: 杠杆倍数，默认 10
 - toAddress: 转账目标地址（用户提到的链上地址，原样复制，不得编造）
 - chain: "evm"（0x 地址 / ETH/BNB/OKX 链）或 "solana"（SOL 链），无法判断则省略
-- action 必须为上述枚举之一（勿发明新值）；含义:
+- strategyId: 仅 action=strategy 且 strategyOp=start 时使用，"trend" 或 "grid"
+- strategyOp: 仅 action=strategy 时使用，"start" 或 "stop"
+
+**action 含义对照：**
   price=查行情,
   trade_long=做多,
   trade_short=做空,
-  grid=网格策略,
+  grid=合约侧网格策略卡片（非钱包自动执行）,
+  strategy=在钱包内启动或停止「趋势跟随 / 网格套利」自动交易（AI 中控台，需带 strategyOp:start|stop，start 时 strategyId:trend|grid）,
   swap=兑换,
   earn=质押赚币,
   position=查持仓,

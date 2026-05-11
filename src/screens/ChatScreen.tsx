@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import Animated, {
   Easing,
@@ -679,6 +679,9 @@ export function ChatScreen({ prefill, onPrefillConsumed }: { prefill?: string; o
             >
               说一句话，我帮你下单 · 兑换 · 跑 Agent
             </Text>
+            <Text className="mt-2 px-4 text-center text-[12px] leading-[18px] text-muted">
+              底部三张大卡片可一键说「充值 / 提现 / 兑换」
+            </Text>
             {/* 彩蛋提示气泡 */}
             {easterShow ? (
               <View
@@ -940,6 +943,10 @@ const opportunities = [
 
 function OpportunityCarousel({ onPick }: { onPick: (prompt: string) => void }) {
   const [idx, setIdx] = useState(0);
+  const dateTag = useMemo(() => {
+    const d = new Date();
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }, []);
   const fade = useSharedValue(1);
   useEffect(() => {
     const t = setInterval(() => {
@@ -1024,7 +1031,7 @@ function OpportunityCarousel({ onPick }: { onPick: (prompt: string) => void }) {
                   {op.tag}
                 </Text>
               </View>
-              <Text className="text-[10px] text-muted">5/3 实时分析</Text>
+              <Text className="text-[10px] text-muted">{dateTag} 实时分析</Text>
             </View>
             <Text className="mt-1 text-[14px] font-bold text-ink" numberOfLines={1}>
               {op.title}

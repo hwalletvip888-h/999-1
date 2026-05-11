@@ -28,6 +28,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { DolphinLogo } from "../../components/DolphinLogo";
 import { sendOtp, verifyOtp, type Session } from "../../services/walletApi";
+import { formatHwalletErrorForUser } from "../../services/hwalletErrorUi";
 import { toastBus } from "../../services/toastBus";
 
 export type MailRegistrationLoginModuleProps = {
@@ -104,12 +105,13 @@ export function MailRegistrationLoginModule({ onRegistrationLoginSuccess }: Mail
     try {
       const r = await verifyOtp(email, code);
       if (!r.ok || !r.session) {
+        const errRaw = r.error || "验证码不对或已过期";
         toastBus.push({
           emoji: "❌",
           title: "验证失败",
-          subtitle: r.error,
+          subtitle: formatHwalletErrorForUser(new Error(errRaw)),
           tone: "warn",
-          duration: 3000
+          duration: 3500
         });
         return;
       }

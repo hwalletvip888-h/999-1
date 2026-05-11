@@ -10,6 +10,7 @@ export const CHAT_INTENT_ACTIONS = [
   "trade_long",
   "trade_short",
   "grid",
+  "strategy",
   "swap",
   "earn",
   "position",
@@ -49,6 +50,8 @@ const ACTION_ALIASES: Record<string, ChatIntentAction> = {
   opportunities: "signal",
   opportunity: "signal",
   discover: "signal",
+  automation: "strategy",
+  bot_strategy: "strategy",
   "trade-long": "trade_long",
   "trade-short": "trade_short",
   tradelong: "trade_long",
@@ -95,6 +98,10 @@ export interface AIIntent {
   protocol?: string;
   toAddress?: string;
   chain?: string;
+  /** 钱包内自动策略 trend | grid，仅 action=strategy 时使用 */
+  strategyId?: "trend" | "grid";
+  /** 启动或停止自动策略 */
+  strategyOp?: "start" | "stop";
   reply: string;
 }
 
@@ -149,6 +156,23 @@ export function sanitizeIntentPayload(raw: unknown): AIIntent {
     chain = base.chain.trim().toLowerCase() || undefined;
   }
 
+  let strategyId: "trend" | "grid" | undefined;
+  if (typeof base.strategyId === "string") {
+    const sid = base.strategyId.trim().toLowerCase();
+    if (sid === "trend" || sid === "grid") strategyId = sid;
+  }
+  if (!strategyId && action === "strategy" && typeof base.protocol === "string") {
+    const p = base.protocol.trim().toLowerCase();
+    if (p === "trend" || p === "grid" || p === "trend_follow" || p === "grid_arb") {
+      strategyId = p.startsWith("grid") ? "grid" : "trend";
+    }
+  }
+
+  let strategyOp: "start" | "stop" | undefined;
+  if (base.strategyOp === "start" || base.strategyOp === "stop") {
+    strategyOp = base.strategyOp;
+  }
+
   let reply = "";
   if (typeof base.reply === "string") {
     reply = base.reply;
@@ -156,7 +180,10 @@ export function sanitizeIntentPayload(raw: unknown): AIIntent {
     reply = String(base.reply);
   }
 
-  return { action, symbol, amount, leverage, protocol, toAddress, chain, reply };
+  const out: AIIntent = { action, symbol, amount, leverage, protocol, toAddress, chain, reply };
+  if (strategyId) out.strategyId = strategyId;
+  if (strategyOp) out.strategyOp = strategyOp;
+  return out;
 }
 
 /**
@@ -178,6 +205,20 @@ export function buildLocalRuleIntentPayload(input: string): Record<string, unkno
 
   if (/充值|收款|我的地址|转入|存入|recharge|deposit|receive|收币|收款地址|充值地址/.test(lower)) {
     return { action: "address", reply: "" };
+  }
+  // 钱包 AI 中控台：自动趋势 / 网格（须在泛匹配「策略→grid」之前）
+  if (
+    /停止|关停|关闭|结束|停掉|别跑|不要再|不要自动|关掉|暂停/.test(lower) &&
+    /策略|趋势|网格|自动做单|自动交易|中控台|机器人/.test(lower)
+  ) {
+    return { action: "strategy", strategyOp: "stop", reply: "" };
+  }
+  if (
+    /(开启|启动|打开|开始|帮我开|帮我启|跑一下|跑起来)/.test(lower) &&
+    /(趋势策略|趋势跟随|自动趋势|网格策略|网格套利|跑网格|跑趋势|自动做单|ai中控|中控台)/.test(lower)
+  ) {
+    const sid = /网格|grid|套利|震荡/.test(lower) ? "grid" : "trend";
+    return { action: "strategy", strategyOp: "start", strategyId: sid, reply: "" };
   }
   if (/提现|转账|转给|发送|send|withdraw|转出/.test(lower)) {
     const addrMatch = input.match(/0x[a-fA-F0-9]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/);

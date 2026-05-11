@@ -14,6 +14,7 @@ import type { AIStep } from '../../types';
 import { makeId } from '../../utils/id';
 import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard, buildTransferCard, buildTransferSelectCard } from './cardApi';
 import { loadSession } from '../walletApi';
+import { formatHwalletErrorForUser } from '../hwalletErrorUi';
 import { saveConversation, appendConversationMessage, saveCard, trackEventQuick } from './dataApi';
 // V6 链上机会发现客户端
 import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
@@ -114,6 +115,13 @@ function buildSteps(action: ChatIntentAction): AIStep[] {
         { id: 's2', label: '扫描链上信号', icon: '🛰️', status: 'pending' },
         { id: 's3', label: '聚合机会数据', icon: '📡', status: 'pending' },
         { id: 's4', label: '生成机会卡片', icon: '🎴', status: 'pending' },
+      ];
+    case 'strategy':
+      return [
+        ...base,
+        { id: 's2', label: '连接 AI 中控台', icon: '🎛️', status: 'pending' },
+        safety,
+        { id: 's3', label: '下发策略指令', icon: '⚙️', status: 'pending' },
       ];
     case 'chat':
       return [
@@ -937,6 +945,64 @@ export async function handleUserPrompt(
         };
       }
 
+      // ─── 钱包内自动策略（趋势 / 网格）AI 中控台 ───
+      case 'strategy': {
+        steps = advanceStep(steps, 's2', 'active', onStep);
+        const session = await loadSession();
+        if (!session?.token) {
+          steps = advanceStep(steps, 's2', 'error' as any, onStep);
+          return {
+            ok: true,
+            data: {
+              replyText: '🔐 请先在**钱包**完成登录，我才能帮你启动或停止自动策略。',
+            },
+            simulationMode: false,
+          };
+        }
+        const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
+        const op = intent.strategyOp ?? 'start';
+        let replyText = '';
+        try {
+          if (op === 'stop') {
+            const r = await callBackend<any>('/api/v6/strategy/stop', {
+              method: 'POST',
+              token: session.token,
+              body: {},
+            });
+            if (r?.ok === false) {
+              replyText = `⚠️ ${String(r?.error || '停止失败，请稍后再试。')}`;
+            } else {
+              replyText =
+                intent.reply ||
+                '⏹️ **已发送停止指令**\n\n当前自动策略会尽快收尾。请到**钱包 → AI 中控台**查看日志与状态。';
+            }
+          } else {
+            const sid = intent.strategyId === 'grid' ? 'grid' : 'trend';
+            const r = await callBackend<any>('/api/v6/strategy/start', {
+              method: 'POST',
+              token: session.token,
+              body: { strategyId: sid },
+            });
+            if (r?.ok === false) {
+              replyText = `⚠️ ${String(r?.error || '启动失败，请稍后再试。')}`;
+            } else {
+              const name = sid === 'grid' ? '网格套利' : '趋势跟随';
+              replyText =
+                intent.reply ||
+                `✅ **${name}** 已在后台启动\n\n我会通过 OKX 聚合路由执行链上操作。请到**钱包 → AI 中控台**查看实时日志与风控提示。`;
+            }
+          }
+        } catch (e) {
+          replyText = `⚠️ ${formatHwalletErrorForUser(e)}`;
+        }
+        steps = advanceStep(steps, 's2', 'done', onStep);
+        steps = await advanceSafety(steps, onStep);
+        steps = advanceStep(steps, 's3', 'active', onStep);
+        await delay(120);
+        steps = advanceStep(steps, 's3', 'done', onStep);
+        return { ok: true, data: { replyText }, simulationMode: false };
+      }
+
       // ─── 自我介绍 / 能力说明 ───
       case 'introduce': {
         steps = advanceStep(steps, 's2', 'active', onStep);
@@ -958,7 +1024,11 @@ export async function handleUserPrompt(
 • 实时查询 BTC / ETH / SOL 等任意代币价格
 • 开合约做多 / 做空（带 K 线卡片）
 • 链上代币兑换（Swap，聚合最优路由）
-• 网格策略（AI 自动推荐参数）
+• 合约侧网格策略卡片（与钱包内自动网格不同）
+
+🤖 **自动策略（钱包 AI 中控台）**
+• 对话里说「开启趋势策略 / 启动网格套利」→ 真机后台自动跑单
+• 「停止策略 / 关闭自动做单」→ 安全停止
 
 🌱 **链上赚币**
 • 质押 / DeFi 存款（Lido、Aave 等协议）
@@ -970,7 +1040,7 @@ export async function handleUserPrompt(
 
 ---
 直接说你想做的事就行，比如：
-「充值」「BTC 行情」「转 100U 给 0xAbc...」「做多 ETH 100U」`,
+「充值」「开启趋势策略」「BTC 行情」「转 100U 给 0xAbc...」「做多 ETH 100U」`,
           },
           simulationMode: false,
         };

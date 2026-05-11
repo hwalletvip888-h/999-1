@@ -84,7 +84,20 @@ export function ProfileScreen({ onChangeView }: ProfileScreenProps) {
           <ArrowLeftIcon size={22} />
         </Pressable>
         <Text className="text-[17px] font-semibold text-ink">我的</Text>
-        <Pressable className="h-10 w-10 items-center justify-center rounded-full active:bg-surface">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="设置"
+          onPress={() =>
+            toastBus.push({
+              emoji: "⚙️",
+              title: "设置",
+              subtitle: "语言、主题与通知偏好即将开放",
+              tone: "info",
+              duration: 2200,
+            })
+          }
+          className="h-10 w-10 items-center justify-center rounded-full active:bg-surface"
+        >
           <Text className="text-[18px] text-ink">⚙</Text>
         </Pressable>
       </View>
