@@ -15,6 +15,7 @@ import { Surface } from "./ui/Surface";
 import { Candlestick } from "./Candlestick";
 import { TokenBTC, TokenETH, TokenUSDT } from "./ui/TokenIcons";
 import type { CardStatus, HWalletCard } from "../types";
+import { resolveCardTemplateId } from "../services/core/cardTemplates";
 
 type TransactionCardProps = {
   card: HWalletCard;
@@ -728,7 +729,7 @@ function StakeCard({ card, onConfirm, onCancel }: TransactionCardProps) {
         style={{ backgroundColor: "#FFFBEB", borderWidth: 1, borderColor: "#FDE68A" }}
       >
         <Text className="text-[11px]" style={{ color: "#92400E" }}>
-          ⚠ {card.warning}
+          ⚠ {card.warning ?? "请确认协议条款与合约风险。"}
         </Text>
       </View>
 
@@ -1700,6 +1701,83 @@ function AddressCard({ card, onConfirm, onCancel }: TransactionCardProps) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// TransferDoneCard — 链上转账成功回执（钱包 info + executed）
+// ─────────────────────────────────────────────────────────────
+
+function TransferDoneCard({ card }: TransactionCardProps) {
+  const hasRows = (card.rows ?? []).length > 0;
+  return (
+    <View className="my-2 px-4">
+      <Surface className="overflow-hidden rounded-2xl">
+        <LinearGradient
+          colors={["#ECFDF5", "#D1FAE5"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center" style={{ gap: 10 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: "#10B981",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ fontSize: 22 }}>✅</Text>
+              </View>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: "#0F0F0F" }}>
+                  {card.title || "转账已提交"}
+                </Text>
+                {card.aiSummary ? (
+                  <Text
+                    style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#6B7280", marginTop: 4, lineHeight: 17 }}
+                  >
+                    {card.aiSummary}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <StatusPill status={card.status} />
+          </View>
+        </LinearGradient>
+
+        {hasRows ? (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+            {card.rows!.map((r, i) => (
+              <View
+                key={r.label}
+                className="flex-row items-center justify-between py-1.5"
+                style={{ borderTopWidth: i > 0 ? 1 : 0, borderTopColor: "#F3F4F6" }}
+              >
+                <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#9CA3AF" }}>{r.label}</Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Inter_600SemiBold",
+                    color: "#0F0F0F",
+                    flex: 1,
+                    textAlign: "right",
+                    marginLeft: 8,
+                  }}
+                  numberOfLines={2}
+                >
+                  {r.value}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Surface>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // TradeResultCard — 交易结果卡片（成功/失败）
 // ─────────────────────────────────────────────────────────────
 
@@ -1787,59 +1865,40 @@ function TradeResultCard({ card, onConfirm, onCancel }: TransactionCardProps) {
 // ─────────────────────────────────────────────────────────────
 
 export function TransactionCard(props: TransactionCardProps) {
-  // 业务分发：优先按 cardType/module 判断
   const { card } = props;
-
-  // TransferSelectCard 地址选择卡片
-  if (card.transferSelectMode) {
-    return <TransferSelectCard {...props} />;
+  switch (resolveCardTemplateId(card)) {
+    case "transfer_select":
+      return <TransferSelectCard {...props} />;
+    case "transfer":
+      return <TransferCard {...props} />;
+    case "transfer_receipt":
+      return <TransferDoneCard {...props} />;
+    case "deposit":
+      return <AddressCard {...props} />;
+    case "price":
+      return <PriceCard {...props} />;
+    case "position":
+      return <PositionCard {...props} />;
+    case "portfolio":
+      return <PortfolioCard {...props} />;
+    case "perp_result":
+      return <TradeResultCard {...props} />;
+    case "perpetual":
+      return <PerpetualExchangeCard {...props} />;
+    case "swap":
+      return <SwapCard {...props} />;
+    case "stake":
+      return <StakeCard {...props} />;
+    case "grid":
+      return <GridCard {...props} />;
+    case "agent":
+      return <AgentCard {...props} />;
+    case "signal":
+      return <SignalCard {...props} />;
+    case "generic":
+    default:
+      return <GenericCard {...props} />;
   }
-  // TransferCard 转账确认卡片
-  if (card.toAddress && card.module === "wallet" && card.cardType === "wallet_action") {
-    return <TransferCard {...props} />;
-  }
-  // AddressCard 充值地址卡片
-  if (card.depositAddresses && card.module === "wallet" && card.cardType === "info") {
-    return <AddressCard {...props} />;
-  }
-  // PriceCard 行情价格卡片
-  if (card.priceData && card.module === "market") {
-    return <PriceCard {...props} />;
-  }
-  // PositionCard 持仓卡片
-  if (card.positions !== undefined && card.module === "account" && card.title === "当前持仓") {
-    return <PositionCard {...props} />;
-  }
-  // PortfolioCard 资产总览卡片
-  if (card.balances !== undefined && card.module === "account") {
-    return <PortfolioCard {...props} />;
-  }
-  // TradeResultCard 交易结果卡片
-  if (card.module === "perpetual" && card.cardType === "info" && (card.status === "executed" || card.status === "failed")) {
-    return <TradeResultCard {...props} />;
-  }
-  // PerpetualCard 永续合约
-  if (card.cardType === "trade" && card.module === "perpetual") {
-    return <PerpetualExchangeCard {...props} />;
-  }
-  // SwapCard 兑换
-  if (card.cardType === "trade" && card.module === "swap") {
-    return <SwapCard {...props} />;
-  }
-  // GridCard 网格策略（优先于 AgentCard）
-  if (card.cardType === "strategy" && card.module === "grid") {
-    return <GridCard {...props} />;
-  }
-  // AgentCard 策略（赚币）
-  if (card.cardType === "strategy" && card.module === "earn") {
-    return <AgentCard {...props} />;
-  }
-  // SignalCard 链上机会 / 信号（V6）
-  if (card.cardType === "signal") {
-    return <SignalCard {...props} />;
-  }
-  // GenericCard 通用
-  return <GenericCard {...props} />;
 }
 
 // ─────────────────────────────────────────────────────────────
