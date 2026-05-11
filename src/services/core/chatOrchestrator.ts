@@ -7,7 +7,6 @@
 import { chatWithAI } from './claudeAI';
 import type { AIIntent, ChatIntentAction } from '../intentNormalize';
 import { parseUserIntent } from '../ai-parse';
-import { tryLocalChatReply } from '../localChatReply';
 import { api } from '../../api/gateway';
 import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
@@ -1058,15 +1057,12 @@ export async function handleUserPrompt(
         await delay(300);
         steps = advanceStep(steps, 's2', 'done', onStep);
 
-        const localReply = tryLocalChatReply(parseResult.utterance);
-        const trimmedModelHint = intent.reply?.trim();
         const replyText =
-          localReply ??
-          (trimmedModelHint || (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal)));
-        return {
+          intent.reply ||
+          (await chatWithAI(options?.chatHistory ?? [], input, options?.abortSignal));        return {
           ok: true,
           data: { replyText },
-          simulationMode: false,
+          simulationMode: false
         };
       }
     }
