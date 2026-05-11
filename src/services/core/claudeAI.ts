@@ -8,6 +8,7 @@
 import { hwalletAbsoluteUrl } from "../walletApiCore";
 import { fetchWithTimeout } from "../walletApiHttp";
 import { localRuleIntent, sanitizeIntentPayload, type AIIntent } from "../intentNormalize";
+import { tryLocalChatReply } from "../localChatReply";
 
 export type { AIIntent };
 
@@ -65,6 +66,9 @@ export async function chatWithAI(
   userMessage: string,
   abortSignal?: AbortSignal,
 ): Promise<string> {
+  const local = tryLocalChatReply(userMessage);
+  if (local) return local;
+
   const url = hwalletAbsoluteUrl("/api/ai/chat");
   if (!url) {
     return "⚠️ 未配置服务端地址（EXPO_PUBLIC_HWALLET_API_BASE），无法在客户端连接 AI 网关。";

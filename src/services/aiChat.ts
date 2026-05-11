@@ -21,6 +21,7 @@ import {
   getEffectiveExternalLlmFetchTimeoutMs,
   getEffectiveIntentMaxTokens,
 } from "../wallet-backend/runtime-settings";
+import { tryLocalChatReply } from "./localChatReply";
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || "";
@@ -126,6 +127,9 @@ export async function chatWithAI(
   userMessage: string,
   abortSignal?: AbortSignal,
 ): Promise<string> {
+  const local = tryLocalChatReply(userMessage);
+  if (local) return local;
+
   if (!DEEPSEEK_API_KEY.trim()) {
     console.warn("[AIChat] DEEPSEEK_API_KEY 未配置（应在钱包后端进程环境中设置，勿写入 App）");
     return "⚠️ 服务端尚未配置对话模型密钥。请在运行 **钱包后端** 的环境中设置 `DEEPSEEK_API_KEY` 后重启进程（密钥不要放进 Expo 前端）。";
