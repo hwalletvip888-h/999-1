@@ -594,9 +594,11 @@ export async function handleUserPrompt(
     steps = advanceStep(steps, 's2', 'done', onStep);
     steps = advanceStep(steps, 's3', 'active', onStep);
 
-    // 构建地址卡片
-    const evmAddr: string = addrData?.evm?.[0] ?? addrData?.evm ?? '';
-    const solAddr: string = addrData?.solana?.[0] ?? addrData?.solana ?? '';
+    // 构建地址卡片（后端结构：{ ok, addresses: { evm: [{address, chainIndex, chainName}], solana: [...] } }）
+    const evmList: any[] = addrData?.addresses?.evm ?? addrData?.evm ?? [];
+    const solList: any[] = addrData?.addresses?.solana ?? addrData?.solana ?? [];
+    const evmAddr: string = evmList[0]?.address ?? (typeof evmList[0] === 'string' ? evmList[0] : '');
+    const solAddr: string = solList[0]?.address ?? (typeof solList[0] === 'string' ? solList[0] : '');
     const addrCard = buildAddressCard(
       {
         evm: evmAddr ? [{ address: evmAddr }] : [],
