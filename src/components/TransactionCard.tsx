@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import Animated, {
   Easing,
@@ -1407,12 +1407,389 @@ function TransferCard({ card, onConfirm, onCancel }: TransactionCardProps) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// GridCard — 网格策略卡片（价格区间可视化）
+// ─────────────────────────────────────────────────────────────
+
+function GridCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const interactive = card.status === "preview";
+  const isRunning = card.status === "running";
+  const currentPrice = card.lastPrice || 0;
+  const priceLower = card.rows?.[0]?.value ? parseFloat(card.rows[0].value.replace('$', '').replace(',', '')) : 0;
+  const priceUpper = card.rows?.[1]?.value ? parseFloat(card.rows[1].value.replace('$', '').replace(',', '')) : 0;
+  const gridNum = card.rows?.[2]?.value ? parseInt(card.rows[2].value) : 20;
+  const pair = card.pair || card.symbol ? `${card.symbol}/USDT` : '';
+  const range = priceUpper - priceLower;
+  const currentPos = range > 0 && currentPrice > 0 ? ((currentPrice - priceLower) / range) * 100 : 50;
+  const clampedPos = Math.min(100, Math.max(0, currentPos));
+
+  return (
+    <CardShell borderColor="#E0E7FF" bg="#F8FAFF" shadowColor="#6366F1">
+      {/* Header */}
+      <LinearGradient
+        colors={["#EEF2FF", "#E0E7FF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={{ paddingHorizontal: 16, paddingVertical: 14 }}
+      >
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            <View className="h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: "rgba(99,102,241,0.15)" }}>
+              <Text style={{ color: "#4338CA", fontWeight: "800", fontSize: 16 }}>🔲</Text>
+            </View>
+            <View>
+              <Text className="text-[15px] font-bold text-ink">{card.agentName ?? pair ? `${pair} 网格` : '网格策略'}</Text>
+              {card.agentTags && (
+                <View className="flex-row" style={{ gap: 4, marginTop: 2 }}>
+                  {card.agentTags.slice(0, 3).map((t) => (
+                    <View key={t} className="rounded-md px-1.5" style={{ backgroundColor: "rgba(99,102,241,0.12)", paddingVertical: 1 }}>
+                      <Text className="text-[10px] font-medium" style={{ color: "#4338CA" }}>{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+          <StatusPill status={card.status} />
+        </View>
+      </LinearGradient>
+
+      {/* Price Range Visualization */}
+      {priceLower > 0 && priceUpper > 0 && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6 }}>
+          <View style={{ height: 28, backgroundColor: "#EEF2FF", borderRadius: 14, overflow: "hidden", position: "relative" }}>
+            {/* Grid lines */}
+            {Array.from({ length: Math.min(gridNum, 20) }).map((_, i) => (
+              <View
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: `${(i / Math.min(gridNum, 20)) * 100}%`,
+                  top: 0,
+                  bottom: 0,
+                  width: 1,
+                  backgroundColor: i % 2 === 0 ? "rgba(99,102,241,0.15)" : "rgba(99,102,241,0.08)",
+                }}
+              />
+            ))}
+            {/* Current price indicator */}
+            <View
+              style={{
+                position: "absolute",
+                left: `${clampedPos}%`,
+                top: 0,
+                bottom: 0,
+                width: 3,
+                backgroundColor: "#6366F1",
+                zIndex: 2,
+              }}
+            />
+            {/* Current price arrow */}
+            <View
+              style={{
+                position: "absolute",
+                left: `${clampedPos}%`,
+                top: -8,
+                marginLeft: -6,
+                width: 12,
+                height: 8,
+                zIndex: 3,
+              }}
+            >
+              <Text style={{ color: "#6366F1", fontSize: 10 }}>▼</Text>
+            </View>
+          </View>
+          <View className="flex-row justify-between" style={{ marginTop: 4 }}>
+            <Text className="text-[10px]" style={{ color: "#6B7280" }}>${priceLower.toFixed(0)}</Text>
+            <Text className="text-[9px]" style={{ color: "#6366F1" }}>当前 ${currentPrice.toFixed(0)}</Text>
+            <Text className="text-[10px]" style={{ color: "#6B7280" }}>${priceUpper.toFixed(0)}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Parameters */}
+      <View className="px-4 pb-2" style={{ paddingTop: 10 }}>
+        <View className="flex-row" style={{ gap: 8 }}>
+          <View className="flex-1 rounded-xl" style={{ backgroundColor: "#F9FAFB", padding: 10 }}>
+            <Text className="text-[10px] text-muted">投入金额</Text>
+            <Text className="mt-1 text-[16px] font-bold text-ink">{card.amount ?? 0} {card.currency ?? 'USDT'}</Text>
+          </View>
+          <View className="flex-1 rounded-xl" style={{ backgroundColor: "#F9FAFB", padding: 10 }}>
+            <Text className="text-[10px] text-muted">网格数</Text>
+            <Text className="mt-1 text-[16px] font-bold text-ink">{gridNum}</Text>
+          </View>
+          <View className="flex-1 rounded-xl" style={{ backgroundColor: "#F9FAFB", padding: 10 }}>
+            <Text className="text-[10px] text-muted">区间宽度</Text>
+            <Text className="mt-1 text-[16px] font-bold text-ink">{range > 0 ? `${((range / priceLower) * 100).toFixed(0)}%` : '—'}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Detail rows from card */}
+      {card.rows && card.rows.length > 0 && (
+        <View className="mx-4 mb-2 rounded-xl" style={{ backgroundColor: "#FAFAFA", padding: 10 }}>
+          {card.rows.map((r, i) => (
+            <View key={r.label} className="flex-row items-center justify-between py-1">
+              <Text className="text-[11px] text-muted">{r.label}</Text>
+              <Text className="text-[11px] font-semibold text-ink">{r.value}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Warning */}
+      {card.warning && (
+        <View className="mx-4 mb-3 rounded-xl" style={{ backgroundColor: "#FFFBEB", borderWidth: 1, borderColor: "#FDE68A", padding: 8 }}>
+          <Text className="text-[10px]" style={{ color: "#92400E" }}>⚠ {card.warning}</Text>
+        </View>
+      )}
+
+      {/* Actions */}
+      {interactive ? (
+        <View className="flex-row gap-2 border-t px-4 py-3" style={{ borderColor: "#F1F3F5" }}>
+          <Button label={card.secondaryAction ?? "取消"} variant="secondary" size="sm" onPress={() => onCancel?.(card.id)} className="flex-1" />
+          <Button label={card.primaryAction ?? "启动网格"} variant="primary" size="sm" onPress={() => onConfirm?.(card.id)} className="flex-1" />
+        </View>
+      ) : isRunning ? (
+        <View className="flex-row gap-2 border-t px-4 py-3" style={{ borderColor: "#F1F3F5" }}>
+          <Button label="暂停" variant="secondary" size="sm" onPress={() => onCancel?.(card.id)} className="flex-1" />
+          <Button label="查看详情" variant="primary" size="sm" onPress={() => onConfirm?.(card.id)} className="flex-1" />
+        </View>
+      ) : null}
+    </CardShell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// AddressCard — 充值地址展示卡片
+// ─────────────────────────────────────────────────────────────
+
+function AddressCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const addresses = card.depositAddresses ?? [];
+  const [selectedChain, setSelectedChain] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const current = addresses[selectedChain];
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    };
+  }, []);
+
+  function handleCopy(addr: string) {
+    try {
+      // react-native Clipboard API
+      const Clipboard = require('expo-clipboard');
+      Clipboard.setStringAsync?.(addr);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
+    } catch { /* fallback */ }
+  }
+
+  return (
+    <View className="my-2 px-4">
+      <Surface className="overflow-hidden rounded-2xl">
+        <LinearGradient
+          colors={["#F5F3FF", "#EDE9FE"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 12 }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(124,58,237,0.15)", alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ fontSize: 16 }}>📥</Text>
+              </View>
+              <Text style={{ fontSize: 16, fontFamily: "Inter_700Bold", color: "#0F0F0F" }}>
+                {card.title || "充值地址"}
+              </Text>
+            </View>
+            <StatusPill status={card.status} />
+          </View>
+        </LinearGradient>
+
+        {/* Chain Tabs */}
+        {addresses.length > 1 && (
+          <View className="flex-row px-4 pt-3" style={{ gap: 6 }}>
+            {addresses.map((addr, i) => (
+              <Pressable
+                key={addr.chain}
+                onPress={() => setSelectedChain(i)}
+                className="rounded-full px-3 py-1.5"
+                style={{
+                  backgroundColor: i === selectedChain ? "#7C3AED" : "#F3F4F6",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: "Inter_600SemiBold",
+                    color: i === selectedChain ? "#FFFFFF" : "#6B7280",
+                  }}
+                >
+                  {addr.label.split('（')[0].trim()}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {/* Selected Address */}
+        {current && (
+          <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+            <View
+              style={{
+                backgroundColor: "#F9FAFB",
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                padding: 12,
+              }}
+            >
+              <View className="flex-row items-center justify-between" style={{ marginBottom: 6 }}>
+                <View className="flex-row items-center" style={{ gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#10B981" }} />
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_500Medium", color: "#6B7280" }}>
+                    {current.label}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => handleCopy(current.address)}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: copied ? "#DCFCE7" : "#EEF2FF",
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontFamily: "Inter_600SemiBold", color: copied ? "#15803D" : "#4338CA" }}>
+                    {copied ? "✓ 已复制" : "📋 复制"}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontFamily: "JetBrainsMono_400Regular",
+                  color: "#0F0F0F",
+                  lineHeight: 20,
+                }}
+                selectable
+              >
+                {current.address}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Warning */}
+        {card.warning && (
+          <View
+            className="mx-4 mb-3 rounded-xl px-3 py-2"
+            style={{ backgroundColor: "#FFFBEB", borderWidth: 1, borderColor: "#FDE68A" }}
+          >
+            <Text className="text-[11px]" style={{ color: "#92400E" }}>
+              ⚠ {card.warning}
+            </Text>
+          </View>
+        )}
+      </Surface>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// TradeResultCard — 交易结果卡片（成功/失败）
+// ─────────────────────────────────────────────────────────────
+
+function TradeResultCard({ card, onConfirm, onCancel }: TransactionCardProps) {
+  const isSuccess = card.status === "executed";
+  const hasRows = (card.rows ?? []).length > 0;
+  const symbol = card.symbol || '';
+  const pair = card.pair || (symbol ? `${symbol}/USDT` : '');
+
+  return (
+    <View className="my-2 px-4">
+      <Surface className="overflow-hidden rounded-2xl">
+        <LinearGradient
+          colors={isSuccess ? ["#ECFDF5", "#D1FAE5"] : ["#FEF2F2", "#FEE2E2"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 14 }}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center" style={{ gap: 10 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: isSuccess ? "#10B981" : "#EF4444",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ fontSize: 22 }}>{isSuccess ? "✅" : "❌"}</Text>
+              </View>
+              <View>
+                <Text style={{ fontSize: 18, fontFamily: "Inter_700Bold", color: "#0F0F0F" }}>
+                  {card.title || (isSuccess ? "交易成功" : "交易失败")}
+                </Text>
+                {card.subtitle && (
+                  <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#6B7280", marginTop: 1 }}>
+                    {card.subtitle}
+                  </Text>
+                )}
+              </View>
+            </View>
+            <StatusPill status={card.status} />
+          </View>
+          {card.aiSummary && (
+            <Text style={{ fontSize: 13, fontFamily: "Inter_400Regular", color: "#374151", marginTop: 8, lineHeight: 18 }}>
+              {card.aiSummary}
+            </Text>
+          )}
+        </LinearGradient>
+
+        {/* Detail rows */}
+        {hasRows && (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+            {card.rows!.map((r, i) => (
+              <View
+                key={r.label}
+                className="flex-row items-center justify-between py-1.5"
+                style={{ borderTopWidth: i > 0 ? 1 : 0, borderTopColor: "#F3F4F6" }}
+              >
+                <Text style={{ fontSize: 12, fontFamily: "Inter_400Regular", color: "#9CA3AF" }}>
+                  {r.label}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontFamily: r.accent ? "Inter_700Bold" : "Inter_600SemiBold",
+                    color: r.accent === "positive" ? "#15803D" : r.accent === "negative" ? "#DC2626" : "#0F0F0F",
+                  }}
+                >
+                  {r.value}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </Surface>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // Public dispatcher
 // ─────────────────────────────────────────────────────────────
 
 export function TransactionCard(props: TransactionCardProps) {
   // 业务分发：优先按 cardType/module 判断
   const { card } = props;
+
   // TransferSelectCard 地址选择卡片
   if (card.transferSelectMode) {
     return <TransferSelectCard {...props} />;
@@ -1420,6 +1797,10 @@ export function TransactionCard(props: TransactionCardProps) {
   // TransferCard 转账确认卡片
   if (card.toAddress && card.module === "wallet" && card.cardType === "wallet_action") {
     return <TransferCard {...props} />;
+  }
+  // AddressCard 充值地址卡片
+  if (card.depositAddresses && card.module === "wallet" && card.cardType === "info") {
+    return <AddressCard {...props} />;
   }
   // PriceCard 行情价格卡片
   if (card.priceData && card.module === "market") {
@@ -1433,6 +1814,10 @@ export function TransactionCard(props: TransactionCardProps) {
   if (card.balances !== undefined && card.module === "account") {
     return <PortfolioCard {...props} />;
   }
+  // TradeResultCard 交易结果卡片
+  if (card.module === "perpetual" && card.cardType === "info" && (card.status === "executed" || card.status === "failed")) {
+    return <TradeResultCard {...props} />;
+  }
   // PerpetualCard 永续合约
   if (card.cardType === "trade" && card.module === "perpetual") {
     return <PerpetualExchangeCard {...props} />;
@@ -1441,11 +1826,12 @@ export function TransactionCard(props: TransactionCardProps) {
   if (card.cardType === "trade" && card.module === "swap") {
     return <SwapCard {...props} />;
   }
-  // AgentCard 策略（赚币/网格）
-  if (card.cardType === "strategy" && card.module === "earn") {
-    return <AgentCard {...props} />;
-  }
+  // GridCard 网格策略（优先于 AgentCard）
   if (card.cardType === "strategy" && card.module === "grid") {
+    return <GridCard {...props} />;
+  }
+  // AgentCard 策略（赚币）
+  if (card.cardType === "strategy" && card.module === "earn") {
     return <AgentCard {...props} />;
   }
   // SignalCard 链上机会 / 信号（V6）

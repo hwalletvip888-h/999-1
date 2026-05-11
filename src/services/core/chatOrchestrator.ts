@@ -1,3 +1,4 @@
+
 /**
  * Chat Orchestrator — Claude + DeepSeek 双 AI 驱动版 + 实时步骤回调
  * Claude 意图识别 + DeepSeek 聊天对话，生成精美卡片
@@ -13,6 +14,7 @@ import type { AIStep } from '../../types';
 import { makeId } from '../../utils/id';
 import { buildPriceCard, buildPositionCard, buildPortfolioCard, buildAddressCard, buildTransferCard, buildTransferSelectCard } from './cardApi';
 import { loadSession } from '../walletApi';
+import { saveConversation, appendConversationMessage, saveCard, trackEventQuick } from './dataApi';
 // V6 链上机会发现客户端
 import { okxOnchainClient, type DefiOpportunity, type DexSignal } from '../../api/providers/okx/okxOnchainClient';
 
@@ -587,26 +589,33 @@ export async function handleUserPrompt(
             simulationMode: false,
           };
         }
-        const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
-        const addrData = await callBackend<any>('/api/wallet/addresses', { token: session.token });
-        steps = advanceStep(steps, 's2', 'done', onStep);
-        steps = advanceStep(steps, 's3', 'active', onStep);
+    const { callBackend } = await import('../../api/providers/okx/onchain/hwalletBackendFetch');
+    const addrData = await callBackend<any>('/api/wallet/addresses', { token: session.token });
+    steps = advanceStep(steps, 's2', 'done', onStep);
+    steps = advanceStep(steps, 's3', 'active', onStep);
 
-        const evmAddr: string = addrData?.evm?.[0] ?? addrData?.evm ?? '';
-        const solAddr: string = addrData?.solana?.[0] ?? addrData?.solana ?? '';
+    // 构建地址卡片
+    const evmAddr: string = addrData?.evm?.[0] ?? addrData?.evm ?? '';
+    const solAddr: string = addrData?.solana?.[0] ?? addrData?.solana ?? '';
+    const addrCard = buildAddressCard(
+      {
+        evm: evmAddr ? [{ address: evmAddr }] : [],
+        solana: solAddr ? [{ address: solAddr }] : [],
+      },
+      input,
+    );
 
-        let replyText = `📥 **充值地址**\n\n`;
-        if (evmAddr) replyText += `🔷 **EVM（ETH / BNB / OKX 链通用）**\n\`${evmAddr}\`\n\n`;
-        if (solAddr) replyText += `🟣 **Solana（SOL 链）**\n\`${solAddr}\`\n\n`;
-        if (!evmAddr && !solAddr) replyText += '⚠️ 暂时获取不到地址，请稍后再试。';
-        else replyText += `⚠️ 请确认链别，转错无法找回`;
+    const hasAddr = !!(evmAddr || solAddr);
+    const replyText = hasAddr
+      ? `📥 **充值地址**\n\n请查收下方地址卡片，复制后到对应链充值\n\n⚠️ 请确认链别，转错无法找回`
+      : `⚠️ 暂时获取不到地址，请稍后再试。`;
 
-        steps = advanceStep(steps, 's3', 'done', onStep);
-        return {
-          ok: true,
-          data: { replyText },
-          simulationMode: false,
-        };
+    steps = advanceStep(steps, 's3', 'done', onStep);
+    return {
+      ok: true,
+      data: { replyText, card: hasAddr ? addrCard : undefined },
+      simulationMode: false,
+    };
       }
 
       // ─── 转账 ───

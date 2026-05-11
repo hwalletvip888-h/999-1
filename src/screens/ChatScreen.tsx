@@ -27,6 +27,7 @@ import { makeId } from "../utils/id";
 import { nowLabel } from "../utils/format";
 import type { AIStep, CardStatus, ChatMessage, TradeCard } from "../types";
 import { uiColors, uiSpace } from "../theme/uiSystem";
+import { saveConversation, saveCard, trackEventQuick } from "../services/core/dataApi";
 
 const TOP_BAR_HEIGHT = 80; // matches TopBar pt-2 + h-14 + pb-4
 
@@ -272,6 +273,43 @@ export function ChatScreen() {
       scheduleMood(setHeroMood, "idle", 800);
       scrollToEndSoon();
     }
+
+    // ─── 数据持久化：自动保存对话、卡片、事件 ───
+    // 静默执行，不阻塞 UI
+    (async () => {
+      try {
+        // 1. 保存对话
+        const convId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        saveConversation({
+          id: convId,
+          title: trimmed.slice(0, 40),
+          messages: [
+            { role: "user", content: trimmed, createdAt: new Date().toISOString() },
+            ...(replyText ? [{ role: "assistant" as const, content: replyText, createdAt: new Date().toISOString() }] : []),
+          ],
+        });
+
+        // 2. 保存卡片（如果有）
+        if (card) {
+          saveCard({
+            id: card.id,
+            actionType: card.module || card.cardType || "unknown",
+            symbol: card.symbol,
+            amount: card.amount,
+            cardData: card,
+            conversationId: convId,
+          });
+        }
+
+        // 3. 追踪事件
+        trackEventQuick("user_message_sent", {
+          action: card?.module || "chat",
+          symbol: card?.symbol,
+        });
+      } catch {
+        // 持久化失败不阻塞用户
+      }
+    })();
     } catch (e) {
       const errLine = formatHwalletErrorForUser(e);
       setMessages((current) =>
