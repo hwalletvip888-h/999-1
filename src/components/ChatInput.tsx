@@ -1,33 +1,48 @@
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LightbulbIcon, MicIcon, PaperclipIcon, SendIcon } from "./ui/Icons";
+import { QuickActionBar } from "./QuickActionBar";
+import { uiShadow } from "../theme/uiSystem";
 
 type ChatInputProps = {
   value: string;
   placeholder: string;
   onChangeText: (value: string) => void;
   onSubmit: () => void;
+  onQuickAction?: (message: string) => void;
 };
 
-export function ChatInput({ value, placeholder, onChangeText, onSubmit }: ChatInputProps) {
+export function ChatInput({ value, placeholder, onChangeText, onSubmit, onQuickAction }: ChatInputProps) {
   const insets = useSafeAreaInsets();
   const hasText = value.trim().length > 0;
+  const showQuickBar = onQuickAction && !hasText;
 
   return (
     <View
-      className="border-t border-line bg-bg px-3 pt-2"
-      style={{ paddingBottom: Math.max(insets.bottom, 10) }}
+      style={{
+        backgroundColor: "rgba(255,255,255,0.85)",
+        borderTopWidth: 1,
+        borderTopColor: "rgba(108,63,197,0.12)",
+        paddingHorizontal: 12,
+        paddingTop: showQuickBar ? 4 : 8,
+        paddingBottom: Math.max(insets.bottom, 10),
+      }}
     >
+      {showQuickBar ? <QuickActionBar onAction={onQuickAction} /> : null}
       <View
-        style={{
-          borderRadius: 24,
-          backgroundColor: "#F7F7F8",
-          paddingHorizontal: 14,
-          paddingTop: 12,
-          paddingBottom: 10,
-          borderWidth: 1,
-          borderColor: hasText ? "#E0D4F5" : "#ECECF1",
-        }}
+        style={[
+          {
+            borderRadius: 24,
+            backgroundColor: "rgba(255,255,255,0.92)",
+            paddingHorizontal: 14,
+            paddingTop: 12,
+            paddingBottom: 10,
+            borderWidth: 1,
+            borderColor: hasText ? "rgba(108,63,197,0.32)" : "rgba(108,63,197,0.14)",
+            marginTop: showQuickBar ? 4 : 0,
+          },
+          hasText ? uiShadow.float : uiShadow.cardSoft,
+        ]}
       >
         <TextInput
           value={value}
@@ -88,12 +103,12 @@ export function ChatInput({ value, placeholder, onChangeText, onSubmit }: ChatIn
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 18,
-                backgroundColor: hasText ? "#7C3AED" : "#E5E5EA",
-                shadowColor: hasText ? "#7C3AED" : "transparent",
+                backgroundColor: hasText ? "#6C3FC5" : "#E5E5EA",
+                shadowColor: hasText ? "#6C3FC5" : "transparent",
                 shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: hasText ? 0.3 : 0,
-                shadowRadius: 8,
-                elevation: hasText ? 4 : 0,
+                shadowOpacity: hasText ? 0.35 : 0,
+                shadowRadius: 10,
+                elevation: hasText ? 6 : 0,
               }}
             >
               <SendIcon size={18} color={hasText ? "#FFFFFF" : "#9CA3AF"} />

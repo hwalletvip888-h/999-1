@@ -20,7 +20,6 @@
     ],
     "android": {
       "softwareKeyboardLayoutMode": "resize",
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#3D1A78"
@@ -28,6 +27,7 @@
       "package": "com.hwallet.app"
     },
     "ios": {
+      "bundleIdentifier": "app.parsnip5809.bear3414",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true,
@@ -35,15 +35,21 @@
         }
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "0.2.0",
     "updates": {
       "url": "https://u.expo.dev/738e0a95-9d15-4e1c-9bbd-2a8fc672e156"
     },
     "plugins": [
       "expo-font",
-      "expo-updates"
+      "expo-updates",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

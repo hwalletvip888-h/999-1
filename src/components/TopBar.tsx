@@ -16,8 +16,8 @@ export function TopBar({ activeView, onChangeView }: TopBarProps) {
   return (
     <View style={{ backgroundColor: "transparent" }}>
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingBottom: 12, paddingTop: 8 }}>
-        {/* 左:钱包入口 — 玻璃胶囊 */}
-        <GlassCapsule>
+        {/* 左:钱包入口 — 玻璃胶囊（紫色调） */}
+        <GlassCapsule tint="purple">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="打开钱包"
@@ -25,7 +25,7 @@ export function TopBar({ activeView, onChangeView }: TopBarProps) {
             hitSlop={6}
             style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center" }}
           >
-            <MenuIcon size={22} />
+            <MenuIcon size={22} color="#6C3FC5" />
           </Pressable>
         </GlassCapsule>
 
@@ -38,8 +38,8 @@ export function TopBar({ activeView, onChangeView }: TopBarProps) {
           </View>
         </GlassCapsule>
 
-        {/* 右:个人中心入口 — 玻璃胶囊 */}
-        <GlassCapsule>
+        {/* 右:个人中心入口 — 玻璃胶囊（紫色调） */}
+        <GlassCapsule tint="purple">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="打开我的页面"
@@ -47,7 +47,7 @@ export function TopBar({ activeView, onChangeView }: TopBarProps) {
             hitSlop={6}
             style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center" }}
           >
-            <UserIcon size={22} />
+            <UserIcon size={22} color="#6C3FC5" />
           </Pressable>
         </GlassCapsule>
       </View>
@@ -71,9 +71,14 @@ function SegmentTab({
       hitSlop={4}
       style={{
         borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        backgroundColor: active ? "#0F0F0F" : "transparent",
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        backgroundColor: active ? "#6C3FC5" : "transparent",
+        shadowColor: active ? "#6C3FC5" : "transparent",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: active ? 0.28 : 0,
+        shadowRadius: 8,
+        elevation: active ? 4 : 0,
       }}
     >
       <Text

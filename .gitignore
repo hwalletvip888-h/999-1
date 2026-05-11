@@ -18,3 +18,7 @@ deploy/local-server.env
 
 # 临时 skill 草稿（生成器中间产物，不入库）
 .tmp_skill_agentic/
+
+# iOS build credentials (local only)
+ios-certs/
+credentials.json

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EXUpdatesEnabled</key>
+	<true/>
+	<key>EXUpdatesURL</key>
+	<string>https://u.expo.dev/738e0a95-9d15-4e1c-9bbd-2a8fc672e156</string>
+	<key>EXUpdatesRuntimeVersion</key>
+	<string>0.2.0</string>
+	<key>EXUpdatesRequestHeaders</key>
+	<dict>
+		<key>expo-channel-name</key>
+		<string>preview</string>
+	</dict>
+</dict>
+</plist>

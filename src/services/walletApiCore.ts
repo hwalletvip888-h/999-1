@@ -4,7 +4,7 @@
  */
 import Constants from "expo-constants";
 
-const FALLBACK_API_BASE = "http://64.90.1.102:3100";
+const FALLBACK_API_BASE = "http://api.hvip.app:3100";
 
 export function getHwalletApiBase(): string {
   const a = String(process.env.EXPO_PUBLIC_HWALLET_API_BASE ?? "").trim();

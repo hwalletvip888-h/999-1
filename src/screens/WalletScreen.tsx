@@ -33,7 +33,8 @@ import { isPositive } from "../utils/format";
 import { useSession, sessionStore } from "../services/sessionStore";
 import { refreshAddresses, listAccounts, switchAccount, addAccount, type WalletAccount } from "../services/walletApi";
 import { formatHwalletErrorForUser } from "../services/hwalletErrorUi";
-import { uiColors, uiSpace } from "../theme/uiSystem";
+import { uiColors, uiSpace, uiCategoryColors, uiShadow } from "../theme/uiSystem";
+import { getHwalletApiBase } from "../services/walletApiCore";
 
 const SCREEN_W = Dimensions.get("window").width;
 
@@ -539,21 +540,21 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
             label="充值"
             sub="收款 · 二维码"
             Icon={ArrowDownIcon}
-            colors={["#10B981", "#059669"]}
+            colors={uiCategoryColors.deposit.gradient}
             onPress={() => setDepositOpen(true)}
           />
           <ActionCard
             label="提现"
             sub="发送到任意地址"
             Icon={ArrowUpIcon}
-            colors={["#7C3AED", "#5B21B6"]}
+            colors={uiCategoryColors.transfer.gradient}
             onPress={() => setWithdrawOpen(true)}
           />
           <ActionCard
             label="兑换"
             sub="500+ DEX 聚合"
             Icon={SwapIcon}
-            colors={["#F59E0B", "#D97706"]}
+            colors={uiCategoryColors.swap.gradient}
             onPress={() => setSwapOpen(true)}
           />
         </View>
@@ -561,6 +562,11 @@ export function WalletScreen({ onChangeView }: WalletScreenProps) {
         {/* Agent 状态条：放在操作后，形成主流程连续性 */}
         <View style={{ marginTop: 12, paddingHorizontal: uiSpace.pageX }}>
           <AgentBanner compact onNavigate={onChangeView} />
+        </View>
+
+        {/* AI 策略中控台 — 趋势跟踪 / 网格套利 + 实时执行日志沙盒 */}
+        <View style={{ marginTop: 14, paddingHorizontal: uiSpace.pageX }}>
+          <StrategyControlCenter token={session?.token} />
         </View>
 
         {/* 资产列表 — 单一来源：链上真实持仓，按 symbol 跨链聚合 */}
@@ -2242,6 +2248,252 @@ function SwapScreen({
  * 充值 / 提现 / 兑换 — 大色块按钮，点哪都能命中。
  * 56pt 图标，18pt 主标题，12pt 子标题，垂直填充。
  */
+/* ─── AI 策略中控台 ─── */
+type StratLog = { ts: string; level: "info" | "action" | "success" | "warn" | "error"; msg: string };
+
+const STRATEGIES = [
+  { id: "trend" as const, name: "趋势跟踪", icon: "📈", desc: "ETH 涨跌 ≥1% 自动追多", risk: "中" },
+  { id: "grid" as const, name: "网格套利", icon: "🔲", desc: "±5% 区间挂网格，震荡套利", risk: "低" },
+];
+
+function StrategyControlCenter({ token }: { token?: string }) {
+  const [selected, setSelected] = useState<"trend" | "grid">("trend");
+  const [running, setRunning] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [logs, setLogs] = useState<StratLog[]>([]);
+  const [pending, setPending] = useState(false);
+  const logScrollRef = useRef<ScrollView>(null);
+
+  // 轮询状态 + 日志
+  useEffect(() => {
+    if (!token) return;
+    const base = getHwalletApiBase();
+    const tick = async () => {
+      try {
+        const res = await fetch(`${base}/api/v6/strategy/logs`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((r) => r.json());
+        if (res?.ok) {
+          setRunning(Boolean(res.running));
+          setActiveId(res.strategyId || null);
+          if (Array.isArray(res.logs)) {
+            setLogs(res.logs.slice(-80));
+            requestAnimationFrame(() => logScrollRef.current?.scrollToEnd({ animated: false }));
+          }
+        }
+      } catch {
+        // 静默
+      }
+    };
+    tick();
+    const t = setInterval(tick, 3500);
+    return () => clearInterval(t);
+  }, [token]);
+
+  async function handleStart() {
+    if (!token || pending) return;
+    setPending(true);
+    try {
+      const base = getHwalletApiBase();
+      const res = await fetch(`${base}/api/v6/strategy/start`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ strategyId: selected }),
+      }).then((r) => r.json());
+      if (res?.ok) {
+        setRunning(true);
+        setActiveId(selected);
+      } else {
+        Alert.alert("启动失败", String(res?.error || "未知错误"));
+      }
+    } catch (e: any) {
+      Alert.alert("启动失败", e?.message || String(e));
+    }
+    setPending(false);
+  }
+
+  async function handleStop() {
+    if (!token || pending) return;
+    setPending(true);
+    try {
+      const base = getHwalletApiBase();
+      const res = await fetch(`${base}/api/v6/strategy/stop`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      }).then((r) => r.json());
+      if (res?.ok) {
+        setRunning(false);
+        setActiveId(null);
+      }
+    } catch {}
+    setPending(false);
+  }
+
+  const levelColor = (lv: StratLog["level"]) =>
+    lv === "success" ? "#4ADE80" :
+    lv === "warn" ? "#FBBF24" :
+    lv === "error" ? "#F87171" :
+    lv === "action" ? "#60A5FA" :
+    "#A78BFA";
+
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: uiColors.cardBg,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: uiColors.glassPurpleBorder,
+          padding: 14,
+        },
+        uiShadow.card,
+      ]}
+    >
+      {/* 标题 + 状态 */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={{ fontSize: 16 }}>🤖</Text>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: uiColors.textPrimary, letterSpacing: -0.3 }}>
+            AI 策略中控台
+          </Text>
+        </View>
+        {running ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+              borderRadius: 999,
+              backgroundColor: "rgba(74,222,128,0.15)",
+            }}
+          >
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#22C55E" }} />
+            <Text style={{ fontSize: 11, fontWeight: "700", color: "#16A34A" }}>
+              {activeId ? `运行中 · ${STRATEGIES.find((s) => s.id === activeId)?.name ?? activeId}` : "运行中"}
+            </Text>
+          </View>
+        ) : (
+          <Text style={{ fontSize: 11, color: uiColors.textMuted, fontWeight: "600" }}>未启动</Text>
+        )}
+      </View>
+
+      {/* 策略选择 */}
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+        {STRATEGIES.map((s) => {
+          const active = selected === s.id;
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => setSelected(s.id)}
+              disabled={running}
+              style={{
+                flex: 1,
+                padding: 12,
+                borderRadius: 14,
+                borderWidth: 1.5,
+                borderColor: active ? uiCategoryColors.strategy.accent : uiColors.glassPurpleBorder,
+                backgroundColor: active ? uiCategoryColors.strategy.soft : "rgba(255,255,255,0.6)",
+                opacity: running && !active ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ fontSize: 18, marginBottom: 4 }}>{s.icon}</Text>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: uiColors.textPrimary }}>{s.name}</Text>
+              <Text style={{ fontSize: 10, color: uiColors.textMuted, marginTop: 2 }}>{s.desc}</Text>
+              <Text style={{ fontSize: 9, color: uiCategoryColors.strategy.accent, fontWeight: "700", marginTop: 4 }}>
+                风险：{s.risk}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* 启动 / 停止按钮 */}
+      <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+        {!running ? (
+          <Pressable
+            onPress={handleStart}
+            disabled={pending || !token}
+            style={{ flex: 1, borderRadius: 12, overflow: "hidden" }}
+          >
+            <LinearGradient
+              colors={uiCategoryColors.strategy.gradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ paddingVertical: 12, alignItems: "center" }}
+            >
+              <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "800", letterSpacing: -0.3 }}>
+                {pending ? "启动中..." : `启动「${STRATEGIES.find((s) => s.id === selected)?.name}」`}
+              </Text>
+            </LinearGradient>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={handleStop}
+            disabled={pending}
+            style={{
+              flex: 1,
+              borderRadius: 12,
+              paddingVertical: 12,
+              alignItems: "center",
+              borderWidth: 1.5,
+              borderColor: "#EF4444",
+              backgroundColor: "rgba(239,68,68,0.06)",
+            }}
+          >
+            <Text style={{ color: "#DC2626", fontSize: 14, fontWeight: "800" }}>停止策略</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {/* AI 执行日志沙盒 */}
+      <View
+        style={{
+          backgroundColor: uiColors.terminalBg,
+          borderRadius: 14,
+          padding: 12,
+          height: 180,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6, gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#F87171" }} />
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#FBBF24" }} />
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#4ADE80" }} />
+          <Text style={{ marginLeft: 8, fontSize: 10, color: uiColors.terminalAccent, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>
+            AI 执行日志（实时·真实数据）
+          </Text>
+        </View>
+        <ScrollView
+          ref={logScrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 4 }}
+        >
+          {logs.length === 0 ? (
+            <Text style={{ fontSize: 11, color: uiColors.terminalMuted, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>
+              {running ? "$ 监控中..." : "$ 选择策略并点击启动，AI 会在这里实时输出每一步思考与执行"}
+            </Text>
+          ) : (
+            logs.map((log, i) => (
+              <Text
+                key={`${log.ts}-${i}`}
+                style={{
+                  fontSize: 11,
+                  color: levelColor(log.level),
+                  fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+                  marginBottom: 2,
+                }}
+              >
+                {`[${log.ts}] ${log.msg}`}
+              </Text>
+            ))
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
 function ActionCard({
   label,
   sub,

@@ -1,9 +1,11 @@
 import { StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import Markdown from "react-native-markdown-display";
 import type { ChatMessage } from "../types";
 import { DolphinLogo, type DolphinMood } from "./DolphinLogo";
 import { TransactionCard } from "./TransactionCard";
 import { AIStepIndicator } from "./AIStepIndicator";
+import { uiShadow } from "../theme/uiSystem";
 
 type ChatBubbleProps = {
   message: ChatMessage;
@@ -148,32 +150,51 @@ export function ChatBubble({
   if (isUser) {
     return (
       <View className="my-1.5 items-end px-4">
-        <View className="max-w-[82%] rounded-3xl bg-surface2 px-4 py-2.5">
-          <Text style={{ fontSize: 15, lineHeight: 22, color: "#0F0F0F", fontFamily: "Inter_400Regular" }}>
+        <LinearGradient
+          colors={["#9B6DFF", "#6C3FC5"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            {
+              maxWidth: "82%",
+              borderRadius: 20,
+              borderBottomRightRadius: 6,
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+            },
+            uiShadow.float,
+          ]}
+        >
+          <Text style={{ fontSize: 15, lineHeight: 22, color: "#FFFFFF", fontFamily: "Inter_500Medium" }}>
             {message.text}
           </Text>
-        </View>
+        </LinearGradient>
       </View>
     );
   }
 
-  // AI message with rich Markdown rendering
+  // AI message — 玻璃化气泡（白色半透 + 紫色左边 + 柔阴影）
   return (
     <View className="my-2 flex-row items-end px-4" style={{ gap: 6 }}>
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
         <DolphinLogo size={36} compact mood={avatarMood} />
       </View>
       <View
-        className="max-w-[82%] rounded-2xl rounded-bl-md"
-        style={{
-          backgroundColor: "#FAFAFA",
-          borderWidth: 1,
-          borderColor: "#ECECF1",
-          borderLeftWidth: 3,
-          borderLeftColor: "#7C3AED",
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-        }}
+        className="max-w-[82%]"
+        style={[
+          {
+            backgroundColor: "rgba(255,255,255,0.92)",
+            borderWidth: 1,
+            borderColor: "rgba(108,63,197,0.14)",
+            borderLeftWidth: 3,
+            borderLeftColor: "#9B6DFF",
+            borderRadius: 18,
+            borderBottomLeftRadius: 6,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+          },
+          uiShadow.cardSoft,
+        ]}
       >
         <Markdown style={mdStyles}>{message.text || ""}</Markdown>
       </View>

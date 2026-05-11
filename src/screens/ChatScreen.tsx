@@ -785,6 +785,7 @@ export function ChatScreen() {
         placeholder="畅所欲问"
         onChangeText={setInput}
         onSubmit={() => sendMessage()}
+        onQuickAction={(msg) => sendMessage(msg)}
       />
     </KAVWrapper>
   );
@@ -841,16 +842,23 @@ function TypingBubble() {
         <DolphinLogo size={36} compact mood="thinking" />
       </View>
       <View
-        className="rounded-2xl rounded-bl-md px-4 py-3"
         style={{
-          backgroundColor: "#F7F7F8",
+          backgroundColor: "rgba(255,255,255,0.92)",
           borderWidth: 1,
-          borderColor: "#ECECF1",
+          borderColor: "rgba(108,63,197,0.14)",
           borderLeftWidth: 3,
-          borderLeftColor: "#7C3AED",
+          borderLeftColor: "#9B6DFF",
+          borderRadius: 18,
+          borderBottomLeftRadius: 6,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
           flexDirection: "row",
           alignItems: "center",
-          gap: 4
+          gap: 4,
+          shadowColor: "#6C3FC5",
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
         }}
       >
         {dotStyles.map((style, i) => (
@@ -861,7 +869,7 @@ function TypingBubble() {
                 width: 6,
                 height: 6,
                 borderRadius: 3,
-                backgroundColor: "#7C3AED"
+                backgroundColor: "#6C3FC5"
               },
               style
             ]}

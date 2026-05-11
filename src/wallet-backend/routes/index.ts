@@ -6,6 +6,7 @@ import { tryDataRoutes } from "./data-routes";
 import { tryDexRoutes } from "./dex-routes";
 import { tryHealthRoute } from "./health-route";
 import { tryMetaRoutes } from "./meta-routes";
+import { tryStrategyRoutes } from "./strategy-routes";
 import { tryTrendRoute } from "./trend-route";
 import { tryWalletRoutes } from "./wallet-routes";
 
@@ -27,6 +28,7 @@ export async function dispatchJsonRoutes(
   if (await tryWalletRoutes(req, res, url, method)) return true;
   if (await tryDexRoutes(req, res, url, method)) return true;
   if (await tryAiRoutes(req, res, url, method)) return true;
+  if (await tryStrategyRoutes(req, res, url, method)) return true;
   if (tryHealthRoute(req, res, url, method)) return true;
   return false;
 }
