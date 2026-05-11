@@ -15,7 +15,7 @@ import { Candlestick } from "./Candlestick";
 import { TokenBTC, TokenETH, TokenUSDT } from "./ui/TokenIcons";
 import type { CardStatus, HWalletCard } from "../types";
 import { resolveCardTemplateId } from "../services/core/cardTemplates";
-import { uiColors } from "../theme/uiSystem";
+import { uiColors, uiCategoryColors } from "../theme/uiSystem";
 
 type TransactionCardProps = {
   card: HWalletCard;
@@ -252,8 +252,12 @@ function PerpetualExchangeCard({ card, onConfirm, onCancel }: TransactionCardPro
   const ctaBg = pnlPositive ? "#10B981" : "#DC2626";
   const interactive = card.status === "preview";
 
+  const shell = isShort
+    ? { bg: "#FFF5F5" as const, border: "#FECACA" as const, shadow: "#EF4444" as const }
+    : { bg: "#F0FDF4" as const, border: "#A7F3D0" as const, shadow: "#10B981" as const };
+
   return (
-    <CardShell bg="#FFF5F5" borderColor="#FECACA" shadowColor="#EF4444">
+    <CardShell bg={shell.bg} borderColor={shell.border} shadowColor={shell.shadow}>
       {/* Header */}
       <View className="flex-row items-center justify-between px-3.5 pb-2 pt-3">
         <View className="flex-1 flex-row items-center" style={{ gap: 6 }}>
@@ -361,7 +365,11 @@ function PerpetualExchangeCard({ card, onConfirm, onCancel }: TransactionCardPro
 function SwapCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const interactive = card.status === "preview";
   return (
-    <CardShell bg="#EEF2FF" borderColor="#C7D2FE" shadowColor="#6366F1">
+    <CardShell
+      bg="#FAFBFF"
+      borderColor={uiColors.glassPurpleBorder}
+      shadowColor={uiCategoryColors.swap.accent}
+    >
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 pb-2 pt-3">
         <View className="flex-row items-center" style={{ gap: 8 }}>
@@ -485,7 +493,7 @@ function AgentCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const haloStyle = useAnimatedStyle(() => ({ opacity: halo.value }));
 
   return (
-    <CardShell borderColor="#E5E7FF" bg="#F5F3FF" shadowColor="#7C3AED">
+    <CardShell borderColor={uiColors.glassPurpleBorder} bg="#F5F3FF" shadowColor={uiColors.purple}>
       {/* Hero gradient strip */}
       <LinearGradient
         colors={["#1E1B4B", "#3730A3", "#5B21B6"]}
@@ -645,7 +653,7 @@ function StakeCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const risk = riskMap[card.stakeRiskLevel ?? "low"];
 
   return (
-    <CardShell borderColor="#A7F3D0" bg="#ECFDF5" shadowColor="#10B981">
+    <CardShell borderColor={uiColors.glassPurpleBorder} bg="#ECFDF5" shadowColor={uiCategoryColors.earn.accent}>
       {/* Top: APY hero */}
       <LinearGradient
         colors={["#ECFDF5", "#D1FAE5"]}
@@ -1156,7 +1164,11 @@ function TransferSelectCard({ card, onConfirmTransferSelect, onCancel }: Transac
   }
 
   return (
-    <CardShell borderColor="#E0E7FF" bg="#F8F9FF" shadowColor="#6366F1">
+    <CardShell
+      borderColor={uiColors.glassPurpleBorder}
+      bg="#FFFFFF"
+      shadowColor={uiColors.purple}
+    >
       {/* Header */}
       <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: "#F0F0F5" }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -1410,13 +1422,17 @@ function GridCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const priceLower = card.rows?.[0]?.value ? parseFloat(card.rows[0].value.replace('$', '').replace(',', '')) : 0;
   const priceUpper = card.rows?.[1]?.value ? parseFloat(card.rows[1].value.replace('$', '').replace(',', '')) : 0;
   const gridNum = card.rows?.[2]?.value ? parseInt(card.rows[2].value) : 20;
-  const pair = card.pair || card.symbol ? `${card.symbol}/USDT` : '';
+  const pair = card.pair || (card.symbol ? `${card.symbol}/USDT` : "");
   const range = priceUpper - priceLower;
   const currentPos = range > 0 && currentPrice > 0 ? ((currentPrice - priceLower) / range) * 100 : 50;
   const clampedPos = Math.min(100, Math.max(0, currentPos));
 
   return (
-    <CardShell borderColor="#E0E7FF" bg="#F8FAFF" shadowColor="#6366F1">
+    <CardShell
+      borderColor={uiColors.glassPurpleBorder}
+      bg="#FAFBFF"
+      shadowColor={uiCategoryColors.strategy.accent}
+    >
       {/* Header */}
       <LinearGradient
         colors={["#EEF2FF", "#E0E7FF"]}
@@ -1430,7 +1446,9 @@ function GridCard({ card, onConfirm, onCancel }: TransactionCardProps) {
               <Text style={{ color: "#4338CA", fontWeight: "800", fontSize: 16 }}>🔲</Text>
             </View>
             <View>
-              <Text className="text-[15px] font-bold text-ink">{card.agentName ?? pair ? `${pair} 网格` : '网格策略'}</Text>
+              <Text className="text-[15px] font-bold text-ink">
+                {card.agentName ?? (pair ? `${pair} 网格` : "网格策略")}
+              </Text>
               {card.agentTags && (
                 <View className="flex-row" style={{ gap: 4, marginTop: 2 }}>
                   {card.agentTags.slice(0, 3).map((t) => (
