@@ -4,9 +4,9 @@
  * Claude 意图识别 + DeepSeek 聊天对话，生成精美卡片
  * 通过 onStep 回调实时通知 UI 当前进度
  */
-import { askClaude, chatWithAI, type AIIntent } from './claudeAI';
-import type { ChatIntentAction } from '../intentNormalize';
-import { localRuleIntent } from '../intentNormalize';
+import { chatWithAI } from './claudeAI';
+import type { AIIntent, ChatIntentAction } from '../intentNormalize';
+import { parseUserIntent } from '../ai-parse';
 import { api } from '../../api/gateway';
 import type { ApiResponse } from '../../types/api';
 import type { HWalletCard } from '../../types/card';
@@ -172,16 +172,21 @@ export async function handleUserPrompt(
   let steps = buildSteps('chat'); // 先用通用步骤
   steps = advanceStep(steps, 's1', 'active', onStep);
 
-  // 先跑本地规则（零延迟）；命中则跳过 AI 网络请求
-  const localIntent = localRuleIntent(input);
-  const skipAI = localIntent.action !== 'chat'; // 非闲聊的本地规则直接用
-
-  // 使用 Claude AI 识别意图（本地规则未命中时才调用）
   const chatHistory = (options?.chatHistory ?? []).slice(-6);
-  const intent: AIIntent = skipAI
-    ? localIntent
-    : await askClaude(input, options?.abortSignal, chatHistory);
-  console.log('[Orchestrator] AI intent:', intent.action, intent.symbol, intent.amount);
+  const parseResult = await parseUserIntent(input, {
+    abortSignal: options?.abortSignal,
+    history: chatHistory,
+  });
+  const intent = parseResult.intent;
+  console.log(
+    '[Orchestrator] intent parse',
+    parseResult.source,
+    parseResult.stages.join('→'),
+    `${parseResult.durationMs}ms`,
+    intent.action,
+    intent.symbol,
+    intent.amount,
+  );
 
   // 识别完成后，重建步骤列表（根据实际 action）
   steps = buildSteps(intent.action);
