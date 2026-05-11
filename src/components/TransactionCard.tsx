@@ -11,7 +11,6 @@ import Animated, {
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Path, Stop } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import { Button } from "./ui/Button";
-import { Surface } from "./ui/Surface";
 import { Candlestick } from "./Candlestick";
 import { TokenBTC, TokenETH, TokenUSDT } from "./ui/TokenIcons";
 import type { CardStatus, HWalletCard } from "../types";
@@ -852,8 +851,7 @@ function PriceCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   };
 
   return (
-    <View className="my-2 px-4">
-      <Surface className="overflow-hidden rounded-2xl">
+    <CardShell bg="#FFFFFF" borderColor={uiColors.cardBorder} shadowColor={uiColors.purple}>
         {/* Header */}
         <LinearGradient
           colors={isUp ? ['#ECFDF5', '#F0FDF4'] : ['#FEF2F2', '#FFF5F5']}
@@ -934,8 +932,7 @@ function PriceCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             className="flex-1"
           />
         </View>
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
@@ -983,22 +980,21 @@ function PositionCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const positions = card.positions;
   if (!positions || positions.length === 0) {
     return (
-      <View className="my-2 px-4">
-        <Surface className="overflow-hidden rounded-2xl p-4">
+      <CardShell bg="#FFFFFF" borderColor={uiColors.glassPurpleBorder} shadowColor={uiColors.purple}>
+          <View className="px-4 py-8">
           <Text style={{ fontSize: 16, fontFamily: 'Inter_600SemiBold', color: '#0F0F0F', textAlign: 'center' }}>
             📭 当前没有持仓
           </Text>
           <Text style={{ fontSize: 13, fontFamily: 'Inter_400Regular', color: '#9CA3AF', textAlign: 'center', marginTop: 4 }}>
             你可以说"100U 做多 BTC"来开仓
           </Text>
-        </Surface>
-      </View>
+          </View>
+      </CardShell>
     );
   }
 
   return (
-    <View className="my-2 px-4">
-      <Surface className="overflow-hidden rounded-2xl">
+    <CardShell bg="#FFFFFF" borderColor={uiColors.cardBorder} shadowColor={uiColors.purple}>
         <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
           <Text style={{ fontSize: 16, fontFamily: 'Inter_700Bold', color: '#0F0F0F' }}>
             📊 当前持仓 ({positions.length})
@@ -1072,8 +1068,7 @@ function PositionCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             </View>
           );
         })}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
@@ -1085,8 +1080,7 @@ function PortfolioCard({ card, onConfirm, onCancel }: TransactionCardProps) {
   const totalEquity = card.totalEquity ?? 0;
 
   return (
-    <View className="my-2 px-4">
-      <Surface className="overflow-hidden rounded-2xl">
+    <CardShell bg="#FFFFFF" borderColor={uiColors.cardBorder} shadowColor={uiColors.purple}>
         <LinearGradient
           colors={['#F5F3FF', '#EDE9FE']}
           start={{ x: 0, y: 0 }}
@@ -1139,8 +1133,7 @@ function PortfolioCard({ card, onConfirm, onCancel }: TransactionCardProps) {
             ))}
           </View>
         )}
-      </Surface>
-    </View>
+    </CardShell>
   );
 }
 
