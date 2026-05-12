@@ -204,67 +204,43 @@ export default function App() {
         {/* 钱包:整屏从左到右滑入 */}
         <Animated.View
           pointerEvents={isWallet ? "auto" : "none"}
-          style={[
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "#FFFFFF"
-            },
-            walletStyle
-          ]}
+          style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, walletStyle]}
         >
-          <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            <ErrorBoundary>
-              <WalletScreen onChangeView={setActiveView} />
-            </ErrorBoundary>
-          </SafeAreaView>
+          <GradientBackground>
+            <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
+              <ErrorBoundary>
+                <WalletScreen onChangeView={setActiveView} />
+              </ErrorBoundary>
+            </SafeAreaView>
+          </GradientBackground>
         </Animated.View>
 
         {/* 我的:整屏从右到左滑入 */}
         <Animated.View
           pointerEvents={isProfile ? "auto" : "none"}
-          style={[
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "#FFFFFF"
-            },
-            profileStyle
-          ]}
+          style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, profileStyle]}
         >
-          <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            <ErrorBoundary>
-              <ProfileScreen onChangeView={setActiveView} />
-            </ErrorBoundary>
-          </SafeAreaView>
+          <GradientBackground>
+            <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
+              <ErrorBoundary>
+                <ProfileScreen onChangeView={setActiveView} />
+              </ErrorBoundary>
+            </SafeAreaView>
+          </GradientBackground>
         </Animated.View>
 
         {/* 通知:整屏从右到左滑入 */}
         <Animated.View
           pointerEvents={isNotifications ? "auto" : "none"}
-          style={[
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "#FFFFFF"
-            },
-            notificationsStyle
-          ]}
+          style={[{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }, notificationsStyle]}
         >
-          <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
-            <ErrorBoundary>
-              <NotificationScreen onChangeView={setActiveView} />
-            </ErrorBoundary>
-          </SafeAreaView>
+          <GradientBackground>
+            <SafeAreaView style={{ flex: 1 }} edges={["top", "left", "right", "bottom"]}>
+              <ErrorBoundary>
+                <NotificationScreen onChangeView={setActiveView} />
+              </ErrorBoundary>
+            </SafeAreaView>
+          </GradientBackground>
         </Animated.View>
 
         {/* 全局紧急停止红按钮 — 第四锁，仅有运行中策略时浮现 */}
