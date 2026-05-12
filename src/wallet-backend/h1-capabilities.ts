@@ -150,6 +150,64 @@ export const H1_CAPABILITY_REGISTRY: readonly H1CapabilityRecord[] = [
     write: true,
   },
   {
+    skillId: "H1.skill.dex.signal_list",
+    description: "聚合买入信号（聪明钱 / KOL / 大户，onchainos signal list）",
+    http: { method: "POST", path: "/api/v6/dex/signal" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        chain: { type: "string" },
+        signalType: { type: "string", description: "可选 smart_money_buy | kol_call | trenches_new" },
+        limit: { type: "number" },
+      },
+    },
+    requiresSession: false,
+    write: false,
+  },
+  {
+    skillId: "H1.skill.dex.hot_tokens",
+    description: "热门代币榜（onchainos token hot-tokens）",
+    http: { method: "POST", path: "/api/v6/dex/hot-tokens" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        chain: { type: "string" },
+        limit: { type: "number" },
+      },
+    },
+    requiresSession: false,
+    write: false,
+  },
+  {
+    skillId: "H1.skill.dex.tracker_activities",
+    description: "信号追踪 — 聪明钱或 KOL 地址成交动态（onchainos tracker activities）",
+    http: { method: "POST", path: "/api/v6/dex/tracker" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        trackerType: { type: "string", description: "smart_money | kol" },
+        chain: { type: "string" },
+        limit: { type: "number" },
+      },
+    },
+    requiresSession: false,
+    write: false,
+  },
+  {
+    skillId: "H1.skill.defi.discover",
+    description: "链上赚币机会发现（defi search，失败时热门榜兜底）",
+    http: { method: "POST", path: "/api/v6/defi/discover" },
+    inputSchema: {
+      type: "object",
+      properties: {
+        chain: { type: "string" },
+        minApr: { type: "number" },
+      },
+    },
+    requiresSession: false,
+    write: false,
+  },
+  {
     skillId: "H1.skill.ai.chat",
     description: "通用对话（DeepSeek 等，经 BFF）",
     http: { method: "POST", path: "/api/ai/chat" },

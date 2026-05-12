@@ -13,6 +13,7 @@
 | `okx-http.ts` | `okxSignedRequest`（WaaS 聚合余额 fallback） |
 | `dex-tokens.ts` | `mapClientChainToCli`、`symbolToContract`、`pickSignerAddressForChain` |
 | `wallet-cli-handlers.ts` | 所有钱包/DEX CLI 业务 handler |
+| `market-cli-handlers.ts` | 读路径：`signal list` / `token hot-tokens` / `tracker activities` / `defi search`（供 `/api/v6/dex/*`、`/api/v6/defi/discover`） |
 | `admin-api-catalog.ts` | **`/api/admin/*` 路径 + 方法 + 文档** 单一表；`matchAdminRoute`、`ADMIN_OPS_API_DOCS`；`admin-routes` 分发须与此一致 |
 | `admin-ops.ts` | 运维台鉴权、`listCliSandboxes`、`adminOverviewPayload`、**`adminDiagnosticsPayload`**（聚合只读诊断） |
 | `runtime-settings.ts` | 工作台运行时 JSON 热覆盖：限流、JSON 体、CORS、trend、LLM 模型与 token、**externalLlmFetchTimeoutMs**；`aiChat` 每次请求读 `getEffective*` |
@@ -23,7 +24,27 @@
 | `http-server.ts` | CORS、请求日志、`/ops` 与 `dispatchJsonRoutes` 编排 |
 | `h1-capabilities.ts` | **`H1.skill.*` ↔ BFF 路径** 单一注册表 + JSON Schema；**`buildBffHttpRouteCatalog()`** 生成运维/诊断用 HTTP 路由表（与注册表 + 固定端点一致） |
 | `ops-console-html.ts` | **`GET /ops` HTML 生成**：读取 `ops-console/index.html` 模板，注入 `admin-api-catalog` 的 `ADMIN_OPS_API_DOCS`、`HTTP_ROUTE_CATALOG` 与 `ops-bootstrap` JSON（含 **`adminQuickGets`**、**`publicQuickLinks`**，与 Admin 表同源） |
-| `routes/` | 按域拆分：`meta-routes`（`GET /api/meta/capabilities`）、`ops-console-route`、`admin-routes`、`auth-routes`、`wallet-routes`、`dex-routes`、`ai-routes`、`health-route`、`index` 分发 |
+| `routes/` | 按域拆分：`meta-routes`、`ops-console-route`、`admin-routes`、`auth-routes`、`wallet-routes`、**`defi-routes`**（`/api/v6/defi/*`）、`dex-routes`（含 **`/api/v6/dex/signal`**、**`hot-tokens`**、**`tracker`**）、`ai-routes`、`strategy-routes`、`health-route`、`index` 分发 |
+
+## Onchain 读接口冒烟（本机需 `onchainos --version` 可用）
+
+后端起在 `http://127.0.0.1:8787` 时（端口以实际 `config` 为准），可替换 `BASE` 与 `TOKEN`：
+
+```bash
+export BASE=http://127.0.0.1:8787
+export TOKEN=   # 可选：Bearer 与登录态一致时 CLI 用对应 ONCHAINOS_HOME
+
+curl -sS -X POST "$BASE/api/v6/dex/signal" -H "Content-Type: application/json" ${TOKEN:+-H "Authorization: Bearer $TOKEN"} -d '{"chain":"ethereum","limit":5}' | head -c 400
+
+curl -sS -X POST "$BASE/api/v6/dex/hot-tokens" -H "Content-Type: application/json" ${TOKEN:+-H "Authorization: Bearer $TOKEN"} -d '{"limit":10}' | head -c 400
+
+curl -sS -X POST "$BASE/api/v6/dex/tracker" -H "Content-Type: application/json" ${TOKEN:+-H "Authorization: Bearer $TOKEN"} -d '{"trackerType":"smart_money","limit":8}' | head -c 400
+
+curl -sS -X POST "$BASE/api/v6/defi/discover" -H "Content-Type: application/json" ${TOKEN:+-H "Authorization: Bearer $TOKEN"} -d '{"chain":"ethereum","minApr":3}' | head -c 400
+```
+
+- 返回 `[]` 或空数组：多为 **CLI 未装**、**未登录且未设 `ONCHAINOS_HOME`**，或上游无数据。  
+- `POST /api/v6/defi/portfolio` 当前为 **占位**（`[]`），真实持仓后续再接 `defi positions`。
 
 ## AI 对话 / 意图识别（服务端环境变量，勿写入 Expo）
 
