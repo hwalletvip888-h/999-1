@@ -28,10 +28,10 @@
 
 ## Onchain 读接口冒烟（本机需 `onchainos --version` 可用）
 
-后端起在 `http://127.0.0.1:8787` 时（端口以实际 `config` 为准），可替换 `BASE` 与 `TOKEN`：
+后端起在 **`http://127.0.0.1:3100`** 时（默认 `WALLET_PORT`，见 `config.ts`），可替换 `BASE` 与 `TOKEN`：
 
 ```bash
-export BASE=http://127.0.0.1:8787
+export BASE=http://127.0.0.1:3100
 export TOKEN=   # 可选：Bearer 与登录态一致时 CLI 用对应 ONCHAINOS_HOME
 
 curl -sS -X POST "$BASE/api/v6/dex/signal" -H "Content-Type: application/json" ${TOKEN:+-H "Authorization: Bearer $TOKEN"} -d '{"chain":"ethereum","limit":5}' | head -c 400
